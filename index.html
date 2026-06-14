@@ -1,0 +1,1134 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <meta name="theme-color" content="#EAEAE6"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+  <meta name="apple-mobile-web-app-title" content="كوبري — أسفلت"/>
+  <title>كوبري — تتبع شحنات الأسفلت</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet"/>
+  <style>
+    /* ═══════════════════════════════════════════════════════
+       COPRI THEME — easy to customize
+       Change values here to update the entire app
+    ═══════════════════════════════════════════════════════ */
+    :root {
+      /* Brand colors */
+      --green:        #00A651;
+      --green-dark:   #007A3D;
+      --green-light:  rgba(0, 166, 81, 0.10);
+      --green-mid:    rgba(0, 166, 81, 0.20);
+
+      /* Backgrounds */
+      --bg:           #EAEAE6;
+      --surface:      #FFFFFF;
+      --surface-2:    #F4F4F0;
+      --border:       #D8D8D2;
+      --border-focus: #00A651;
+
+      /* Text */
+      --text-1:       #1A1A2E;
+      --text-2:       #555560;
+      --text-3:       #999999;
+
+      /* Status colors */
+      --red:          #D32F2F;
+      --red-light:    rgba(211, 47, 47, 0.08);
+      --amber:        #E65100;
+      --amber-light:  rgba(230, 81, 0, 0.10);
+
+      /* Layout */
+      --radius:       8px;
+      --radius-sm:    5px;
+      --shadow-sm:    0 1px 4px rgba(0,0,0,0.08);
+      --shadow:       0 2px 12px rgba(0,0,0,0.10);
+
+      /* Typography */
+      --font-ar:      'IBM Plex Sans Arabic', sans-serif;
+      --font-label:   'Barlow Condensed', sans-serif;
+    }
+
+    /* ── RESET ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; }
+    body {
+      font-family: var(--font-ar);
+      background: var(--bg);
+      color: var(--text-1);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── APP SHELL ─────────────────────────────────────── */
+    .app { max-width: 480px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
+
+    /* ── HEADER ────────────────────────────────────────── */
+    .app-header {
+      background: var(--surface);
+      border-bottom: 3px solid var(--green);
+      padding: .9rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky; top: 0; z-index: 10;
+      box-shadow: var(--shadow-sm);
+    }
+    .logo { display: flex; align-items: center; gap: .7rem; }
+    .logo-mark {
+      width: 40px; height: 40px;
+      background: var(--green);
+      border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .logo-mark svg { width: 26px; height: 26px; }
+    .logo-text { display: flex; flex-direction: column; gap: 1px; }
+    .logo-en {
+      font-family: var(--font-label);
+      font-size: .6rem;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--text-2);
+    }
+    .logo-ar {
+      font-size: .95rem;
+      font-weight: 700;
+      color: var(--text-1);
+      line-height: 1;
+    }
+    .header-badge {
+      font-family: var(--font-label);
+      font-size: .65rem;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--green);
+      background: var(--green-light);
+      padding: .25rem .6rem;
+      border-radius: 3px;
+      border: 1px solid var(--green-mid);
+    }
+
+    /* ── MAIN ──────────────────────────────────────────── */
+    .app-main { flex: 1; padding: 1.1rem 1rem; display: flex; flex-direction: column; gap: .9rem; }
+
+    /* ── FOOTER ────────────────────────────────────────── */
+    .app-footer {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      text-align: center;
+      font-size: .68rem;
+      color: var(--text-3);
+      padding: .75rem;
+    }
+
+    /* ── SECTION TITLE ─────────────────────────────────── */
+    .section-title {
+      font-family: var(--font-label);
+      font-size: .68rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--green);
+      display: flex;
+      align-items: center;
+      gap: .4rem;
+      padding-bottom: .55rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-title::before {
+      content: '';
+      display: inline-block;
+      width: 0; height: 0;
+      border-top: 5px solid transparent;
+      border-bottom: 5px solid transparent;
+      border-right: 7px solid var(--green);
+    }
+
+    /* ── CARD ──────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.1rem;
+      display: flex;
+      flex-direction: column;
+      gap: .9rem;
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* ── FIELDS ────────────────────────────────────────── */
+    .field-group { display: flex; flex-direction: column; gap: .35rem; }
+    .field-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; }
+
+    label {
+      font-size: .78rem;
+      font-weight: 600;
+      color: var(--text-2);
+      letter-spacing: .01em;
+    }
+    .req { color: var(--red); }
+
+    input, select, textarea {
+      background: var(--surface-2);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-1);
+      font-family: var(--font-ar);
+      font-size: .92rem;
+      padding: .6rem .8rem;
+      width: 100%;
+      transition: border-color .15s, box-shadow .15s;
+      direction: rtl;
+      outline: none;
+      -webkit-appearance: none;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--border-focus);
+      background: #fff;
+      box-shadow: 0 0 0 3px var(--green-light);
+    }
+    input::placeholder, textarea::placeholder { color: var(--text-3); font-size: .83rem; }
+    select option { background: #fff; }
+    textarea { resize: vertical; min-height: 64px; line-height: 1.5; }
+
+    /* ── HINT TEXT ─────────────────────────────────────── */
+    .field-hint { font-size: .72rem; color: var(--text-3); margin-top: .15rem; }
+
+    /* ── BUTTONS ───────────────────────────────────────── */
+    .btn-primary {
+      background: var(--green);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-family: var(--font-ar);
+      font-size: .95rem;
+      font-weight: 700;
+      padding: .85rem 1.25rem;
+      cursor: pointer;
+      width: 100%;
+      transition: background .15s, transform .1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: .5rem;
+    }
+    .btn-primary:hover { background: var(--green-dark); }
+    .btn-primary:active { transform: scale(.98); }
+    .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+
+    .btn-danger {
+      background: var(--red) !important;
+    }
+    .btn-danger:hover { background: #b71c1c !important; }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-2);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-ar);
+      font-size: .88rem;
+      font-weight: 500;
+      padding: .75rem 1.25rem;
+      cursor: pointer;
+      width: 100%;
+      margin-top: .4rem;
+    }
+    .btn-ghost:hover { border-color: var(--green); color: var(--green); }
+
+    /* ── DECISION BUTTONS ──────────────────────────────── */
+    .decision-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; }
+    .decision-btn {
+      border: 2px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface-2);
+      color: var(--text-2);
+      font-family: var(--font-ar);
+      font-size: .95rem;
+      font-weight: 700;
+      padding: .85rem;
+      cursor: pointer;
+      transition: all .15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: .4rem;
+    }
+    .decision-btn.accept:hover, .decision-btn.accept.active {
+      border-color: var(--green); background: var(--green-light); color: var(--green);
+    }
+    .decision-btn.reject:hover, .decision-btn.reject.active {
+      border-color: var(--red); background: var(--red-light); color: var(--red);
+    }
+
+    /* ── RECEIPT SUMMARY ───────────────────────────────── */
+    .receipt-summary {
+      background: var(--surface);
+      border: 2px solid var(--green);
+      border-radius: var(--radius);
+      padding: 1.1rem;
+      box-shadow: var(--shadow-sm);
+    }
+    .summary-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: .75rem; }
+
+    .field-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: .5rem;
+      font-size: .86rem;
+      padding: .3rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .field-row:last-child { border-bottom: none; }
+    .field-label { color: var(--text-2); flex-shrink: 0; }
+    .field-value { color: var(--text-1); font-weight: 600; }
+
+    /* ── BADGES ────────────────────────────────────────── */
+    .badge {
+      font-family: var(--font-label);
+      font-size: .65rem;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      padding: .2rem .6rem;
+      border-radius: 3px;
+    }
+    .badge-transit  { background: var(--amber-light);  color: var(--amber);    border: 1px solid rgba(230,81,0,.2);  }
+    .badge-accepted { background: var(--green-light);  color: var(--green);    border: 1px solid var(--green-mid);   }
+    .badge-rejected { background: var(--red-light);    color: var(--red);      border: 1px solid rgba(211,47,47,.2); }
+
+    /* ── TEMP DELTA ────────────────────────────────────── */
+    .temp-delta {
+      font-size: .75rem;
+      font-weight: 600;
+      padding: .3rem .6rem;
+      border-radius: var(--radius-sm);
+      margin-top: .2rem;
+      display: flex;
+      align-items: center;
+      gap: .3rem;
+    }
+    .delta-ok   { background: var(--green-light); color: var(--green); }
+    .delta-warn { background: var(--red-light);   color: var(--red);   }
+
+    /* ── WEIGHT DELTA ──────────────────────────────────── */
+    .weight-delta {
+      font-size: .75rem;
+      font-weight: 600;
+      padding: .3rem .6rem;
+      border-radius: var(--radius-sm);
+      margin-top: .2rem;
+    }
+    .weight-ok   { background: var(--green-light); color: var(--green); }
+    .weight-warn { background: var(--amber-light); color: var(--amber); }
+    .weight-err  { background: var(--red-light);   color: var(--red);   }
+
+    /* ── SUCCESS / SCREENS ─────────────────────────────── */
+    .success-screen {
+      background: var(--surface);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      padding: 2.5rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: .7rem;
+      box-shadow: var(--shadow-sm);
+    }
+    .success-icon {
+      width: 64px; height: 64px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.8rem;
+    }
+    .success-icon.ok       { background: var(--green-light); color: var(--green); border: 2px solid var(--green); }
+    .success-icon.rejected { background: var(--red-light);   color: var(--red);   border: 2px solid var(--red);   }
+    .success-screen h2 { font-size: 1.15rem; font-weight: 700; color: var(--text-1); }
+    .success-screen p  { font-size: .88rem; color: var(--text-2); }
+    .success-note      { color: var(--green) !important; font-weight: 600; }
+
+    /* ── RECEIPT LINK BOX ──────────────────────────────── */
+    .link-box {
+      background: var(--surface-2);
+      border: 1.5px solid var(--green);
+      border-radius: var(--radius-sm);
+      padding: .75rem .9rem;
+      font-size: .78rem;
+      color: var(--text-2);
+      word-break: break-all;
+      line-height: 1.6;
+      width: 100%;
+      text-align: right;
+    }
+    .link-box-label {
+      font-family: var(--font-label);
+      font-size: .65rem;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--green);
+      display: block;
+      margin-bottom: .3rem;
+    }
+
+    /* ── LOADING ───────────────────────────────────────── */
+    .loading-screen {
+      display: flex; flex-direction: column;
+      align-items: center; gap: 1rem;
+      padding: 3rem 1rem; color: var(--text-2);
+    }
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--green);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── ERROR ─────────────────────────────────────────── */
+    /* ── PROJECT SELECTION ─────────────────────────────────── */
+    .project-btn {
+      background: var(--surface-2);
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem 1.1rem;
+      cursor: pointer;
+      width: 100%;
+      text-align: right;
+      transition: all .15s;
+      display: flex;
+      flex-direction: column;
+      gap: .25rem;
+    }
+    .project-btn:hover {
+      border-color: var(--green);
+      background: var(--green-light);
+    }
+    .project-btn-name {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-1);
+    }
+    .project-btn-contract {
+      font-family: var(--font-label);
+      font-size: .72rem;
+      font-weight: 600;
+      letter-spacing: .06em;
+      color: var(--green);
+    }
+    .project-banner {
+      background: var(--green);
+      border-radius: var(--radius);
+      padding: .75rem 1rem;
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      margin-bottom: .5rem;
+    }
+    .project-banner-name {
+      font-size: .9rem;
+      font-weight: 700;
+      color: #fff;
+      flex: 1;
+    }
+    .project-banner-contract {
+      font-family: var(--font-label);
+      font-size: .68rem;
+      font-weight: 600;
+      letter-spacing: .06em;
+      color: rgba(255,255,255,0.8);
+    }
+    .project-banner-change {
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.4);
+      border-radius: 4px;
+      color: #fff;
+      font-family: var(--font-ar);
+      font-size: .75rem;
+      font-weight: 600;
+      padding: .25rem .6rem;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .project-banner-change:hover { background: rgba(255,255,255,0.3); }
+
+    .error-msg {
+      background: var(--red-light);
+      border: 1px solid rgba(211,47,47,.25);
+      border-radius: var(--radius-sm);
+      color: var(--red);
+      font-size: .82rem;
+      font-weight: 500;
+      padding: .6rem .8rem;
+      text-align: center;
+    }
+
+    /* ── INFO BOX ──────────────────────────────────────── */
+    .info-box {
+      background: var(--green-light);
+      border: 1px solid var(--green-mid);
+      border-radius: var(--radius-sm);
+      padding: .6rem .85rem;
+      font-size: .8rem;
+      color: var(--green-dark);
+      font-weight: 500;
+    }
+
+    /* ── DIVIDER ───────────────────────────────────────── */
+    .divider { height: 1px; background: var(--border); margin: .25rem 0; }
+
+    /* ── MOBILE ────────────────────────────────────────── */
+    @media (hover: none) { input, select, textarea { font-size: 16px; } }
+    @supports (padding: max(0px)) {
+      .app-header { padding-top: max(.9rem, env(safe-area-inset-top)); }
+      .app-footer { padding-bottom: max(.75rem, env(safe-area-inset-bottom)); }
+    }
+  </style>
+</head>
+<body>
+<div class="app" id="app"></div>
+<script>
+// ════════════════════════════════════════════════════════
+// CONFIG — update these values, nothing else needs to change
+// ════════════════════════════════════════════════════════
+const CONFIG = {
+  // Your deployed Google Apps Script URL
+  scriptUrl: "https://script.google.com/macros/s/AKfycbwzPgQXVCufP89qDsqzw48TrMsXoadzfMfswkwGeqqa1bx-SAUkcLKPlA6ugweJkQymEQ/exec",
+
+  // Project info shown in header & footer
+  projectName:    "كوبري — أسفلت",
+  projectNameEn:  "COPRI ASPHALT",
+  footerText:     "شركة كوبري للمشاريع الإنشائية",
+
+  // Dropdown options — add/remove as needed
+  mixTypes: [
+    "Type I (60/70)",
+    "Type II (60/70)",
+    "Type III (60/70)",
+    "Type I AS",
+    "Type II AS",
+    "Type III AS",
+    "Type I PMB",
+    "Type II PMB",
+    "Type III PMB",
+    "Tack Coat",
+    "Prime Coat",
+    "Cold Mix",
+  ],
+  // Projects — each with contract number and its sites
+  projects: {
+    "كوبري — صيانة حولي": {
+      contract:     "ق ص / ط ش / 9",
+      sites:        ["بيان", "مشرف", "سلوى", "أخرى"],
+      locationType: "block_street",
+    },
+    "كوبري — الطرق السريعة": {
+      contract:     "هـ ص / ط / 9",
+      sites:        ["طريق الملك فهد", "طريق الفحيحيل", "أخرى"],
+      locationType: "km_range",
+    },
+    "مشروع آخر": {
+      contract:     "",
+      sites:        ["أخرى"],
+      locationType: "block_street",
+      isOther:      true,
+    },
+  },
+  // Legacy — kept for receipt form site list fallback
+  sites: ["بيان", "مشرف", "سلوى", "أخرى"],
+  plants:   ["AP01", "AP02"],
+  // Block and street are free text — entered by clerk at dispatch
+  rejectionReasons: ["درجة حرارة منخفضة جداً", "وزن ناقص عند الاستلام", "نوع خلطة خاطئ", "تأخر وصول الشاحنة", "أخرى"],
+
+  // Clerk names — add your clerks
+  clerks: ["المشرف 1", "المشرف 2"],
+
+  // Engineer names — add your engineers
+  engineers: ["مهندس 1", "مهندس 2"],
+
+  // Thresholds for automatic warnings
+  tempDropWarning:   30,   // °C — flag if arrival temp drops more than this
+  weightShortage:    0.5,  // tons — flag if weight difference exceeds this
+
+  // WhatsApp notifications via CallMeBot
+  // Add engineers here after they activate CallMeBot
+  callmebotEngineers: [
+    // { name: "اسم المهندس", phone: "96512345678", apikey: "123456" },
+  ],
+};
+
+// ════════════════════════════════════════════════════════
+// HELPERS
+// ════════════════════════════════════════════════════════
+function getNoteFromURL() {
+  return new URLSearchParams(window.location.search).get("note");
+}
+function timestamp() {
+  return new Date().toLocaleString("ar-KW", {
+    timeZone: "Asia/Kuwait",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit",
+  });
+}
+function el(tag, cls) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  return e;
+}
+function input(type, placeholder, inputmode) {
+  const i = el("input");
+  i.type = type; i.placeholder = placeholder || "";
+  if (inputmode) i.inputMode = inputmode;
+  return i;
+}
+function select(options, placeholder) {
+  const s = el("select");
+  const def = el("option"); def.value = ""; def.textContent = placeholder; s.appendChild(def);
+  options.forEach(o => { const op = el("option"); op.value = op.textContent = o; s.appendChild(op); });
+  return s;
+}
+function textarea(placeholder, rows) {
+  const t = el("textarea");
+  t.placeholder = placeholder || ""; t.rows = rows || 2;
+  return t;
+}
+function fieldGroup(labelText, inputEl, required, hint) {
+  const g = el("div", "field-group");
+  const l = el("label"); l.textContent = labelText;
+  if (required) { const r = el("span", "req"); r.textContent = " *"; l.appendChild(r); }
+  g.appendChild(l);
+  g.appendChild(inputEl);
+  if (hint) { const h = el("div", "field-hint"); h.textContent = hint; g.appendChild(h); }
+  return { group: g, input: inputEl };
+}
+function sectionTitle(text) {
+  const t = el("div", "section-title"); t.textContent = text; return t;
+}
+function badge(text, cls) {
+  const b = el("span", `badge ${cls}`); b.textContent = text; return b;
+}
+function fieldRow(label, value) {
+  const r = el("div", "field-row");
+  const l = el("span", "field-label"); l.textContent = label;
+  const v = el("span", "field-value"); v.textContent = value || "—";
+  r.appendChild(l); r.appendChild(v); return r;
+}
+async function postToScript(payload) {
+  await fetch(CONFIG.scriptUrl, {
+    method: "POST", mode: "no-cors",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+async function sendWhatsApp(data, receiptLink) {
+  if (!CONFIG.callmebotEngineers.length) return;
+  const msg = encodeURIComponent(
+    `🚛 شحنة أسفلت في الطريق\n\n` +
+    `رقم السند: ${data.noteNumber}\n` +
+    `السائق: ${data.driverName}\n` +
+    `الشاحنة: ${data.truckNumber}\n` +
+    `الخلطة: ${data.mixType}\n` +
+    `الوزن: ${data.weight} طن\n` +
+    `الحرارة: ${data.tempDispatch}°م\n` +
+    `الموقع: ${data.site}\n\n` +
+    `🔗 رابط الاستلام:\n${receiptLink}`
+  );
+  await Promise.allSettled(
+    CONFIG.callmebotEngineers.map(e =>
+      fetch(`https://api.callmebot.com/whatsapp.php?phone=${e.phone}&text=${msg}&apikey=${e.apikey}`)
+    )
+  );
+}
+
+// ════════════════════════════════════════════════════════
+// HEADER & FOOTER
+// ════════════════════════════════════════════════════════
+function renderShell(subtitleText) {
+  const app = document.getElementById("app");
+  app.innerHTML = "";
+
+  const header = el("header", "app-header");
+  header.innerHTML = `
+    <div class="logo">
+      <div class="logo-mark">
+        <svg viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="2" y="14" width="22" height="4" rx="2" fill="white"/>
+          <polygon points="13,3 3,14 23,14" fill="white"/>
+          <rect x="10" y="18" width="6" height="5" rx="1" fill="white"/>
+        </svg>
+      </div>
+      <div class="logo-text">
+        <span class="logo-en">COPRI CONSTRUCTION</span>
+        <span class="logo-ar">كوبري — أسفلت</span>
+      </div>
+    </div>
+    <div class="header-badge">${subtitleText}</div>
+  `;
+
+  const main = el("main", "app-main");
+  main.id = "main-content";
+
+  const footer = el("footer", "app-footer");
+  footer.textContent = CONFIG.footerText;
+
+  app.appendChild(header);
+  app.appendChild(main);
+  app.appendChild(footer);
+
+  return main;
+}
+
+// ════════════════════════════════════════════════════════
+// DISPATCH FORM — filled by plant clerk
+// ════════════════════════════════════════════════════════
+function renderProjectSelect() {
+  const main = renderShell("اختيار المشروع");
+
+  const card = el("div", "card");
+  card.appendChild(sectionTitle("اختر المشروع"));
+
+  const info = el("div", "info-box");
+  info.textContent = "يرجى تحديد المشروع قبل إدخال بيانات الشحنة";
+  card.appendChild(info);
+
+  Object.entries(CONFIG.projects).forEach(([name, proj]) => {
+    const btn = el("button", "project-btn");
+    btn.innerHTML = `
+      <div class="project-btn-name">${name}</div>
+      <div class="project-btn-contract">${proj.contract}</div>
+    `;
+    btn.addEventListener("click", () => renderDispatch(name, proj));
+    card.appendChild(btn);
+  });
+
+  main.appendChild(card);
+}
+
+function renderDispatch(projectName, project) {
+  const main = renderShell("إرسال شحنة");
+
+  // Project banner
+  const banner = el("div", "project-banner");
+  banner.innerHTML = `
+    <div class="project-banner-name">${projectName}</div>
+    <div class="project-banner-contract">${project.contract}</div>
+    <button class="project-banner-change" id="changeProjectBtn">تغيير</button>
+  `;
+  main.appendChild(banner);
+  document.getElementById("changeProjectBtn").addEventListener("click", renderProjectSelect);
+
+  // If "other" project — show free text fields for project name and contract
+  let otherProjectInput = null, otherContractInput = null;
+  if (project.isOther) {
+    const otherCard = el("div", "card");
+    otherCard.style.marginBottom = ".5rem";
+    otherCard.appendChild(sectionTitle("تفاصيل المشروع"));
+    const { group: gOP, input: opInput } = fieldGroup(
+      "اسم المشروع", input("text", "أدخل اسم المشروع"), true
+    );
+    const { group: gOC, input: ocInput } = fieldGroup(
+      "رقم العقد", input("text", "أدخل رقم العقد"), false
+    );
+    otherCard.appendChild(gOP);
+    otherCard.appendChild(gOC);
+    main.appendChild(otherCard);
+    otherProjectInput  = opInput;
+    otherContractInput = ocInput;
+  }
+
+  const card = el("div", "card");
+
+  // Section: Shipment data
+  card.appendChild(sectionTitle("بيانات الشحنة"));
+
+  const { group: g1, input: noteInput } = fieldGroup(
+    "رقم سند التسليم", input("text", "مثال: 125407", "numeric"), true, "من الكتاب الكربوني الحالي"
+  );
+  card.appendChild(g1);
+
+  const { group: gPlant, input: plantInput } = fieldGroup(
+    "رقم المصنع", select(CONFIG.plants, "اختر المصنع"), true
+  );
+  card.appendChild(gPlant);
+
+  const { group: gWO, input: woInput } = fieldGroup(
+    "رقم أمر العمل", input("text", "مثال: 29", "numeric"), true
+  );
+  card.appendChild(gWO);
+
+  const row2 = el("div", "field-row-2");
+  const { group: g2, input: truckInput } = fieldGroup("رقم الشاحنة", input("text", "رقم اللوحة"), true);
+  const { group: g3, input: driverInput } = fieldGroup("اسم السائق", input("text", "الاسم الكامل"), true);
+  row2.appendChild(g2); row2.appendChild(g3);
+  card.appendChild(row2);
+
+  const { group: g4, input: mixInput } = fieldGroup(
+    "نوع الخلطة", select(CONFIG.mixTypes, "اختر النوع"), true
+  );
+  card.appendChild(g4);
+
+  const row3 = el("div", "field-row-2");
+  const { group: g5, input: weightInput } = fieldGroup("الوزن (طن)", input("number", "33.00", "decimal"), true);
+  weightInput.step = "0.01";
+  const { group: g6, input: tempInput } = fieldGroup("الحرارة عند الإرسال °م", input("number", "150", "numeric"), true);
+  row3.appendChild(g5); row3.appendChild(g6);
+  card.appendChild(row3);
+
+  const { group: g7, input: siteInput } = fieldGroup(
+    "الموقع المستلم", select(project.sites, "اختر الموقع"), true
+  );
+  card.appendChild(g7);
+
+  const row4 = el("div", "field-row-2");
+  let blockInput, streetInput;
+
+  if (project.locationType === "km_range") {
+    // Highway: kilometer range
+    const { group: gFrom, input: kmFrom } = fieldGroup(
+      "من الكيلومتر", input("text", "مثال: 12.5", "decimal"), true
+    );
+    const { group: gTo, input: kmTo } = fieldGroup(
+      "إلى الكيلومتر", input("text", "مثال: 14.0", "decimal"), true
+    );
+    row4.appendChild(gFrom); row4.appendChild(gTo);
+    blockInput  = kmFrom;   // reuse existing variables
+    streetInput = kmTo;     // so the rest of the code works unchanged
+  } else {
+    // Hawalli: block and street
+    const { group: gBlock, input: bInput } = fieldGroup(
+      "القطعة", input("text", "رقم القطعة", "numeric"), true
+    );
+    const { group: gStreet, input: sInput } = fieldGroup(
+      "الشارع", input("text", "رقم الشارع", "numeric"), true
+    );
+    row4.appendChild(gBlock); row4.appendChild(gStreet);
+    blockInput  = bInput;
+    streetInput = sInput;
+  }
+  card.appendChild(row4);
+
+  // Section: Clerk signature
+  card.appendChild(sectionTitle("توقيع المشرف"));
+
+  const { group: g8, input: clerkInput } = fieldGroup(
+    "اسم المشرف / الكاتب",
+    CONFIG.clerks.length ? select(CONFIG.clerks, "اختر اسمك") : input("text", "الاسم الكامل"),
+    true
+  );
+  card.appendChild(g8);
+
+  const { group: g9, input: remarksInput } = fieldGroup(
+    "ملاحظات", textarea("أي ملاحظات على الشحنة..."), false
+  );
+  card.appendChild(g9);
+
+  const errDiv = el("div", "error-msg"); errDiv.style.display = "none";
+  card.appendChild(errDiv);
+
+  const btn = el("button", "btn-primary"); btn.type = "button";
+  btn.innerHTML = "إرسال وإخطار المهندسين &nbsp;🚛";
+  card.appendChild(btn);
+
+  main.appendChild(card);
+
+  // Submit handler
+  btn.addEventListener("click", async () => {
+    const data = {
+      project:      project.isOther ? (otherProjectInput ? otherProjectInput.value.trim() : projectName) : projectName,
+      contract:     project.isOther ? (otherContractInput ? otherContractInput.value.trim() : "") : project.contract,
+      workOrder:    woInput.value.trim(),
+      noteNumber:   noteInput.value.trim(),
+      plant:        plantInput.value,
+      truckNumber:  truckInput.value.trim(),
+      driverName:   driverInput.value.trim(),
+      mixType:      mixInput.value,
+      weight:       weightInput.value,
+      tempDispatch: tempInput.value,
+      site:         siteInput.value,
+      block:        blockInput.value.trim(),
+      street:       streetInput.value.trim(),
+      locationType: project.locationType,
+      clerkName:    clerkInput.value,
+      remarks:      remarksInput.value.trim(),
+    };
+    const required = ["workOrder","noteNumber","plant","truckNumber","driverName","mixType","weight","tempDispatch","site","block","street","clerkName"];
+    if (project.isOther && otherProjectInput && !otherProjectInput.value.trim()) {
+      errDiv.textContent = "يرجى إدخال اسم المشروع"; errDiv.style.display = "block"; return;
+    }
+    if (required.some(k => !data[k])) {
+      errDiv.textContent = "يرجى تعبئة جميع الحقول المطلوبة";
+      errDiv.style.display = "block"; return;
+    }
+    errDiv.style.display = "none";
+    btn.disabled = true; btn.textContent = "جارٍ الإرسال...";
+
+    try {
+      await postToScript({ type: "dispatch", ...data, timestamp: timestamp() });
+      const receiptLink = `${window.location.href.split("?")[0]}?note=${encodeURIComponent(data.noteNumber)}`;
+      await sendWhatsApp(data, receiptLink);
+      renderDispatchSuccess(data, receiptLink);
+    } catch {
+      btn.disabled = false; btn.innerHTML = "إرسال وإخطار المهندسين &nbsp;🚛";
+      errDiv.textContent = "حدث خطأ، يرجى المحاولة مجدداً";
+      errDiv.style.display = "block";
+    }
+  });
+}
+
+function renderDispatchSuccess(data, receiptLink) {
+  const main = document.getElementById("main-content");
+  main.innerHTML = "";
+
+  const s = el("div", "success-screen");
+  const icon = el("div", "success-icon ok"); icon.textContent = "✓"; s.appendChild(icon);
+  const h = el("h2"); h.textContent = "تم الإرسال بنجاح"; s.appendChild(h);
+  const p1 = el("p"); p1.innerHTML = `<strong>${data.project}</strong> — ${data.contract}`; s.appendChild(p1);
+  const p2b = el("p"); p2b.innerHTML = `أمر العمل: <strong>${data.workOrder}</strong> — رقم السند: <strong>${data.noteNumber}</strong>`; s.appendChild(p2b);
+  const p2c = el("p"); p2c.innerHTML = `${data.plant} — ${data.site}${data.block ? ' / ق' + data.block : ''}${data.street ? ' / ش' + data.street : ''}`; s.appendChild(p2c);
+
+  const lb = el("div", "link-box");
+  const lbl = el("span", "link-box-label"); lbl.textContent = "🔗 رابط الاستلام — أرسله للمهندس على WhatsApp";
+  lb.appendChild(lbl);
+  lb.appendChild(document.createTextNode(receiptLink));
+  s.appendChild(lb);
+
+  const copyBtn = el("button", "btn-primary"); copyBtn.style.marginTop = ".75rem";
+  copyBtn.textContent = "نسخ الرابط 📋";
+  copyBtn.addEventListener("click", () => {
+    navigator.clipboard.writeText(receiptLink);
+    copyBtn.textContent = "تم النسخ ✓";
+  });
+  s.appendChild(copyBtn);
+
+  const newBtn = el("button", "btn-ghost"); newBtn.textContent = "إرسال شحنة جديدة";
+  newBtn.addEventListener("click", renderDispatch);
+  s.appendChild(newBtn);
+
+  main.appendChild(s);
+}
+
+// ════════════════════════════════════════════════════════
+// RECEIPT FORM — filled by site engineer
+// ════════════════════════════════════════════════════════
+async function renderReceipt(noteNumber) {
+  const main = renderShell("استلام شحنة");
+
+  // Loading
+  const loading = el("div", "loading-screen");
+  loading.innerHTML = `<div class="spinner"></div><p>جارٍ تحميل بيانات الشحنة...</p>`;
+  main.appendChild(loading);
+
+  // Fetch dispatch data
+  let dispatch = null;
+  try {
+    const res = await fetch(`${CONFIG.scriptUrl}?note=${encodeURIComponent(noteNumber)}`);
+    const json = await res.json();
+    if (json.found) dispatch = json.row;
+  } catch { /* network error — show what we have */ }
+
+  main.innerHTML = "";
+
+  // ── Summary card ──────────────────────────────────────
+  const summary = el("div", "receipt-summary");
+  const sh = el("div", "summary-header");
+  const sl = el("div", "section-title"); sl.style.border="none"; sl.style.paddingBottom="0"; sl.textContent = "بيانات الشحنة الواردة";
+  sh.appendChild(sl);
+  sh.appendChild(badge("في الطريق", "badge-transit"));
+  summary.appendChild(sh);
+
+  if (dispatch) {
+    [
+      ["المشروع",                dispatch.project || "—"],
+      ["رقم العقد",              dispatch.contract || "—"],
+      ["رقم أمر العمل",          dispatch.workOrder || "—"],
+      ["رقم السند",              dispatch.noteNumber],
+      ["المصنع",                 dispatch.plant],
+      ["رقم الشاحنة",            dispatch.truckNumber],
+      ["السائق",                 dispatch.driverName],
+      ["نوع الخلطة",             dispatch.mixType],
+      ["الوزن المرسل",           `${dispatch.weight} طن`],
+      ["الحرارة عند الإرسال",    `${dispatch.tempDispatch}°م`],
+      ["الموقع",                 dispatch.site],
+      [dispatch.locationType === "km_range" ? "من الكيلومتر" : "القطعة",  dispatch.block  || "—"],
+      [dispatch.locationType === "km_range" ? "إلى الكيلومتر" : "الشارع", dispatch.street || "—"],
+      ["وقت المغادرة",           dispatch.timestamp],
+    ].forEach(([l, v]) => summary.appendChild(fieldRow(l, v)));
+  } else {
+    summary.appendChild(fieldRow("رقم السند", noteNumber));
+    const warn = el("div", "info-box"); warn.style.marginTop=".5rem";
+    warn.textContent = "لم يتم العثور على بيانات الإرسال لهذا السند. تأكد من الرقم وأعد المحاولة.";
+    summary.appendChild(warn);
+  }
+  main.appendChild(summary);
+
+  // ── Receipt form ──────────────────────────────────────
+  const card = el("div", "card");
+  card.appendChild(sectionTitle("تأكيد الاستلام"));
+
+  // Engineer name
+  const { group: g1, input: engInput } = fieldGroup(
+    "اسم المهندس",
+    CONFIG.engineers.length ? select(CONFIG.engineers, "اختر اسمك") : input("text", "الاسم الكامل"),
+    true
+  );
+  card.appendChild(g1);
+
+  const { group: gWOr, input: woReceiptInput } = fieldGroup(
+    "رقم أمر العمل", input("text", "مثال: 29", "numeric"), true,
+    dispatch ? `أمر العمل المرسل: ${dispatch.workOrder || "—"}` : ""
+  );
+  if (dispatch && dispatch.workOrder) woReceiptInput.value = dispatch.workOrder;
+  card.appendChild(gWOr);
+
+  // Weight at arrival
+  const { group: g2, input: weightArrInput } = fieldGroup(
+    "الوزن عند الاستلام (طن)",
+    input("number", "أدخل الوزن الفعلي", "decimal"),
+    true,
+    dispatch ? `الوزن المرسل: ${dispatch.weight} طن` : "أدخل وزن الشاحنة عند الوصول"
+  );
+  weightArrInput.step = "0.01";
+  const weightDeltaDiv = el("div", "weight-delta"); weightDeltaDiv.style.display = "none";
+  g2.appendChild(weightDeltaDiv);
+  card.appendChild(g2);
+
+  weightArrInput.addEventListener("input", () => {
+    if (!dispatch || !weightArrInput.value) { weightDeltaDiv.style.display = "none"; return; }
+    const diff = Number(dispatch.weight) - Number(weightArrInput.value);
+    weightDeltaDiv.style.display = "block";
+    if (Math.abs(diff) <= CONFIG.weightShortage) {
+      weightDeltaDiv.className = "weight-delta weight-ok";
+      weightDeltaDiv.textContent = `✓ الوزن مطابق — فرق: ${Math.abs(diff).toFixed(2)} طن`;
+    } else if (diff > 0) {
+      weightDeltaDiv.className = "weight-delta weight-warn";
+      weightDeltaDiv.textContent = `⚠ نقص في الوزن — ${diff.toFixed(2)} طن`;
+    } else {
+      weightDeltaDiv.className = "weight-delta weight-ok";
+      weightDeltaDiv.textContent = `✓ وزن إضافي — ${Math.abs(diff).toFixed(2)} طن`;
+    }
+  });
+
+  // Temperature at arrival
+  const row = el("div", "field-row-2");
+  const { group: g3, input: tempArrInput } = fieldGroup(
+    "الحرارة عند الوصول °م", input("number", "أدخل القراءة", "numeric"), false
+  );
+  const tempDeltaDiv = el("div", "temp-delta"); tempDeltaDiv.style.display = "none";
+  g3.appendChild(tempDeltaDiv);
+  row.appendChild(g3);
+  card.appendChild(row);
+
+  tempArrInput.addEventListener("input", () => {
+    if (!dispatch || !tempArrInput.value) { tempDeltaDiv.style.display = "none"; return; }
+    const diff = Math.abs(Number(tempArrInput.value) - Number(dispatch.tempDispatch));
+    tempDeltaDiv.style.display = "block";
+    tempDeltaDiv.className = `temp-delta ${diff > CONFIG.tempDropWarning ? "delta-warn" : "delta-ok"}`;
+    tempDeltaDiv.textContent = `فرق الحرارة: ${diff}°م ${diff > CONFIG.tempDropWarning ? "⚠ كبير" : "✓"}`;
+  });
+
+  // Decision
+  const decGroup = el("div", "field-group");
+  const decLabel = el("label"); decLabel.innerHTML = 'قرار الاستلام <span class="req">*</span>';
+  const decBtns = el("div", "decision-buttons");
+  const acceptBtn = el("button", "decision-btn accept"); acceptBtn.type = "button"; acceptBtn.innerHTML = "✓&nbsp; قبول";
+  const rejectBtn = el("button", "decision-btn reject"); rejectBtn.type = "button"; rejectBtn.innerHTML = "✗&nbsp; رفض";
+  decBtns.appendChild(acceptBtn); decBtns.appendChild(rejectBtn);
+  decGroup.appendChild(decLabel); decGroup.appendChild(decBtns);
+  card.appendChild(decGroup);
+
+  let decision = "";
+
+  const { group: reasonGroupEl, input: reasonInput } = fieldGroup(
+    "سبب الرفض", select(CONFIG.rejectionReasons, "اختر السبب"), true
+  );
+  reasonGroupEl.style.display = "none";
+  card.appendChild(reasonGroupEl);
+
+  const { group: remarksGroup, input: remarksInput } = fieldGroup(
+    "ملاحظات", textarea("أي ملاحظات..."), false
+  );
+  remarksGroup.style.display = "none";
+  card.appendChild(remarksGroup);
+
+  const errDiv = el("div", "error-msg"); errDiv.style.display = "none";
+  card.appendChild(errDiv);
+
+  const submitBtn = el("button", "btn-primary"); submitBtn.type = "button";
+  submitBtn.textContent = "تأكيد الاستلام والتوقيع";
+  card.appendChild(submitBtn);
+
+  main.appendChild(card);
+
+  acceptBtn.addEventListener("click", () => {
+    decision = "مقبول";
+    acceptBtn.classList.add("active"); rejectBtn.classList.remove("active");
+    reasonGroupEl.style.display = "none"; remarksGroup.style.display = "flex";
+    submitBtn.className = "btn-primary"; submitBtn.textContent = "تأكيد الاستلام والتوقيع";
+  });
+  rejectBtn.addEventListener("click", () => {
+    decision = "مرفوض";
+    rejectBtn.classList.add("active"); acceptBtn.classList.remove("active");
+    reasonGroupEl.style.display = "flex"; remarksGroup.style.display = "none";
+    submitBtn.className = "btn-primary btn-danger"; submitBtn.textContent = "تسجيل الرفض";
+  });
+
+  submitBtn.addEventListener("click", async () => {
+    if (!engInput.value) { errDiv.textContent = "يرجى اختيار اسم المهندس"; errDiv.style.display = "block"; return; }
+    if (!weightArrInput.value) { errDiv.textContent = "يرجى إدخال الوزن عند الاستلام"; errDiv.style.display = "block"; return; }
+    if (!decision) { errDiv.textContent = "يرجى اختيار قبول أو رفض"; errDiv.style.display = "block"; return; }
+    if (decision === "مرفوض" && !reasonInput.value) { errDiv.textContent = "يرجى اختيار سبب الرفض"; errDiv.style.display = "block"; return; }
+    errDiv.style.display = "none";
+    submitBtn.disabled = true; submitBtn.textContent = "جارٍ التسجيل...";
+
+    try {
+      await postToScript({
+        type:          "receipt",
+        noteNumber,
+        engineerName:  engInput.value,
+        workOrder:     woReceiptInput.value.trim(),
+        decision,
+        weightArrival: weightArrInput.value,
+        tempArrival:   tempArrInput.value,
+        remarks:       decision === "مرفوض" ? reasonInput.value : remarksInput.value,
+        timestamp:     timestamp(),
+      });
+      renderReceiptSuccess(noteNumber, decision);
+    } catch {
+      submitBtn.disabled = false;
+      errDiv.textContent = "حدث خطأ، يرجى المحاولة مجدداً";
+      errDiv.style.display = "block";
+    }
+  });
+}
+
+function renderReceiptSuccess(noteNumber, decision) {
+  const main = document.getElementById("main-content");
+  main.innerHTML = "";
+
+  const s = el("div", "success-screen");
+  const accepted = decision === "مقبول";
+  const icon = el("div", `success-icon ${accepted ? "ok" : "rejected"}`);
+  icon.textContent = accepted ? "✓" : "✗"; s.appendChild(icon);
+  const h = el("h2"); h.textContent = accepted ? "تم قبول الشحنة" : "تم تسجيل الرفض"; s.appendChild(h);
+  const p1 = el("p"); p1.textContent = `رقم السند: ${noteNumber}`; s.appendChild(p1);
+  const p2 = el("p", "success-note"); p2.textContent = `تم تسجيل توقيعك — ${timestamp()}`; s.appendChild(p2);
+  main.appendChild(s);
+}
+
+// ════════════════════════════════════════════════════════
+// ROUTER — dispatch or receipt based on URL
+// ════════════════════════════════════════════════════════
+const note = getNoteFromURL();
+if (note) renderReceipt(note);
+else renderProjectSelect();
+</script>
+</body>
+</html>

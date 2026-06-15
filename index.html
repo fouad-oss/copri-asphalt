@@ -551,8 +551,12 @@ const CONFIG = {
   // Clerk names — add your clerks
   clerks: ["المشرف 1", "المشرف 2"],
 
-  // Engineer names — add your engineers
-  engineers: ["مهندس 1", "مهندس 2"],
+  // Engineers with PINs — distribute PINs privately to each engineer
+  engineers: [
+    { name: "أحمد عبد العزيز", pin: "8798" },
+    { name: "علي بدوي", pin: "8255" },
+    { name: "إيهاب حسن", pin: "5686" },
+  ],
 
   // Thresholds for automatic warnings
   tempDropWarning:   30,   // °C — flag if arrival temp drops more than this
@@ -918,7 +922,7 @@ function renderDispatchSuccess(data, receiptLink) {
 // ════════════════════════════════════════════════════════
 // RECEIPT FORM — filled by site engineer
 // ════════════════════════════════════════════════════════
-async function renderReceipt(noteNumber) {
+async function renderReceipt(noteNumber, preAuthName) {
   const main = renderShell("استلام شحنة");
 
   // Loading
@@ -935,6 +939,24 @@ async function renderReceipt(noteNumber) {
   } catch { /* network error — show what we have */ }
 
   main.innerHTML = "";
+
+  // ── One-time link check — block if already receipted ──────────────────
+  if (dispatch) {
+    try {
+      const statusRes = await fetch(`${CONFIG.scriptUrl}?checkReceipt=${encodeURIComponent(noteNumber)}`);
+      const statusJson = await statusRes.json();
+      if (statusJson.alreadyReceived) {
+        const s = el("div", "success-screen");
+        const icon = el("div", "success-icon ok"); icon.textContent = "✓"; s.appendChild(icon);
+        const h = el("h2"); h.textContent = "تم استلام هذه الشحنة مسبقاً"; s.appendChild(h);
+        const p1 = el("p"); p1.textContent = `رقم السند: ${noteNumber}`; s.appendChild(p1);
+        const p2 = el("p"); p2.textContent = `تم التأكيد بواسطة: ${statusJson.engineer}`; s.appendChild(p2);
+        const p3 = el("p"); p3.textContent = `في: ${statusJson.timestamp}`; s.appendChild(p3);
+        main.appendChild(s);
+        return;
+      }
+    } catch { /* network issue — allow to proceed */ }
+  }
 
   // ── Summary card ──────────────────────────────────────
   const summary = el("div", "receipt-summary");
@@ -976,9 +998,10 @@ async function renderReceipt(noteNumber) {
   // Engineer name
   const { group: g1, input: engInput } = fieldGroup(
     "اسم المهندس",
-    CONFIG.engineers.length ? select(CONFIG.engineers, "اختر اسمك") : input("text", "الاسم الكامل"),
+    CONFIG.engineers.length ? select(CONFIG.engineers.map(e => e.name), "اختر اسمك") : input("text", "الاسم الكامل"),
     true
   );
+  if (preAuthName) { engInput.value = preAuthName; engInput.disabled = true; }
   card.appendChild(g1);
 
   const { group: gWOr, input: woReceiptInput } = fieldGroup(
@@ -1124,11 +1147,247 @@ function renderReceiptSuccess(noteNumber, decision) {
 }
 
 // ════════════════════════════════════════════════════════
-// ROUTER — dispatch or receipt based on URL
+// ENGINEER SESSION — PIN auth persisted in sessionStorage
+// ════════════════════════════════════════════════════════
+function getEngineerSession() {
+  try { return JSON.parse(sessionStorage.getItem("eng_session") || "null"); } catch { return null; }
+}
+function setEngineerSession(name) {
+  sessionStorage.setItem("eng_session", JSON.stringify({ name, ts: Date.now() }));
+}
+function clearEngineerSession() {
+  sessionStorage.removeItem("eng_session");
+}
+
+// ── PIN screen ────────────────────────────────────────
+function renderPINScreen(onSuccess) {
+  const main = renderShell("تسجيل الدخول");
+  main.innerHTML = "";
+
+  const screen = el("div", "pin-screen");
+  const logo = el("div"); logo.innerHTML = `<svg width="48" height="48" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="${getComputedStyle(document.documentElement).getPropertyValue('--green') || '#00A651'}"/><path d="M6 22 L16 10 L26 22" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 22 L16 14 L22 22" fill="white" opacity="0.3"/><rect x="4" y="22" width="24" height="3" rx="1.5" fill="white"/></svg>`;
+  screen.appendChild(logo);
+
+  const h = el("h2"); h.textContent = "تسجيل الدخول — المهندس"; screen.appendChild(h);
+  const p = el("p"); p.textContent = "اختر اسمك وأدخل الرمز السري للمتابعة"; screen.appendChild(p);
+
+  const { group: gName, input: nameInput } = fieldGroup(
+    "الاسم", select(CONFIG.engineers.map(e => e.name), "اختر اسمك"), true
+  );
+  screen.appendChild(gName);
+
+  const pinWrap = el("div", "field-group");
+  const pinLabel = el("label"); pinLabel.innerHTML = 'الرمز السري <span class="req">*</span>';
+  const pinInput = input("password", "••••", "numeric");
+  pinInput.className += " pin-input";
+  pinInput.maxLength = 4;
+  pinWrap.appendChild(pinLabel);
+  pinWrap.appendChild(pinInput);
+  screen.appendChild(pinWrap);
+
+  const attemptsDiv = el("div", "pin-attempts"); attemptsDiv.style.display = "none";
+  screen.appendChild(attemptsDiv);
+
+  const errDiv = el("div", "error-msg"); errDiv.style.display = "none";
+  screen.appendChild(errDiv);
+
+  const btn = el("button", "btn-primary"); btn.type = "button";
+  btn.textContent = "دخول"; btn.style.width = "100%";
+  screen.appendChild(btn);
+
+  main.appendChild(screen);
+
+  let attempts = 0;
+  btn.addEventListener("click", () => {
+    const name = nameInput.value;
+    const pin  = pinInput.value.trim();
+    if (!name) { errDiv.textContent = "يرجى اختيار اسمك"; errDiv.style.display = "block"; return; }
+    if (!pin)  { errDiv.textContent = "يرجى إدخال الرمز السري"; errDiv.style.display = "block"; return; }
+
+    const eng = CONFIG.engineers.find(e => e.name === name);
+    if (eng && eng.pin === pin) {
+      setEngineerSession(name);
+      onSuccess(name);
+    } else {
+      attempts++;
+      errDiv.textContent = "رمز سري خاطئ";
+      errDiv.style.display = "block";
+      pinInput.value = "";
+      if (attempts >= 3) {
+        attemptsDiv.textContent = `محاولات فاشلة: ${attempts} — الرجاء التواصل مع المشرف`;
+        attemptsDiv.style.display = "block";
+      }
+    }
+  });
+
+  // Allow Enter key
+  pinInput.addEventListener("keydown", e => { if (e.key === "Enter") btn.click(); });
+}
+
+// ── Engineer home — receipts + pending ────────────────
+async function renderEngineerHome(engName) {
+  const main = renderShell("بوابة المهندس");
+  main.innerHTML = "";
+
+  // Nav bar
+  const nav = el("div", "nav-bar");
+  const btnHistory = el("button", "nav-btn active");
+  btnHistory.innerHTML = `<span class="nav-icon">📋</span><span>سجلاتي</span>`;
+  const btnLogout = el("button", "nav-btn");
+  btnLogout.innerHTML = `<span class="nav-icon">🚪</span><span>خروج</span>`;
+  nav.appendChild(btnHistory);
+  nav.appendChild(btnLogout);
+
+  btnLogout.addEventListener("click", () => {
+    clearEngineerSession();
+    renderPINScreen(name => renderEngineerHome(name));
+  });
+
+  // Content area
+  const content = el("div"); content.style.flex = "1"; content.style.overflow = "auto";
+  main.appendChild(content);
+  main.parentElement.insertBefore(nav, main.nextSibling);
+
+  // Loading
+  const loading = el("div", "loading-screen");
+  loading.innerHTML = `<div class="spinner"></div><p>جارٍ تحميل البيانات...</p>`;
+  content.appendChild(loading);
+
+  // Fetch all data for this engineer
+  let receipts = [], pendingDispatches = [];
+  try {
+    const res = await fetch(`${CONFIG.scriptUrl}?engineer=${encodeURIComponent(engName)}`);
+    const json = await res.json();
+    receipts = json.receipts || [];
+    pendingDispatches = json.pending || [];
+  } catch {
+    // demo fallback
+    receipts = [];
+    pendingDispatches = [];
+  }
+
+  content.innerHTML = "";
+
+  // Engineer greeting
+  const greeting = el("div", "info-box");
+  greeting.style.marginBottom = ".75rem";
+  greeting.innerHTML = `مرحباً <strong>${engName}</strong> — ${new Date().toLocaleDateString("ar-KW", { weekday:"long", year:"numeric", month:"long", day:"numeric" })}`;
+  content.appendChild(greeting);
+
+  // Tabs
+  const tabs = el("div", "history-tabs");
+  const tabReceipts = el("button", "history-tab active");
+  tabReceipts.innerHTML = `✓ المستلَم <span style="background:var(--green);color:#fff;border-radius:10px;padding:.1rem .4rem;font-size:.7rem;margin-right:.3rem">${receipts.length}</span>`;
+  const tabPending = el("button", "history-tab");
+  tabPending.innerHTML = `⏳ في الطريق <span style="background:var(--amber);color:#fff;border-radius:10px;padding:.1rem .4rem;font-size:.7rem;margin-right:.3rem">${pendingDispatches.length}</span>`;
+  tabs.appendChild(tabReceipts);
+  tabs.appendChild(tabPending);
+  content.appendChild(tabs);
+
+  const listArea = el("div");
+  content.appendChild(listArea);
+
+  function showReceipts() {
+    tabReceipts.className = "history-tab active";
+    tabPending.className  = "history-tab";
+    listArea.innerHTML = "";
+    if (!receipts.length) {
+      const empty = el("div", "history-empty");
+      empty.textContent = "لا توجد شحنات مستلَمة اليوم";
+      listArea.appendChild(empty);
+      return;
+    }
+    receipts.forEach(r => {
+      const card = el("div", "history-card");
+      const hdr = el("div", "history-card-header");
+      const note = el("div", "history-card-note"); note.textContent = `سند رقم ${r.noteNumber}`;
+      const time = el("div", "history-card-time"); time.textContent = r.timestamp;
+      hdr.appendChild(note); hdr.appendChild(time);
+      const body = el("div", "history-card-body");
+      body.innerHTML = `
+        <strong>المشروع:</strong> ${r.project || "—"}<br>
+        <strong>أمر العمل:</strong> ${r.workOrder || "—"}<br>
+        <strong>الخلطة:</strong> ${r.mixType || "—"}<br>
+        <strong>وزن مرسل:</strong> ${r.weightDispatched || "—"} طن &nbsp;|&nbsp; <strong>وزن مستلم:</strong> ${r.weightArrival || "—"} طن<br>
+        <strong>القرار:</strong> <span style="color:${r.decision==='مقبول'?'var(--green)':'var(--red)'}; font-weight:700">${r.decision}</span>
+        ${r.remarks ? `<br><strong>ملاحظات:</strong> ${r.remarks}` : ""}
+      `;
+      card.appendChild(hdr);
+      card.appendChild(body);
+      listArea.appendChild(card);
+    });
+  }
+
+  function showPending() {
+    tabPending.className  = "history-tab active";
+    tabReceipts.className = "history-tab";
+    listArea.innerHTML = "";
+    if (!pendingDispatches.length) {
+      const empty = el("div", "history-empty");
+      empty.textContent = "لا توجد شحنات في الطريق حالياً";
+      listArea.appendChild(empty);
+      return;
+    }
+    pendingDispatches.forEach(d => {
+      const card = el("div", "history-card");
+      card.style.borderColor = "var(--amber)";
+      const hdr = el("div", "history-card-header");
+      const note = el("div", "history-card-note"); note.textContent = `سند رقم ${d.noteNumber}`;
+      const badge = el("span", "badge badge-transit"); badge.textContent = "في الطريق";
+      hdr.appendChild(note); hdr.appendChild(badge);
+      const body = el("div", "history-card-body");
+      body.innerHTML = `
+        <strong>المشروع:</strong> ${d.project || "—"}<br>
+        <strong>أمر العمل:</strong> ${d.workOrder || "—"}<br>
+        <strong>المصنع:</strong> ${d.plant || "—"} &nbsp;|&nbsp; <strong>السائق:</strong> ${d.driverName || "—"}<br>
+        <strong>الخلطة:</strong> ${d.mixType || "—"} &nbsp;|&nbsp; <strong>الوزن:</strong> ${d.weight || "—"} طن<br>
+        <strong>الحرارة:</strong> ${d.tempDispatch || "—"}°م &nbsp;|&nbsp; <strong>الموقع:</strong> ${d.site || "—"}
+      `;
+      // Receipt button
+      const receiptBtn = el("button", "btn-primary");
+      receiptBtn.textContent = "تأكيد الاستلام →";
+      receiptBtn.style.marginTop = ".6rem";
+      receiptBtn.style.fontSize = ".85rem";
+      receiptBtn.style.padding = ".6rem 1rem";
+      receiptBtn.addEventListener("click", () => {
+        window.location.href = `${window.location.href.split("?")[0]}?note=${encodeURIComponent(d.noteNumber)}`;
+      });
+      card.appendChild(hdr);
+      card.appendChild(body);
+      card.appendChild(receiptBtn);
+      listArea.appendChild(card);
+    });
+  }
+
+  tabReceipts.addEventListener("click", showReceipts);
+  tabPending.addEventListener("click",  showPending);
+  showReceipts();
+}
+
+// ════════════════════════════════════════════════════════
+// ROUTER
 // ════════════════════════════════════════════════════════
 const note = getNoteFromURL();
-if (note) renderReceipt(note);
-else renderProjectSelect();
+if (note) {
+  // Receipt flow — check PIN first
+  const session = getEngineerSession();
+  if (session) {
+    renderReceipt(note, session.name);
+  } else {
+    renderPINScreen(name => renderReceipt(note, name));
+  }
+} else {
+  // Check URL for engineer mode
+  const params = new URLSearchParams(window.location.search);
+  const isEngineer = params.get("role") === "engineer";
+  if (isEngineer) {
+    const session = getEngineerSession();
+    if (session) renderEngineerHome(session.name);
+    else renderPINScreen(name => renderEngineerHome(name));
+  } else {
+    renderProjectSelect();
+  }
+}
 </script>
 </body>
 </html>

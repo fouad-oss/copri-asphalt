@@ -548,8 +548,12 @@ const CONFIG = {
   // Block and street are free text — entered by clerk at dispatch
   rejectionReasons: ["درجة حرارة منخفضة جداً", "وزن ناقص عند الاستلام", "نوع خلطة خاطئ", "تأخر وصول الشاحنة", "أخرى"],
 
-  // Clerk names — add your clerks
-  clerks: ["المشرف 1", "المشرف 2"],
+  // Clerks with PINs — update names before going live
+  clerks: [
+    { name: "كاتب 1", pin: "5947" },
+    { name: "كاتب 2", pin: "2315" },
+    { name: "كاتب 3", pin: "7720" },
+  ],
 
   // Engineers with PINs — distribute PINs privately to each engineer
   engineers: [
@@ -709,14 +713,17 @@ function renderProjectSelect() {
       <div class="project-btn-name">${name}</div>
       <div class="project-btn-contract">${proj.contract}</div>
     `;
-    btn.addEventListener("click", () => renderDispatch(name, proj));
+    btn.addEventListener("click", () => {
+      const cs = getClerkSession();
+      renderDispatch(name, proj, cs ? cs.name : null);
+    });
     card.appendChild(btn);
   });
 
   main.appendChild(card);
 }
 
-function renderDispatch(projectName, project) {
+function renderDispatch(projectName, project, preAuthClerk) {
   const main = renderShell("إرسال شحنة");
 
   // Project banner
@@ -824,9 +831,11 @@ function renderDispatch(projectName, project) {
 
   const { group: g8, input: clerkInput } = fieldGroup(
     "اسم المشرف / الكاتب",
-    CONFIG.clerks.length ? select(CONFIG.clerks, "اختر اسمك") : input("text", "الاسم الكامل"),
+    CONFIG.clerks.length ? select(CONFIG.clerks.map(c => c.name), "اختر اسمك") : input("text", "الاسم الكامل"),
     true
   );
+  const clerkSession = getClerkSession();
+  if (clerkSession) { clerkInput.value = clerkSession.name; clerkInput.disabled = true; }
   card.appendChild(g8);
 
   const { group: g9, input: remarksInput } = fieldGroup(
@@ -913,8 +922,17 @@ function renderDispatchSuccess(data, receiptLink) {
   s.appendChild(copyBtn);
 
   const newBtn = el("button", "btn-ghost"); newBtn.textContent = "إرسال شحنة جديدة";
-  newBtn.addEventListener("click", renderDispatch);
+  newBtn.addEventListener("click", () => {
+    const cs = getClerkSession();
+    if (cs) renderDispatch(cs.name);
+    else renderClerkPINScreen(name => renderDispatch(name));
+  });
   s.appendChild(newBtn);
+
+  const logoutBtn = el("button", "btn-ghost"); logoutBtn.textContent = "تسجيل الخروج";
+  logoutBtn.style.color = "var(--text-3)";
+  logoutBtn.addEventListener("click", () => { clearClerkSession(); renderClerkPINScreen(name => renderDispatch(name)); });
+  s.appendChild(logoutBtn);
 
   main.appendChild(s);
 }
@@ -1123,7 +1141,7 @@ async function renderReceipt(noteNumber, preAuthName) {
         remarks:       decision === "مرفوض" ? reasonInput.value : remarksInput.value,
         timestamp:     timestamp(),
       });
-      renderReceiptSuccess(noteNumber, decision);
+      renderReceiptSuccess(noteNumber, decision, preAuthName);
     } catch {
       submitBtn.disabled = false;
       errDiv.textContent = "حدث خطأ، يرجى المحاولة مجدداً";
@@ -1132,7 +1150,7 @@ async function renderReceipt(noteNumber, preAuthName) {
   });
 }
 
-function renderReceiptSuccess(noteNumber, decision) {
+function renderReceiptSuccess(noteNumber, decision, engName) {
   const main = document.getElementById("main-content");
   main.innerHTML = "";
 
@@ -1143,11 +1161,21 @@ function renderReceiptSuccess(noteNumber, decision) {
   const h = el("h2"); h.textContent = accepted ? "تم قبول الشحنة" : "تم تسجيل الرفض"; s.appendChild(h);
   const p1 = el("p"); p1.textContent = `رقم السند: ${noteNumber}`; s.appendChild(p1);
   const p2 = el("p", "success-note"); p2.textContent = `تم تسجيل توقيعك — ${timestamp()}`; s.appendChild(p2);
+
+  // Quick access to engineer log
+  if (engName) {
+    const logBtn = el("button", "btn-primary");
+    logBtn.style.marginTop = ".9rem";
+    logBtn.textContent = "عرض سجلاتي 📋";
+    logBtn.addEventListener("click", () => renderEngineerHome(engName));
+    s.appendChild(logBtn);
+  }
+
   main.appendChild(s);
 }
 
 // ════════════════════════════════════════════════════════
-// ENGINEER SESSION — PIN auth persisted in sessionStorage
+// SESSION MANAGEMENT — PIN auth for engineers and clerks
 // ════════════════════════════════════════════════════════
 function getEngineerSession() {
   try { return JSON.parse(sessionStorage.getItem("eng_session") || "null"); } catch { return null; }
@@ -1158,8 +1186,79 @@ function setEngineerSession(name) {
 function clearEngineerSession() {
   sessionStorage.removeItem("eng_session");
 }
+function getClerkSession() {
+  try { return JSON.parse(sessionStorage.getItem("clerk_session") || "null"); } catch { return null; }
+}
+function setClerkSession(name) {
+  sessionStorage.setItem("clerk_session", JSON.stringify({ name, ts: Date.now() }));
+}
+function clearClerkSession() {
+  sessionStorage.removeItem("clerk_session");
+}
 
-// ── PIN screen ────────────────────────────────────────
+// ── Clerk PIN screen ──────────────────────────────────
+function renderClerkPINScreen(onSuccess) {
+  const main = renderShell("تسجيل دخول الكاتب");
+  main.innerHTML = "";
+
+  const screen = el("div", "pin-screen");
+  const logo = el("div"); logo.innerHTML = `<svg width="48" height="48" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#00A651"/><path d="M6 22 L16 10 L26 22" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 22 L16 14 L22 22" fill="white" opacity="0.3"/><rect x="4" y="22" width="24" height="3" rx="1.5" fill="white"/></svg>`;
+  screen.appendChild(logo);
+
+  const h = el("h2"); h.textContent = "تسجيل الدخول — المصنع"; screen.appendChild(h);
+  const p = el("p"); p.textContent = "اختر اسمك وأدخل الرمز السري للمتابعة"; screen.appendChild(p);
+
+  const { group: gName, input: nameInput } = fieldGroup(
+    "الاسم", select(CONFIG.clerks.map(c => c.name), "اختر اسمك"), true
+  );
+  screen.appendChild(gName);
+
+  const pinWrap = el("div", "field-group");
+  const pinLabel = el("label"); pinLabel.innerHTML = 'الرمز السري <span class="req">*</span>';
+  const pinInput = input("password", "••••", "numeric");
+  pinInput.className += " pin-input";
+  pinInput.maxLength = 4;
+  pinWrap.appendChild(pinLabel);
+  pinWrap.appendChild(pinInput);
+  screen.appendChild(pinWrap);
+
+  const attemptsDiv = el("div", "pin-attempts"); attemptsDiv.style.display = "none";
+  screen.appendChild(attemptsDiv);
+
+  const errDiv = el("div", "error-msg"); errDiv.style.display = "none";
+  screen.appendChild(errDiv);
+
+  const btn = el("button", "btn-primary"); btn.type = "button";
+  btn.textContent = "دخول"; btn.style.width = "100%";
+  screen.appendChild(btn);
+
+  main.appendChild(screen);
+
+  let attempts = 0;
+  btn.addEventListener("click", () => {
+    const name = nameInput.value;
+    const pin  = pinInput.value.trim();
+    if (!name) { errDiv.textContent = "يرجى اختيار اسمك"; errDiv.style.display = "block"; return; }
+    if (!pin)  { errDiv.textContent = "يرجى إدخال الرمز السري"; errDiv.style.display = "block"; return; }
+    const clerk = CONFIG.clerks.find(c => c.name === name);
+    if (clerk && clerk.pin === pin) {
+      setClerkSession(name);
+      onSuccess(name);
+    } else {
+      attempts++;
+      errDiv.textContent = "رمز سري خاطئ";
+      errDiv.style.display = "block";
+      pinInput.value = "";
+      if (attempts >= 3) {
+        attemptsDiv.textContent = `محاولات فاشلة: ${attempts} — الرجاء التواصل مع المشرف`;
+        attemptsDiv.style.display = "block";
+      }
+    }
+  });
+  pinInput.addEventListener("keydown", e => { if (e.key === "Enter") btn.click(); });
+}
+
+// ── Engineer PIN screen ────────────────────────────────
 function renderPINScreen(onSuccess) {
   const main = renderShell("تسجيل الدخول");
   main.innerHTML = "";
@@ -1378,14 +1477,15 @@ if (note) {
   }
 } else {
   // Check URL for engineer mode
-  const params = new URLSearchParams(window.location.search);
-  const isEngineer = params.get("role") === "engineer";
-  if (isEngineer) {
+  const isEngineerRole = new URLSearchParams(window.location.search).get("role") === "engineer";
+  if (isEngineerRole) {
     const session = getEngineerSession();
     if (session) renderEngineerHome(session.name);
     else renderPINScreen(name => renderEngineerHome(name));
   } else {
-    renderProjectSelect();
+    const clerkSession = getClerkSession();
+    if (clerkSession) renderProjectSelect();
+    else renderClerkPINScreen(name => renderProjectSelect());
   }
 }
 </script>

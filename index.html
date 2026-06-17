@@ -550,9 +550,9 @@ const CONFIG = {
 
   // Clerks with PINs — update names before going live
   clerks: [
-    { name: "كاتب 1", pin: "5947" },
-    { name: "كاتب 2", pin: "2315" },
-    { name: "كاتب 3", pin: "7720" },
+    { name: "خالد",      pin: "5947" },
+    { name: "سيد زكي",   pin: "2315" },
+    { name: "طاهر",      pin: "7720" },
   ],
 
   // Engineers with PINs — distribute PINs privately to each engineer
@@ -580,7 +580,7 @@ function getNoteFromURL() {
   return new URLSearchParams(window.location.search).get("note");
 }
 function timestamp() {
-  return new Date().toLocaleString("ar-KW", {
+  return new Date().toLocaleString("en-GB", {
     timeZone: "Asia/Kuwait",
     year: "numeric", month: "2-digit", day: "2-digit",
     hour: "2-digit", minute: "2-digit",
@@ -961,7 +961,7 @@ async function renderReceipt(noteNumber, preAuthName) {
   // ── One-time link check — block if already receipted ──────────────────
   if (dispatch) {
     try {
-      const statusRes = await fetch(`${CONFIG.scriptUrl}?checkReceipt=${encodeURIComponent(noteNumber)}`);
+      const statusRes  = await fetch(`${CONFIG.scriptUrl}?checkReceipt=${encodeURIComponent(noteNumber)}`);
       const statusJson = await statusRes.json();
       if (statusJson.alreadyReceived) {
         const s = el("div", "success-screen");
@@ -1352,15 +1352,33 @@ async function renderEngineerHome(engName) {
   loading.innerHTML = `<div class="spinner"></div><p>جارٍ تحميل البيانات...</p>`;
   content.appendChild(loading);
 
-  // Fetch all data for this engineer
+  // Fetch all data for this engineer — filter today client-side
   let receipts = [], pendingDispatches = [];
   try {
-    const res = await fetch(`${CONFIG.scriptUrl}?engineer=${encodeURIComponent(engName)}`);
+    const res  = await fetch(`${CONFIG.scriptUrl}?engineer=${encodeURIComponent(engName)}`);
     const json = await res.json();
-    receipts = json.receipts || [];
-    pendingDispatches = json.pending || [];
-  } catch {
-    // demo fallback
+    const allReceipts = json.receipts || [];
+    const allPending  = json.pending  || [];
+
+    // Filter to today (Kuwait time) using ISO timestamps from Apps Script
+    const nowKW   = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuwait" }));
+    const todayY  = nowKW.getFullYear();
+    const todayM  = nowKW.getMonth();
+    const todayD  = nowKW.getDate();
+
+    function isToday(isoStr) {
+      if (!isoStr) return false;
+      try {
+        const d = new Date(isoStr);
+        const kw = new Date(d.toLocaleString("en-US", { timeZone: "Asia/Kuwait" }));
+        return kw.getFullYear() === todayY && kw.getMonth() === todayM && kw.getDate() === todayD;
+      } catch { return false; }
+    }
+
+    receipts         = allReceipts.filter(r => isToday(r.timestamp));
+    pendingDispatches = allPending.filter(p => isToday(p.isoTimestamp));
+  } catch(err) {
+    console.error("Engineer fetch error:", err);
     receipts = [];
     pendingDispatches = [];
   }
@@ -1370,7 +1388,7 @@ async function renderEngineerHome(engName) {
   // Engineer greeting
   const greeting = el("div", "info-box");
   greeting.style.marginBottom = ".75rem";
-  greeting.innerHTML = `مرحباً <strong>${engName}</strong> — ${new Date().toLocaleDateString("ar-KW", { weekday:"long", year:"numeric", month:"long", day:"numeric" })}`;
+  greeting.innerHTML = `مرحباً <strong>${engName}</strong> — ${new Date().toLocaleDateString("en-GB", { timeZone:"Asia/Kuwait", weekday:"long", year:"numeric", month:"long", day:"numeric" })}`;
   content.appendChild(greeting);
 
   // Tabs
@@ -1400,7 +1418,11 @@ async function renderEngineerHome(engName) {
       const card = el("div", "history-card");
       const hdr = el("div", "history-card-header");
       const note = el("div", "history-card-note"); note.textContent = `سند رقم ${r.noteNumber}`;
-      const time = el("div", "history-card-time"); time.textContent = r.timestamp;
+      const time = el("div", "history-card-time");
+      try {
+        const d = new Date(r.timestamp);
+        time.textContent = d.toLocaleTimeString("en-GB", { timeZone:"Asia/Kuwait", hour:"2-digit", minute:"2-digit" });
+      } catch { time.textContent = r.timestamp; }
       hdr.appendChild(note); hdr.appendChild(time);
       const body = el("div", "history-card-body");
       body.innerHTML = `

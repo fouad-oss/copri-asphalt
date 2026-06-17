@@ -1020,8 +1020,21 @@ function renderDispatch(projectName, project, preAuthClerk) {
       errDiv.style.display = "block"; return;
     }
     errDiv.style.display = "none";
-    btn.disabled = true; btn.textContent = "جارٍ الإرسال...";
+    btn.disabled = true; btn.textContent = "جارٍ التحقق...";
 
+    // Prevent duplicate delivery-note numbers — block if this note already exists
+    try {
+      const dupRes  = await fetch(`${CONFIG.scriptUrl}?note=${encodeURIComponent(data.noteNumber)}`);
+      const dupJson = await dupRes.json();
+      if (dupJson.found) {
+        btn.disabled = false; btn.innerHTML = "إرسال وإخطار المهندسين &nbsp;🚛";
+        errDiv.textContent = `رقم السند ${data.noteNumber} مُستخدم مسبقاً — تأكد من الرقم`;
+        errDiv.style.display = "block";
+        return;
+      }
+    } catch { /* network issue checking — allow dispatch rather than block work */ }
+
+    btn.textContent = "جارٍ الإرسال...";
     try {
       await postToScript({ type: "dispatch", ...data, timestamp: timestamp() });
       const receiptLink = `${window.location.href.split("?")[0]}?note=${encodeURIComponent(data.noteNumber)}`;
@@ -1215,7 +1228,7 @@ async function renderReceipt(noteNumber, preAuthName) {
   // Temperature at arrival
   const row = el("div", "field-row-2");
   const { group: g3, input: tempArrInput } = fieldGroup(
-    "الحرارة عند الوصول °م", input("number", "أدخل القراءة", "numeric"), false
+    "الحرارة عند الوصول °م", input("number", "أدخل القراءة", "numeric"), true
   );
   const tempDeltaDiv = el("div", "temp-delta"); tempDeltaDiv.style.display = "none";
   g3.appendChild(tempDeltaDiv);
@@ -1279,6 +1292,7 @@ async function renderReceipt(noteNumber, preAuthName) {
   submitBtn.addEventListener("click", async () => {
     if (!engInput.value) { errDiv.textContent = "يرجى اختيار اسم المهندس"; errDiv.style.display = "block"; return; }
     if (!weightArrInput.value) { errDiv.textContent = "يرجى إدخال الوزن عند الاستلام"; errDiv.style.display = "block"; return; }
+    if (!tempArrInput.value) { errDiv.textContent = "يرجى إدخال الحرارة عند الوصول"; errDiv.style.display = "block"; return; }
     if (!decision) { errDiv.textContent = "يرجى اختيار قبول أو رفض"; errDiv.style.display = "block"; return; }
     if (decision === "مرفوض" && !reasonInput.value) { errDiv.textContent = "يرجى اختيار سبب الرفض"; errDiv.style.display = "block"; return; }
     errDiv.style.display = "none";

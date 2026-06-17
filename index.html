@@ -580,11 +580,13 @@ function getNoteFromURL() {
   return new URLSearchParams(window.location.search).get("note");
 }
 function timestamp() {
-  return new Date().toLocaleString("en-GB", {
+  const d = new Date();
+  const toEN = s => s.replace(/[٠-٩]/g, c => String.fromCharCode(c.charCodeAt(0)-1584));
+  return toEN(d.toLocaleString("ar-KW", {
     timeZone: "Asia/Kuwait",
     year: "numeric", month: "2-digit", day: "2-digit",
     hour: "2-digit", minute: "2-digit",
-  });
+  }));
 }
 function el(tag, cls) {
   const e = document.createElement(tag);
@@ -1388,7 +1390,12 @@ async function renderEngineerHome(engName) {
   // Engineer greeting
   const greeting = el("div", "info-box");
   greeting.style.marginBottom = ".75rem";
-  greeting.innerHTML = `مرحباً <strong>${engName}</strong> — ${new Date().toLocaleDateString("en-GB", { timeZone:"Asia/Kuwait", weekday:"long", year:"numeric", month:"long", day:"numeric" })}`;
+  greeting.innerHTML = `مرحباً <strong>${engName}</strong> — ${(()=>{
+        const d = new Date();
+        const parts = new Intl.DateTimeFormat("ar-KW", {timeZone:"Asia/Kuwait", weekday:"long", year:"numeric", month:"long", day:"numeric"}).formatToParts(d);
+        const toEN = s => s.replace(/[٠-٩]/g, c => String.fromCharCode(c.charCodeAt(0)-1584));
+        return parts.map(p => toEN(p.value)).join("");
+      })()}`;
   content.appendChild(greeting);
 
   // Tabs
@@ -1421,7 +1428,8 @@ async function renderEngineerHome(engName) {
       const time = el("div", "history-card-time");
       try {
         const d = new Date(r.timestamp);
-        time.textContent = d.toLocaleTimeString("en-GB", { timeZone:"Asia/Kuwait", hour:"2-digit", minute:"2-digit" });
+        const toEN = s => s.replace(/[٠-٩]/g, c => String.fromCharCode(c.charCodeAt(0)-1584));
+        time.textContent = toEN(d.toLocaleTimeString("ar-KW", { timeZone:"Asia/Kuwait", hour:"2-digit", minute:"2-digit" }));
       } catch { time.textContent = r.timestamp; }
       hdr.appendChild(note); hdr.appendChild(time);
       const body = el("div", "history-card-body");

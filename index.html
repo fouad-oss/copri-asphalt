@@ -691,21 +691,18 @@ const CONFIG = {
   ],
 
   // Engineers with PINs — distribute PINs privately to each engineer
+  // phone: WhatsApp number for dispatch notifications.
+  //   Format = country code + number, digits only (no +, no spaces, no leading 0).
+  //   Kuwait example: "96598765432". Leave "" until you have the number.
   engineers: [
-    { name: "أحمد عبد العزيز", pin: "8798" },
-    { name: "علي بدوي", pin: "8255" },
-    { name: "إيهاب حسن", pin: "5686" },
+    { name: "أحمد عبد العزيز", pin: "8798", phone: "" },
+    { name: "علي بدوي", pin: "8255", phone: "" },
+    { name: "إيهاب حسن", pin: "5686", phone: "" },
   ],
 
   // Thresholds for automatic warnings
   tempDropWarning:   30,   // °C — flag if arrival temp drops more than this
   weightShortage:    0.5,  // tons — flag if weight difference exceeds this
-
-  // WhatsApp notifications via CallMeBot
-  // Add engineers here after they activate CallMeBot
-  callmebotEngineers: [
-    // { name: "اسم المهندس", phone: "96512345678", apikey: "123456" },
-  ],
 };
 
 // ════════════════════════════════════════════════════════
@@ -773,10 +770,12 @@ async function postToScript(payload) {
     body: JSON.stringify(payload),
   });
 }
-async function sendWhatsApp(data, receiptLink) {
-  if (!CONFIG.callmebotEngineers.length) return;
-  const msg = encodeURIComponent(
+// Build the pre-filled WhatsApp message (URL-encoded) for a dispatch.
+function whatsappMessage(data, receiptLink) {
+  return encodeURIComponent(
     `🚛 شحنة أسفلت في الطريق\n\n` +
+    `المشروع: ${data.project}\n` +
+    `أمر العمل: ${data.workOrder}\n` +
     `رقم السند: ${data.noteNumber}\n` +
     `السائق: ${data.driverName}\n` +
     `الشاحنة: ${data.truckNumber}\n` +
@@ -785,11 +784,6 @@ async function sendWhatsApp(data, receiptLink) {
     `الحرارة: ${data.tempDispatch}°م\n` +
     `الموقع: ${data.site}\n\n` +
     `🔗 رابط الاستلام:\n${receiptLink}`
-  );
-  await Promise.allSettled(
-    CONFIG.callmebotEngineers.map(e =>
-      fetch(`https://api.callmebot.com/whatsapp.php?phone=${e.phone}&text=${msg}&apikey=${e.apikey}`)
-    )
   );
 }
 
@@ -963,6 +957,13 @@ function renderDispatch(projectName, project, preAuthClerk) {
   }
   card.appendChild(row4);
 
+  // Engineer to notify — receives the WhatsApp receipt link on the success screen
+  const { group: gNotify, input: notifyInput } = fieldGroup(
+    "إخطار المهندس", select(CONFIG.engineers.map(e => e.name), "اختر المهندس"), true,
+    "سيظهر زر إرسال رابط الاستلام له عبر WhatsApp بعد الإرسال"
+  );
+  card.appendChild(gNotify);
+
   // Section: Clerk signature
   card.appendChild(sectionTitle("توقيع المشرف"));
 
@@ -1007,9 +1008,10 @@ function renderDispatch(projectName, project, preAuthClerk) {
       street:       streetInput.value.trim(),
       locationType: project.locationType,
       clerkName:    clerkInput.value,
+      notifyEngineer: notifyInput.value,
       remarks:      remarksInput.value.trim(),
     };
-    const required = ["workOrder","noteNumber","plant","truckNumber","driverName","mixType","weight","tempDispatch","site","block","street","clerkName"];
+    const required = ["workOrder","noteNumber","plant","truckNumber","driverName","mixType","weight","tempDispatch","site","block","street","clerkName","notifyEngineer"];
     if (project.isOther && otherProjectInput && !otherProjectInput.value.trim()) {
       errDiv.textContent = "يرجى إدخال اسم المشروع"; errDiv.style.display = "block"; return;
     }
@@ -1023,7 +1025,6 @@ function renderDispatch(projectName, project, preAuthClerk) {
     try {
       await postToScript({ type: "dispatch", ...data, timestamp: timestamp() });
       const receiptLink = `${window.location.href.split("?")[0]}?note=${encodeURIComponent(data.noteNumber)}`;
-      await sendWhatsApp(data, receiptLink);
       renderDispatchSuccess(data, receiptLink);
     } catch {
       btn.disabled = false; btn.innerHTML = "إرسال وإخطار المهندسين &nbsp;🚛";
@@ -1050,7 +1051,24 @@ function renderDispatchSuccess(data, receiptLink) {
   lb.appendChild(document.createTextNode(receiptLink));
   s.appendChild(lb);
 
+  // Primary action: send via WhatsApp to the engineer the clerk selected
+  const notifyEng = CONFIG.engineers.find(e => e.name === data.notifyEngineer);
+  if (notifyEng && notifyEng.phone) {
+    const waBtn = el("button", "btn-primary"); waBtn.style.marginTop = ".75rem";
+    waBtn.style.background = "#25D366";
+    waBtn.innerHTML = `إرسال إلى ${notifyEng.name} عبر WhatsApp &nbsp;💬`;
+    waBtn.addEventListener("click", () => {
+      window.open(`https://wa.me/${notifyEng.phone}?text=${whatsappMessage(data, receiptLink)}`, "_blank");
+    });
+    s.appendChild(waBtn);
+  } else if (data.notifyEngineer) {
+    const noPhone = el("div", "info-box"); noPhone.style.marginTop = ".75rem";
+    noPhone.textContent = `لا يوجد رقم WhatsApp للمهندس ${data.notifyEngineer} — انسخ الرابط وأرسله يدوياً، أو أضف الرقم في الإعدادات.`;
+    s.appendChild(noPhone);
+  }
+
   const copyBtn = el("button", "btn-primary"); copyBtn.style.marginTop = ".75rem";
+  copyBtn.style.background = "var(--text-2)";
   copyBtn.textContent = "نسخ الرابط 📋";
   copyBtn.addEventListener("click", () => {
     navigator.clipboard.writeText(receiptLink);

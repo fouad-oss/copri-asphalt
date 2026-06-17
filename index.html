@@ -485,6 +485,141 @@
     /* ── DIVIDER ───────────────────────────────────────── */
     .divider { height: 1px; background: var(--border); margin: .25rem 0; }
 
+    /* ── PIN / LOGIN SCREEN ────────────────────────────── */
+    .pin-screen {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
+      padding: 2rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: .9rem;
+    }
+    .pin-screen svg { display: block; margin: 0 auto .25rem; }
+    .pin-screen h2 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--text-1);
+      text-align: center;
+    }
+    .pin-screen p {
+      font-size: .85rem;
+      color: var(--text-2);
+      text-align: center;
+      margin-bottom: .4rem;
+    }
+    .pin-input {
+      text-align: center;
+      letter-spacing: .5em;
+      font-size: 1.3rem;
+      font-weight: 700;
+    }
+    .pin-attempts {
+      font-size: .78rem;
+      font-weight: 600;
+      color: var(--red);
+      background: var(--red-light);
+      border: 1px solid rgba(211,47,47,.2);
+      border-radius: var(--radius-sm);
+      padding: .5rem .75rem;
+      text-align: center;
+    }
+
+    /* ── ENGINEER NAV BAR ──────────────────────────────── */
+    .nav-bar {
+      display: flex;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      max-width: 480px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .nav-btn {
+      flex: 1;
+      background: transparent;
+      border: none;
+      font-family: var(--font-ar);
+      font-size: .72rem;
+      font-weight: 600;
+      color: var(--text-2);
+      padding: .6rem;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: .15rem;
+    }
+    .nav-btn.active { color: var(--green); }
+    .nav-btn:hover { color: var(--green); }
+    .nav-icon { font-size: 1.15rem; }
+
+    /* ── ENGINEER LOG — TABS & CARDS ───────────────────── */
+    .history-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: .5rem;
+      margin-bottom: .8rem;
+    }
+    .history-tab {
+      background: var(--surface-2);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-ar);
+      font-size: .85rem;
+      font-weight: 600;
+      color: var(--text-2);
+      padding: .6rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .history-tab.active {
+      border-color: var(--green);
+      background: var(--green-light);
+      color: var(--green);
+    }
+    .history-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-inline-start: 4px solid var(--green);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
+      padding: .9rem 1rem;
+      margin-bottom: .7rem;
+    }
+    .history-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: .5rem;
+      padding-bottom: .5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .history-card-note {
+      font-weight: 700;
+      font-size: .92rem;
+      color: var(--text-1);
+    }
+    .history-card-time {
+      font-family: var(--font-label);
+      font-size: .82rem;
+      font-weight: 600;
+      color: var(--text-3);
+    }
+    .history-card-body {
+      font-size: .82rem;
+      color: var(--text-2);
+      line-height: 1.7;
+    }
+    .history-empty {
+      text-align: center;
+      color: var(--text-3);
+      font-size: .85rem;
+      padding: 2rem 1rem;
+    }
+
     /* ── MOBILE ────────────────────────────────────────── */
     @media (hover: none) { input, select, textarea { font-size: 16px; } }
     @supports (padding: max(0px)) {

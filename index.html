@@ -722,19 +722,20 @@ const CONFIG = {
   // Copri transport drivers — shown as a quick-pick when الناقل = كوبري.
   //   { name, phone }  phone = digits only with country code, e.g. "9655xxxxxxx".
   //   Picking a driver auto-fills name + phone; the clerk can still edit both.
+  // truck = default plate number (auto-filled on pick; clerk can change it).
   copriDrivers: [
-    { name: "أيمن",            phone: "96560326834" },
-    { name: "هلال",            phone: "96560307865" },
-    { name: "محمود عامر",      phone: "96596788086" },
-    { name: "راكيش",           phone: "96565611467" },
-    { name: "هاربرت",          phone: "96597752364" },
-    { name: "حازم خالد",       phone: "96599605083" },
-    { name: "أحمد محمود",      phone: "96599020469" },
-    { name: "سامح",            phone: "96541030405" },
-    { name: "محمد حسين",       phone: "96599418262" },
-    { name: "محمد منصور",      phone: "96566014047" },
-    { name: "مسعود",           phone: "96555274966" },
-    { name: "أناندا",          phone: "96551327138" },
+    { name: "أيمن",            phone: "96560326834", truck: "90126" },
+    { name: "هلال",            phone: "96560307865", truck: "5875"  },
+    { name: "محمود عامر",      phone: "96596788086", truck: "64802" },
+    { name: "راكيش",           phone: "96565611467", truck: "70927" },
+    { name: "هاربرت",          phone: "96597752364", truck: "22640" },
+    { name: "حازم خالد",       phone: "96599605083", truck: "5689"  },
+    { name: "أحمد محمود",      phone: "96599020469", truck: "12165" },
+    { name: "سامح",            phone: "96541030405", truck: "12063" },
+    { name: "محمد حسين",       phone: "96599418262", truck: "12136" },
+    { name: "محمد منصور",      phone: "96566014047", truck: "48892" },
+    { name: "مسعود",           phone: "96555274966", truck: ""      },
+    { name: "أناندا",          phone: "96551327138", truck: "30464" },
   ],
 
   // Transporter (الناقل) — who hauls the asphalt to site
@@ -1064,11 +1065,11 @@ function renderDispatch(ctx) {
     if (copri && CONFIG.copriDrivers.length) {
       const { group: gPick, input: pickSel } = fieldGroup(
         "اختر سائق كوبري", select(CONFIG.copriDrivers.map(d => d.name), "اختر من القائمة"), false,
-        "يملأ الاسم والهاتف تلقائياً — يمكن تعديلهما"
+        "يملأ الاسم والهاتف ورقم الشاحنة تلقائياً — يمكن تعديلها"
       );
       pickSel.addEventListener("change", () => {
         const d = CONFIG.copriDrivers.find(x => x.name === pickSel.value);
-        if (d) { nameI.value = d.name; phoneI.value = d.phone || ""; }
+        if (d) { nameI.value = d.name; phoneI.value = d.phone || ""; truckInput.value = d.truck || ""; }
       });
       driverWrap.appendChild(gPick);
     }

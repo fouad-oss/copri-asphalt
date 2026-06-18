@@ -16,7 +16,7 @@
 //        branch actually work.
 //   2. Display endpoints (note, checkReceipt) format the Date to a clean
 //      Kuwait string so the app shows "17/06/2026, 14:17" not raw ISO.
-//   3. "نوع الموقع" is stored as an Arabic label, with a reverse-map on
+//   3. Location type is stored as an Arabic label, with a reverse-map on
 //      read so the app's locationType logic keeps working.
 //   4. Server-side duplicate-note guard: a dispatch whose note already
 //      exists is not written again (defence-in-depth; the app also checks).
@@ -43,10 +43,13 @@ const DISPATCH_HEADERS = [
   "الموقع المستلم",           // L
   "القطعة / من كم",           // M
   "الشارع / إلى كم",          // N
-  "نوع الموقع",               // O  (قطعة / شارع  أو  نطاق كيلومتر)
+  "نوع الموقع",               // O  (block/street | km range | named street)
   "اسم المشرف",               // P
   "ملاحظات",                  // Q
   "الحالة",                   // R
+  "الشركة",                   // S
+  "الناقل",                   // T
+  "هاتف السائق",              // U
 ];
 
 const RECEIPT_HEADERS = [
@@ -61,12 +64,13 @@ const RECEIPT_HEADERS = [
 ];
 
 // ── ✦ FIX 3: location type <-> Arabic label helpers ─────────────────
-const LOC_LABEL = { block_street: "قطعة / شارع", km_range: "نطاق كيلومتر" };
+const LOC_LABEL = { block_street: "قطعة / شارع", km_range: "نطاق كيلومتر", named: "اسم الشارع" };
 // Write a human label to the sheet
 function locLabel(code) { return LOC_LABEL[code] || LOC_LABEL.block_street; }
 // Read any stored value (new label OR legacy code) back to a code the app understands
 function locCode(v) {
   v = String(v || "");
+  if (v.indexOf("اسم الشارع") > -1 || v === "named") return "named";
   return (v.indexOf("كيلومتر") > -1 || v.indexOf("km") > -1) ? "km_range" : "block_street";
 }
 
@@ -141,7 +145,7 @@ function doGet(e) {
       });
     }
 
-    // Get all pending dispatches (status = في الطريق, not already received)
+    // Get all pending dispatches (status = in-transit, not already received)
     const pending = [];
     for (let i = 1; i < dData.length; i++) {
       const row     = dData[i]; if (!row[0]) continue;
@@ -154,7 +158,9 @@ function doGet(e) {
           project:      row[dh.indexOf("المشروع")] || "",
           workOrder:    row[dh.indexOf("رقم أمر العمل")] || "",
           plant:        row[dh.indexOf("رقم المصنع")] || "",
+          naqel:        row[dh.indexOf("الناقل")] || "",
           driverName:   row[dh.indexOf("اسم السائق")] || "",
+          driverPhone:  row[dh.indexOf("هاتف السائق")] || "",
           mixType:      row[dh.indexOf("نوع الخلطة")] || "",
           weight:       row[dh.indexOf("الوزن (طن)")] || "",
           tempDispatch: row[dh.indexOf("درجة الحرارة عند الإرسال")] || "",
@@ -185,7 +191,10 @@ function doGet(e) {
           noteNumber:   row[h.indexOf("رقم سند التسليم")],
           plant:        row[h.indexOf("رقم المصنع")] || "",
           truckNumber:  row[h.indexOf("رقم الشاحنة")],
+          naqel:        row[h.indexOf("الناقل")] || "",
           driverName:   row[h.indexOf("اسم السائق")],
+          driverPhone:  row[h.indexOf("هاتف السائق")] || "",
+          company:      row[h.indexOf("الشركة")] || "",
           mixType:      row[h.indexOf("نوع الخلطة")],
           weight:       row[h.indexOf("الوزن (طن)")],
           tempDispatch: row[h.indexOf("درجة الحرارة عند الإرسال")],
@@ -240,6 +249,9 @@ function doPost(e) {
         p.clerkName,
         p.remarks   || "",
         "في الطريق",
+        p.company     || "",
+        p.naqel       || "",
+        p.driverPhone || "",
       ]);
     }
 
@@ -310,8 +322,8 @@ function setupSheets() {
 // ONE-TIME DATA CLEANUP
 // ═══════════════════════════════════════════════════════════════════
 // Removes the legacy, mis-aligned rows from an earlier form version
-// (the ones where the note column holds a mix type like "نموذج I" and
-//  the receipt's work-order column holds an engineer name like "مهندس").
+// (the ones where the note column holds a mix-type word and the receipt's
+//  work-order column holds an engineer-name word, per the regexes below).
 //
 // SAFE BY DEFAULT: DRY_RUN = true only LOGS what it would delete.
 // Review the log (View → Logs), then set DRY_RUN = false and run again.
@@ -321,7 +333,7 @@ function cleanupLegacyRows() {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   let removed = 0;
 
-  // 1) Dispatch Log: delete rows whose note number looks like "نموذج ..."
+  // 1) Dispatch Log: delete rows whose note number matches the mix-type regex below
   const disp   = ss.getSheetByName(DISPATCH_SHEET);
   const dVals  = disp.getDataRange().getValues();
   const dNote  = dVals[0].indexOf("رقم سند التسليم");
@@ -333,7 +345,7 @@ function cleanupLegacyRows() {
     }
   }
 
-  // 2) Receipt Log: delete rows where the work-order column holds "مهندس..."
+  // 2) Receipt Log: delete rows where the work-order column matches the engineer-name regex below
   //    (symptom of the old shifted schema with no work-order field)
   const rec    = ss.getSheetByName(RECEIPT_SHEET);
   const rVals  = rec.getDataRange().getValues();

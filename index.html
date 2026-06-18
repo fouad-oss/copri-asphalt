@@ -658,52 +658,118 @@ const CONFIG = {
     "Prime Coat",
     "Cold Mix",
   ],
-  // Projects — each with contract number and its sites
-  projects: {
-    "كوبري — صيانة حولي": {
-      contract:     "ق ص / ط ش / 9",
-      sites:        ["بيان", "مشرف", "سلوى", "أخرى"],
-      locationType: "block_street",
+  // ── Companies → projects → engineers ───────────────────────────────
+  // The clerk first picks a COMPANY, then one of its PROJECTS.
+  //   isCopri:true  → full flow: dispatch → site-engineer receipt.
+  //   isCopri:false → ENDS AT THE PLANT: we only record the dispatch.
+  //                   No engineer notification and no receipt step.
+  //
+  // engineers: per-project list. { name, pin, phone }
+  //   phone = country code + number, digits only (no +, no spaces, no
+  //   leading 0). Kuwait example: "96598765432". Leave "" until known.
+  companies: {
+    "كوبري": {
+      isCopri: true,
+      projects: {
+        "كوبري — صيانة حولي": {
+          contract:         "ق ص / ط ش / 9",
+          sites:            ["بيان", "مشرف", "سلوى", "أخرى"],
+          locationType:     "block_street",
+          allowNamedStreet: true,   // main streets can be entered by name
+          engineers: [
+            { name: "أحمد عبد العزيز", pin: "8798", phone: "" },
+            { name: "أحمد بدوي",       pin: "8255", phone: "" },
+            { name: "إيهاب حسن",       pin: "5686", phone: "" },
+            { name: "فؤاد الزغبي",     pin: "7764", phone: "96566767764" },
+          ],
+        },
+        "كوبري — الطرق السريعة": {
+          contract:     "هـ ص / ط / 9",
+          sites:        ["طريق الملك فهد", "طريق الفحيحيل", "أخرى"],
+          locationType: "km_range",
+          engineers: [
+            // TODO: Highways engineers — pending list (name / pin / phone).
+            // Until added, the dispatch "notify engineer" dropdown is empty.
+          ],
+        },
+      },
     },
-    "كوبري — الطرق السريعة": {
-      contract:     "هـ ص / ط / 9",
-      sites:        ["طريق الملك فهد", "طريق الفحيحيل", "أخرى"],
-      locationType: "km_range",
+    // ── Non-Copri companies — dispatch recorded at the PLANT only ──────
+    // (site is an optional free-text field for these; no site suggestions yet)
+    "المدى الأخضر — Green Line": {
+      isCopri: false,
+      projects: {
+        "صيانة جذرية — العاصمة (النطاق الأول)": {
+          contract:         "ق ص / ط ش / 7",
+          locationType:     "block_street",
+          allowNamedStreet: true,
+        },
+        "صيانة جذرية — حولي (النطاق الثاني)": {
+          contract:         "ق ص / ط ش / 10",
+          locationType:     "block_street",
+          allowNamedStreet: true,
+        },
+        "تحسين البنية التحتية — اليرموك": {
+          contract:         "هـ ص / 193",
+          locationType:     "block_street",
+          allowNamedStreet: true,
+        },
+      },
     },
-    "مشروع آخر": {
-      contract:     "",
-      sites:        ["أخرى"],
-      locationType: "block_street",
-      isOther:      true,
-    },
+    // ── TODO: more companies — same shape as المدى الأخضر above ─────────
   },
+
+  // Copri transport drivers — shown as a quick-pick when الناقل = كوبري.
+  //   { name, phone }  phone = digits only with country code, e.g. "9655xxxxxxx".
+  //   Picking a driver auto-fills name + phone; the clerk can still edit both.
+  copriDrivers: [
+    { name: "أيمن",            phone: "96560326834" },
+    { name: "هلال",            phone: "96560307865" },
+    { name: "محمود عامر",      phone: "96596788086" },
+    { name: "راكيش",           phone: "96565611467" },
+    { name: "هاربرت",          phone: "96597752364" },
+    { name: "حازم خالد",       phone: "96599605083" },
+    { name: "أحمد محمود",      phone: "96599020469" },
+    { name: "سامح",            phone: "96541030405" },
+    { name: "محمد حسين",       phone: "96599418262" },
+    { name: "محمد منصور",      phone: "96566014047" },
+    { name: "مسعود",           phone: "96555274966" },
+    { name: "أناندا",          phone: "96551327138" },
+  ],
+
+  // Transporter (الناقل) — who hauls the asphalt to site
+  naqelOptions: ["كوبري", "مقاول خارجي"],
+
   // Legacy — kept for receipt form site list fallback
   sites: ["بيان", "مشرف", "سلوى", "أخرى"],
   plants:   ["AP01", "AP02"],
   // Block and street are free text — entered by clerk at dispatch
   rejectionReasons: ["درجة حرارة منخفضة جداً", "وزن ناقص عند الاستلام", "نوع خلطة خاطئ", "تأخر وصول الشاحنة", "أخرى"],
 
-  // Clerks with PINs — update names before going live
+  // Clerks with PINs — shared plant-side PIN
   clerks: [
-    { name: "خالد",      pin: "5947" },
-    { name: "سيد زكي",   pin: "2315" },
-    { name: "طاهر",      pin: "7720" },
-  ],
-
-  // Engineers with PINs — distribute PINs privately to each engineer
-  // phone: WhatsApp number for dispatch notifications.
-  //   Format = country code + number, digits only (no +, no spaces, no leading 0).
-  //   Kuwait example: "96598765432". Leave "" until you have the number.
-  engineers: [
-    { name: "أحمد عبد العزيز", pin: "8798", phone: "" },
-    { name: "أحمد بدوي", pin: "8255", phone: "" },
-    { name: "إيهاب حسن", pin: "5686", phone: "" },
+    { name: "خالد",      pin: "1098" },
+    { name: "سيد زكي",   pin: "1098" },
+    { name: "طاهر",      pin: "1098" },
   ],
 
   // Thresholds for automatic warnings
   tempDropWarning:   30,   // °C — flag if arrival temp drops more than this
   weightShortage:    0.5,  // tons — flag if weight difference exceeds this
 };
+
+// Flattened, de-duplicated engineer list across all projects — used by the
+// engineer login (receipt + ?role=engineer) where the project isn't known yet.
+function allEngineers() {
+  const seen = {}, out = [];
+  Object.values(CONFIG.companies).forEach(c =>
+    Object.values(c.projects).forEach(p =>
+      (p.engineers || []).forEach(e => { if (!seen[e.name]) { seen[e.name] = 1; out.push(e); } })
+    )
+  );
+  return out;
+}
+function findEngineer(name) { return allEngineers().find(e => e.name === name) || null; }
 
 // ════════════════════════════════════════════════════════
 // HELPERS
@@ -770,19 +836,58 @@ async function postToScript(payload) {
     body: JSON.stringify(payload),
   });
 }
+// Human-readable location string from a dispatch row/data object, aware of
+// the three location types: block+street, km range, and named street.
+function locDisplay(d) {
+  if (d.locationType === "km_range") {
+    if (!d.block && !d.street) return "";
+    return `كم ${d.block || "?"} — ${d.street || "?"}`;
+  }
+  if (d.locationType === "named") return d.block || "";   // name stored in block
+  // block_street
+  const parts = [];
+  if (d.block)  parts.push(`ق ${d.block}`);
+  if (d.street) parts.push(`ش ${d.street}`);
+  return parts.join(" / ");
+}
+// Digits-only phone for tel:/wa.me links (strips +, spaces, dashes).
+function cleanPhone(p) { return String(p || "").replace(/[^\d]/g, ""); }
+
+// A two-button row letting the engineer contact the driver (call / WhatsApp).
+function driverContactRow(driverName, phone) {
+  const tel = cleanPhone(phone);
+  const wrap = el("div"); wrap.style.display = "grid";
+  wrap.style.gridTemplateColumns = "1fr 1fr"; wrap.style.gap = ".5rem";
+
+  const callBtn = el("a", "btn-primary");
+  callBtn.style.textDecoration = "none"; callBtn.style.background = "var(--text-2)";
+  callBtn.href = `tel:${tel}`;
+  callBtn.innerHTML = "📞 اتصال بالسائق";
+
+  const waBtn = el("a", "btn-primary");
+  waBtn.style.textDecoration = "none"; waBtn.style.background = "#25D366";
+  waBtn.href = `https://wa.me/${tel}`; waBtn.target = "_blank";
+  waBtn.innerHTML = "💬 واتساب";
+
+  wrap.appendChild(callBtn); wrap.appendChild(waBtn);
+  return wrap;
+}
+
 // Build the pre-filled WhatsApp message (URL-encoded) for a dispatch.
 function whatsappMessage(data, receiptLink) {
+  const loc = locDisplay(data);
   return encodeURIComponent(
     `🚛 شحنة أسفلت في الطريق\n\n` +
     `المشروع: ${data.project}\n` +
     `أمر العمل: ${data.workOrder}\n` +
     `رقم السند: ${data.noteNumber}\n` +
-    `السائق: ${data.driverName}\n` +
+    `الناقل: ${data.naqel}\n` +
+    `السائق: ${data.driverName}${data.driverPhone ? ` (${data.driverPhone})` : ""}\n` +
     `الشاحنة: ${data.truckNumber}\n` +
     `الخلطة: ${data.mixType}\n` +
     `الوزن: ${data.weight} طن\n` +
     `الحرارة: ${data.tempDispatch}°م\n` +
-    `الموقع: ${data.site}\n\n` +
+    `الموقع: ${data.site}${loc ? " — " + loc : ""}\n\n` +
     `🔗 رابط الاستلام:\n${receiptLink}`
   );
 }
@@ -828,44 +933,76 @@ function renderShell(subtitleText) {
 // ════════════════════════════════════════════════════════
 // DISPATCH FORM — filled by plant clerk
 // ════════════════════════════════════════════════════════
-function renderProjectSelect() {
-  const main = renderShell("اختيار المشروع");
+// Step 1 — pick the receiving COMPANY (Copri or another contractor).
+function renderCompanySelect() {
+  const main = renderShell("اختيار الشركة");
 
   const card = el("div", "card");
-  card.appendChild(sectionTitle("اختر المشروع"));
+  card.appendChild(sectionTitle("الشركة المستلمة"));
 
   const info = el("div", "info-box");
-  info.textContent = "يرجى تحديد المشروع قبل إدخال بيانات الشحنة";
+  info.textContent = "اختر الشركة المستلمة للأسفلت";
   card.appendChild(info);
 
-  Object.entries(CONFIG.projects).forEach(([name, proj]) => {
+  Object.entries(CONFIG.companies).forEach(([name, company]) => {
     const btn = el("button", "project-btn");
+    const projCount = Object.keys(company.projects || {}).length;
     btn.innerHTML = `
       <div class="project-btn-name">${name}</div>
-      <div class="project-btn-contract">${proj.contract}</div>
+      <div class="project-btn-contract">${company.isCopri ? "كوبري — تسليم بالموقع" : "تسجيل بالمصنع فقط"} · ${projCount} مشروع</div>
     `;
-    btn.addEventListener("click", () => {
-      const cs = getClerkSession();
-      renderDispatch(name, proj, cs ? cs.name : null);
-    });
+    btn.addEventListener("click", () => renderProjectSelect(name, company));
     card.appendChild(btn);
   });
 
   main.appendChild(card);
 }
 
-function renderDispatch(projectName, project, preAuthClerk) {
+// Step 2 — pick the PROJECT within the chosen company.
+function renderProjectSelect(companyName, company) {
+  const main = renderShell("اختيار المشروع");
+
+  const card = el("div", "card");
+  card.appendChild(sectionTitle(`${companyName} — اختر المشروع`));
+
+  const info = el("div", "info-box");
+  info.textContent = "يرجى تحديد المشروع قبل إدخال بيانات الشحنة";
+  card.appendChild(info);
+
+  Object.entries(company.projects).forEach(([name, proj]) => {
+    const btn = el("button", "project-btn");
+    btn.innerHTML = `
+      <div class="project-btn-name">${name}</div>
+      <div class="project-btn-contract">${proj.contract || ""}</div>
+    `;
+    btn.addEventListener("click", () =>
+      renderDispatch({ companyName, company, projectName: name, project: proj })
+    );
+    card.appendChild(btn);
+  });
+
+  const back = el("button", "btn-ghost"); back.textContent = "← تغيير الشركة";
+  back.addEventListener("click", renderCompanySelect);
+  card.appendChild(back);
+
+  main.appendChild(card);
+}
+
+function renderDispatch(ctx) {
+  const { companyName, company, projectName, project } = ctx;
+  const isCopri = !!company.isCopri;
+  const submitLabel = isCopri ? "إرسال وإخطار المهندس &nbsp;🚛" : "تسجيل الشحنة &nbsp;🚛";
   const main = renderShell("إرسال شحنة");
 
-  // Project banner
+  // Company + project banner
   const banner = el("div", "project-banner");
   banner.innerHTML = `
     <div class="project-banner-name">${projectName}</div>
-    <div class="project-banner-contract">${project.contract}</div>
+    <div class="project-banner-contract">${companyName}${project.contract ? " · " + project.contract : ""}</div>
     <button class="project-banner-change" id="changeProjectBtn">تغيير</button>
   `;
   main.appendChild(banner);
-  document.getElementById("changeProjectBtn").addEventListener("click", renderProjectSelect);
+  document.getElementById("changeProjectBtn").addEventListener("click", renderCompanySelect);
 
   // If "other" project — show free text fields for project name and contract
   let otherProjectInput = null, otherContractInput = null;
@@ -908,9 +1045,40 @@ function renderDispatch(projectName, project, preAuthClerk) {
 
   const row2 = el("div", "field-row-2");
   const { group: g2, input: truckInput } = fieldGroup("رقم الشاحنة", input("text", "رقم اللوحة"), true);
-  const { group: g3, input: driverInput } = fieldGroup("اسم السائق", input("text", "الاسم الكامل"), true);
-  row2.appendChild(g2); row2.appendChild(g3);
+  const { group: gNaqel, input: naqelInput } = fieldGroup(
+    "الناقل", select(CONFIG.naqelOptions, "اختر الناقل"), true
+  );
+  row2.appendChild(g2); row2.appendChild(gNaqel);
   card.appendChild(row2);
+
+  // ── Driver section — rebuilt when الناقل changes ──────────────────
+  // Copri transport offers a quick-pick that auto-fills name + phone;
+  // both stay editable. External contractor = free text.
+  const driverWrap = el("div", "field-group"); driverWrap.style.gap = ".9rem";
+  let getDriver = () => ({ name: "", phone: "" });
+  function buildDriver() {
+    driverWrap.innerHTML = "";
+    const copri = naqelInput.value === "كوبري";
+    const { group: gName,  input: nameI }  = fieldGroup("اسم السائق", input("text", "الاسم الكامل"), true);
+    const { group: gPhone, input: phoneI } = fieldGroup("هاتف السائق", input("tel", "مثال: 96550001234", "tel"), false, "للتواصل من سجل المهندس");
+    if (copri && CONFIG.copriDrivers.length) {
+      const { group: gPick, input: pickSel } = fieldGroup(
+        "اختر سائق كوبري", select(CONFIG.copriDrivers.map(d => d.name), "اختر من القائمة"), false,
+        "يملأ الاسم والهاتف تلقائياً — يمكن تعديلهما"
+      );
+      pickSel.addEventListener("change", () => {
+        const d = CONFIG.copriDrivers.find(x => x.name === pickSel.value);
+        if (d) { nameI.value = d.name; phoneI.value = d.phone || ""; }
+      });
+      driverWrap.appendChild(gPick);
+    }
+    driverWrap.appendChild(gName);
+    driverWrap.appendChild(gPhone);
+    getDriver = () => ({ name: nameI.value.trim(), phone: phoneI.value.trim() });
+  }
+  naqelInput.addEventListener("change", buildDriver);
+  buildDriver();
+  card.appendChild(driverWrap);
 
   const { group: g4, input: mixInput } = fieldGroup(
     "نوع الخلطة", select(CONFIG.mixTypes, "اختر النوع"), true
@@ -924,45 +1092,92 @@ function renderDispatch(projectName, project, preAuthClerk) {
   row3.appendChild(g5); row3.appendChild(g6);
   card.appendChild(row3);
 
-  const { group: g7, input: siteInput } = fieldGroup(
-    "الموقع المستلم", select(project.sites, "اختر الموقع"), true
-  );
-  card.appendChild(g7);
+  // Site: required dropdown for Copri; optional free text (no suggestions) otherwise
+  let siteInput;
+  if (isCopri) {
+    const { group: g7, input: sIn } = fieldGroup(
+      "الموقع المستلم", select(project.sites || [], "اختر الموقع"), true
+    );
+    siteInput = sIn; card.appendChild(g7);
+  } else {
+    const { group: g7, input: sIn } = fieldGroup(
+      "الموقع المستلم", input("text", "اختياري"), false
+    );
+    siteInput = sIn; card.appendChild(g7);
+  }
 
-  const row4 = el("div", "field-row-2");
-  let blockInput, streetInput;
+  // ── Location section ──────────────────────────────────────────────
+  // km_range  → from/to kilometre.
+  // block_street → block + street, with an optional "named street" toggle
+  //                for main streets that have no block/street number.
+  let getLocation = () => ({ block: "", street: "", locationType: project.locationType });
 
   if (project.locationType === "km_range") {
-    // Highway: kilometer range
-    const { group: gFrom, input: kmFrom } = fieldGroup(
-      "من الكيلومتر", input("text", "مثال: 12.5", "decimal"), true
-    );
-    const { group: gTo, input: kmTo } = fieldGroup(
-      "إلى الكيلومتر", input("text", "مثال: 14.0", "decimal"), true
-    );
+    const row4 = el("div", "field-row-2");
+    const { group: gFrom, input: kmFrom } = fieldGroup("من الكيلومتر", input("text", "مثال: 12.5", "decimal"), true);
+    const { group: gTo,   input: kmTo }   = fieldGroup("إلى الكيلومتر", input("text", "مثال: 14.0", "decimal"), true);
     row4.appendChild(gFrom); row4.appendChild(gTo);
-    blockInput  = kmFrom;   // reuse existing variables
-    streetInput = kmTo;     // so the rest of the code works unchanged
+    card.appendChild(row4);
+    getLocation = () => ({ block: kmFrom.value.trim(), street: kmTo.value.trim(), locationType: "km_range" });
   } else {
-    // Hawalli: block and street
-    const { group: gBlock, input: bInput } = fieldGroup(
-      "القطعة", input("text", "رقم القطعة", "numeric"), true
-    );
-    const { group: gStreet, input: sInput } = fieldGroup(
-      "الشارع", input("text", "رقم الشارع", "numeric"), true
-    );
-    row4.appendChild(gBlock); row4.appendChild(gStreet);
-    blockInput  = bInput;
-    streetInput = sInput;
-  }
-  card.appendChild(row4);
+    let locMode = "blocks"; // "blocks" | "named"
+    const locWrap = el("div");
 
-  // Engineer to notify — receives the WhatsApp receipt link on the success screen
-  const { group: gNotify, input: notifyInput } = fieldGroup(
-    "إخطار المهندس", select(CONFIG.engineers.map(e => e.name), "اختر المهندس"), true,
-    "سيظهر زر إرسال رابط الاستلام له عبر WhatsApp بعد الإرسال"
-  );
-  card.appendChild(gNotify);
+    // Toggle (only for projects that allow named main streets)
+    if (project.allowNamedStreet) {
+      const lbl = el("label"); lbl.textContent = "نوع العنوان"; lbl.style.marginBottom = ".35rem"; lbl.style.display = "block";
+      const toggle = el("div", "history-tabs"); toggle.style.marginBottom = "0";
+      const tBlocks = el("button", "history-tab active"); tBlocks.type = "button"; tBlocks.textContent = "قطعة وشارع";
+      const tNamed  = el("button", "history-tab");        tNamed.type  = "button"; tNamed.textContent  = "اسم الشارع";
+      toggle.appendChild(tBlocks); toggle.appendChild(tNamed);
+      card.appendChild(lbl); card.appendChild(toggle);
+      tBlocks.addEventListener("click", () => {
+        if (locMode === "blocks") return;
+        locMode = "blocks"; tBlocks.classList.add("active"); tNamed.classList.remove("active"); buildLoc();
+      });
+      tNamed.addEventListener("click", () => {
+        if (locMode === "named") return;
+        locMode = "named"; tNamed.classList.add("active"); tBlocks.classList.remove("active"); buildLoc();
+      });
+    }
+
+    function buildLoc() {
+      locWrap.innerHTML = "";
+      if (locMode === "named") {
+        const { group: gName, input: nameI } = fieldGroup(
+          "اسم الشارع / الموقع", input("text", "مثال: شارع بيروت"), true
+        );
+        locWrap.appendChild(gName);
+        getLocation = () => ({ block: nameI.value.trim(), street: "", locationType: "named" });
+      } else {
+        const row4 = el("div", "field-row-2");
+        const { group: gBlock,  input: bInput } = fieldGroup("القطعة", input("text", "رقم القطعة", "numeric"), true);
+        const { group: gStreet, input: sInput } = fieldGroup("الشارع", input("text", "رقم الشارع", "numeric"), true);
+        row4.appendChild(gBlock); row4.appendChild(gStreet);
+        locWrap.appendChild(row4);
+        getLocation = () => ({ block: bInput.value.trim(), street: sInput.value.trim(), locationType: "block_street" });
+      }
+    }
+    buildLoc();
+    card.appendChild(locWrap);
+  }
+
+  // Engineer to notify — Copri only (other companies end at the plant)
+  let notifyInput = null;
+  if (isCopri) {
+    const engineers = project.engineers || [];
+    const { group: gNotify, input: nInput } = fieldGroup(
+      "إخطار المهندس", select(engineers.map(e => e.name), "اختر المهندس"), true,
+      "سيظهر زر إرسال رابط الاستلام له عبر WhatsApp بعد الإرسال"
+    );
+    card.appendChild(gNotify);
+    notifyInput = nInput;
+    if (!engineers.length) {
+      const noEng = el("div", "info-box");
+      noEng.textContent = "لا يوجد مهندسون مُسجّلون لهذا المشروع بعد — يرجى إضافتهم في الإعدادات.";
+      card.appendChild(noEng);
+    }
+  }
 
   // Section: Clerk signature
   card.appendChild(sectionTitle("توقيع المشرف"));
@@ -985,33 +1200,41 @@ function renderDispatch(projectName, project, preAuthClerk) {
   card.appendChild(errDiv);
 
   const btn = el("button", "btn-primary"); btn.type = "button";
-  btn.innerHTML = "إرسال وإخطار المهندسين &nbsp;🚛";
+  btn.innerHTML = submitLabel;
   card.appendChild(btn);
 
   main.appendChild(card);
 
   // Submit handler
   btn.addEventListener("click", async () => {
+    const driver = getDriver();
+    const loc    = getLocation();
     const data = {
+      company:      companyName,
       project:      project.isOther ? (otherProjectInput ? otherProjectInput.value.trim() : projectName) : projectName,
       contract:     project.isOther ? (otherContractInput ? otherContractInput.value.trim() : "") : project.contract,
       workOrder:    woInput.value.trim(),
       noteNumber:   noteInput.value.trim(),
       plant:        plantInput.value,
       truckNumber:  truckInput.value.trim(),
-      driverName:   driverInput.value.trim(),
+      naqel:        naqelInput.value,
+      driverName:   driver.name,
+      driverPhone:  cleanPhone(driver.phone),
       mixType:      mixInput.value,
       weight:       weightInput.value,
       tempDispatch: tempInput.value,
       site:         siteInput.value,
-      block:        blockInput.value.trim(),
-      street:       streetInput.value.trim(),
-      locationType: project.locationType,
+      block:        loc.block,
+      street:       loc.street,
+      locationType: loc.locationType,
       clerkName:    clerkInput.value,
-      notifyEngineer: notifyInput.value,
+      notifyEngineer: notifyInput ? notifyInput.value : "",
       remarks:      remarksInput.value.trim(),
     };
-    const required = ["workOrder","noteNumber","plant","truckNumber","driverName","mixType","weight","tempDispatch","site","block","street","clerkName","notifyEngineer"];
+    // street is not required in km_range "from only"? both required; in named mode only block (the name) is required.
+    const required = ["workOrder","noteNumber","plant","truckNumber","naqel","driverName","mixType","weight","tempDispatch","block","clerkName"];
+    if (data.locationType !== "named") required.push("street");
+    if (isCopri) required.push("site", "notifyEngineer");
     if (project.isOther && otherProjectInput && !otherProjectInput.value.trim()) {
       errDiv.textContent = "يرجى إدخال اسم المشروع"; errDiv.style.display = "block"; return;
     }
@@ -1027,7 +1250,7 @@ function renderDispatch(projectName, project, preAuthClerk) {
       const dupRes  = await fetch(`${CONFIG.scriptUrl}?note=${encodeURIComponent(data.noteNumber)}`);
       const dupJson = await dupRes.json();
       if (dupJson.found) {
-        btn.disabled = false; btn.innerHTML = "إرسال وإخطار المهندسين &nbsp;🚛";
+        btn.disabled = false; btn.innerHTML = submitLabel;
         errDiv.textContent = `رقم السند ${data.noteNumber} مُستخدم مسبقاً — تأكد من الرقم`;
         errDiv.style.display = "block";
         return;
@@ -1038,68 +1261,74 @@ function renderDispatch(projectName, project, preAuthClerk) {
     try {
       await postToScript({ type: "dispatch", ...data, timestamp: timestamp() });
       const receiptLink = `${window.location.href.split("?")[0]}?note=${encodeURIComponent(data.noteNumber)}`;
-      renderDispatchSuccess(data, receiptLink);
+      renderDispatchSuccess(ctx, data, receiptLink);
     } catch {
-      btn.disabled = false; btn.innerHTML = "إرسال وإخطار المهندسين &nbsp;🚛";
+      btn.disabled = false; btn.innerHTML = submitLabel;
       errDiv.textContent = "حدث خطأ، يرجى المحاولة مجدداً";
       errDiv.style.display = "block";
     }
   });
 }
 
-function renderDispatchSuccess(data, receiptLink) {
+function renderDispatchSuccess(ctx, data, receiptLink) {
+  const isCopri = !!ctx.company.isCopri;
   const main = document.getElementById("main-content");
   main.innerHTML = "";
 
   const s = el("div", "success-screen");
   const icon = el("div", "success-icon ok"); icon.textContent = "✓"; s.appendChild(icon);
-  const h = el("h2"); h.textContent = "تم الإرسال بنجاح"; s.appendChild(h);
-  const p1 = el("p"); p1.innerHTML = `<strong>${data.project}</strong> — ${data.contract}`; s.appendChild(p1);
+  const h = el("h2"); h.textContent = isCopri ? "تم الإرسال بنجاح" : "تم تسجيل الشحنة"; s.appendChild(h);
+  const p1 = el("p"); p1.innerHTML = `<strong>${data.company}</strong> — ${data.project}`; s.appendChild(p1);
   const p2b = el("p"); p2b.innerHTML = `أمر العمل: <strong>${data.workOrder}</strong> — رقم السند: <strong>${data.noteNumber}</strong>`; s.appendChild(p2b);
-  const p2c = el("p"); p2c.innerHTML = `${data.plant} — ${data.site}${data.block ? ' / ق' + data.block : ''}${data.street ? ' / ش' + data.street : ''}`; s.appendChild(p2c);
+  const loc = locDisplay(data);
+  const p2c = el("p"); p2c.textContent = `${data.plant} — ${data.site}${loc ? " / " + loc : ""}`; s.appendChild(p2c);
 
-  const lb = el("div", "link-box");
-  const lbl = el("span", "link-box-label"); lbl.textContent = "🔗 رابط الاستلام — أرسله للمهندس على WhatsApp";
-  lb.appendChild(lbl);
-  lb.appendChild(document.createTextNode(receiptLink));
-  s.appendChild(lb);
+  // Copri only: site-engineer receipt link + WhatsApp notification.
+  if (isCopri) {
+    const lb = el("div", "link-box");
+    const lbl = el("span", "link-box-label"); lbl.textContent = "🔗 رابط الاستلام — أرسله للمهندس على WhatsApp";
+    lb.appendChild(lbl);
+    lb.appendChild(document.createTextNode(receiptLink));
+    s.appendChild(lb);
 
-  // Primary action: send via WhatsApp to the engineer the clerk selected
-  const notifyEng = CONFIG.engineers.find(e => e.name === data.notifyEngineer);
-  if (notifyEng && notifyEng.phone) {
-    const waBtn = el("button", "btn-primary"); waBtn.style.marginTop = ".75rem";
-    waBtn.style.background = "#25D366";
-    waBtn.innerHTML = `إرسال إلى ${notifyEng.name} عبر WhatsApp &nbsp;💬`;
-    waBtn.addEventListener("click", () => {
-      window.open(`https://wa.me/${notifyEng.phone}?text=${whatsappMessage(data, receiptLink)}`, "_blank");
+    const notifyEng = findEngineer(data.notifyEngineer);
+    if (notifyEng && notifyEng.phone) {
+      const waBtn = el("button", "btn-primary"); waBtn.style.marginTop = ".75rem";
+      waBtn.style.background = "#25D366";
+      waBtn.innerHTML = `إرسال إلى ${notifyEng.name} عبر WhatsApp &nbsp;💬`;
+      waBtn.addEventListener("click", () => {
+        window.open(`https://wa.me/${notifyEng.phone}?text=${whatsappMessage(data, receiptLink)}`, "_blank");
+      });
+      s.appendChild(waBtn);
+    } else if (data.notifyEngineer) {
+      const noPhone = el("div", "info-box"); noPhone.style.marginTop = ".75rem";
+      noPhone.textContent = `لا يوجد رقم WhatsApp للمهندس ${data.notifyEngineer} — انسخ الرابط وأرسله يدوياً، أو أضف الرقم في الإعدادات.`;
+      s.appendChild(noPhone);
+    }
+
+    const copyBtn = el("button", "btn-primary"); copyBtn.style.marginTop = ".75rem";
+    copyBtn.style.background = "var(--text-2)";
+    copyBtn.textContent = "نسخ الرابط 📋";
+    copyBtn.addEventListener("click", () => {
+      navigator.clipboard.writeText(receiptLink);
+      copyBtn.textContent = "تم النسخ ✓";
     });
-    s.appendChild(waBtn);
-  } else if (data.notifyEngineer) {
-    const noPhone = el("div", "info-box"); noPhone.style.marginTop = ".75rem";
-    noPhone.textContent = `لا يوجد رقم WhatsApp للمهندس ${data.notifyEngineer} — انسخ الرابط وأرسله يدوياً، أو أضف الرقم في الإعدادات.`;
-    s.appendChild(noPhone);
+    s.appendChild(copyBtn);
+  } else {
+    const done = el("p", "success-note"); done.textContent = "تم التسجيل بالمصنع — لا حاجة لإرسال للموقع."; s.appendChild(done);
   }
 
-  const copyBtn = el("button", "btn-primary"); copyBtn.style.marginTop = ".75rem";
-  copyBtn.style.background = "var(--text-2)";
-  copyBtn.textContent = "نسخ الرابط 📋";
-  copyBtn.addEventListener("click", () => {
-    navigator.clipboard.writeText(receiptLink);
-    copyBtn.textContent = "تم النسخ ✓";
-  });
-  s.appendChild(copyBtn);
-
   const newBtn = el("button", "btn-ghost"); newBtn.textContent = "إرسال شحنة جديدة";
-  newBtn.addEventListener("click", () => {
-    const cs = getClerkSession();
-    if (cs) renderDispatch(cs.name);
-    else renderClerkPINScreen(name => renderDispatch(name));
-  });
+  newBtn.addEventListener("click", () => renderDispatch(ctx));
   s.appendChild(newBtn);
+
+  const projBtn = el("button", "btn-ghost"); projBtn.textContent = "تغيير الشركة / المشروع";
+  projBtn.addEventListener("click", renderCompanySelect);
+  s.appendChild(projBtn);
 
   const logoutBtn = el("button", "btn-ghost"); logoutBtn.textContent = "تسجيل الخروج";
   logoutBtn.style.color = "var(--text-3)";
-  logoutBtn.addEventListener("click", () => { clearClerkSession(); renderClerkPINScreen(name => renderDispatch(name)); });
+  logoutBtn.addEventListener("click", () => { clearClerkSession(); renderClerkPINScreen(renderCompanySelect); });
   s.appendChild(logoutBtn);
 
   main.appendChild(s);
@@ -1153,27 +1382,43 @@ async function renderReceipt(noteNumber, preAuthName) {
   summary.appendChild(sh);
 
   if (dispatch) {
-    [
+    const rows = [
       ["المشروع",                dispatch.project || "—"],
       ["رقم العقد",              dispatch.contract || "—"],
       ["رقم أمر العمل",          dispatch.workOrder || "—"],
       ["رقم السند",              dispatch.noteNumber],
       ["المصنع",                 dispatch.plant],
       ["رقم الشاحنة",            dispatch.truckNumber],
+      ["الناقل",                 dispatch.naqel || "—"],
       ["السائق",                 dispatch.driverName],
       ["نوع الخلطة",             dispatch.mixType],
       ["الوزن المرسل",           `${dispatch.weight} طن`],
       ["الحرارة عند الإرسال",    `${dispatch.tempDispatch}°م`],
       ["الموقع",                 dispatch.site],
-      [dispatch.locationType === "km_range" ? "من الكيلومتر" : "القطعة",  dispatch.block  || "—"],
-      [dispatch.locationType === "km_range" ? "إلى الكيلومتر" : "الشارع", dispatch.street || "—"],
-      ["وقت المغادرة",           dispatch.timestamp],
-    ].forEach(([l, v]) => summary.appendChild(fieldRow(l, v)));
+    ];
+    if (dispatch.locationType === "km_range") {
+      rows.push(["من الكيلومتر", dispatch.block || "—"]);
+      rows.push(["إلى الكيلومتر", dispatch.street || "—"]);
+    } else if (dispatch.locationType === "named") {
+      rows.push(["اسم الشارع / الموقع", dispatch.block || "—"]);
+    } else {
+      rows.push(["القطعة", dispatch.block || "—"]);
+      rows.push(["الشارع", dispatch.street || "—"]);
+    }
+    rows.push(["وقت المغادرة", dispatch.timestamp]);
+    rows.forEach(([l, v]) => summary.appendChild(fieldRow(l, v)));
   } else {
     summary.appendChild(fieldRow("رقم السند", noteNumber));
     const warn = el("div", "info-box"); warn.style.marginTop=".5rem";
     warn.textContent = "لم يتم العثور على بيانات الإرسال لهذا السند. تأكد من الرقم وأعد المحاولة.";
     summary.appendChild(warn);
+  }
+
+  // Contact the driver directly (call / WhatsApp) if a number was recorded
+  if (dispatch && dispatch.driverPhone) {
+    const contact = driverContactRow(dispatch.driverName, dispatch.driverPhone);
+    contact.style.marginTop = ".6rem";
+    summary.appendChild(contact);
   }
   main.appendChild(summary);
 
@@ -1182,9 +1427,10 @@ async function renderReceipt(noteNumber, preAuthName) {
   card.appendChild(sectionTitle("تأكيد الاستلام"));
 
   // Engineer name
+  const engList = allEngineers();
   const { group: g1, input: engInput } = fieldGroup(
     "اسم المهندس",
-    CONFIG.engineers.length ? select(CONFIG.engineers.map(e => e.name), "اختر اسمك") : input("text", "الاسم الكامل"),
+    engList.length ? select(engList.map(e => e.name), "اختر اسمك") : input("text", "الاسم الكامل"),
     true
   );
   if (preAuthName) { engInput.value = preAuthName; engInput.disabled = true; }
@@ -1440,7 +1686,7 @@ function renderPINScreen(onSuccess) {
   const p = el("p"); p.textContent = "اختر اسمك وأدخل الرمز السري للمتابعة"; screen.appendChild(p);
 
   const { group: gName, input: nameInput } = fieldGroup(
-    "الاسم", select(CONFIG.engineers.map(e => e.name), "اختر اسمك"), true
+    "الاسم", select(allEngineers().map(e => e.name), "اختر اسمك"), true
   );
   screen.appendChild(gName);
 
@@ -1472,7 +1718,7 @@ function renderPINScreen(onSuccess) {
     if (!name) { errDiv.textContent = "يرجى اختيار اسمك"; errDiv.style.display = "block"; return; }
     if (!pin)  { errDiv.textContent = "يرجى إدخال الرمز السري"; errDiv.style.display = "block"; return; }
 
-    const eng = CONFIG.engineers.find(e => e.name === name);
+    const eng = findEngineer(name);
     if (eng && eng.pin === pin) {
       setEngineerSession(name);
       onSuccess(name);
@@ -1635,10 +1881,21 @@ async function renderEngineerHome(engName) {
       body.innerHTML = `
         <strong>المشروع:</strong> ${d.project || "—"}<br>
         <strong>أمر العمل:</strong> ${d.workOrder || "—"}<br>
-        <strong>المصنع:</strong> ${d.plant || "—"} &nbsp;|&nbsp; <strong>السائق:</strong> ${d.driverName || "—"}<br>
+        <strong>المصنع:</strong> ${d.plant || "—"} &nbsp;|&nbsp; <strong>الناقل:</strong> ${d.naqel || "—"}<br>
+        <strong>السائق:</strong> ${d.driverName || "—"}<br>
         <strong>الخلطة:</strong> ${d.mixType || "—"} &nbsp;|&nbsp; <strong>الوزن:</strong> ${d.weight || "—"} طن<br>
         <strong>الحرارة:</strong> ${d.tempDispatch || "—"}°م &nbsp;|&nbsp; <strong>الموقع:</strong> ${d.site || "—"}
       `;
+      card.appendChild(hdr);
+      card.appendChild(body);
+
+      // Contact the driver directly, if a number was recorded
+      if (d.driverPhone) {
+        const contact = driverContactRow(d.driverName, d.driverPhone);
+        contact.style.marginTop = ".6rem";
+        card.appendChild(contact);
+      }
+
       // Receipt button
       const receiptBtn = el("button", "btn-primary");
       receiptBtn.textContent = "تأكيد الاستلام →";
@@ -1648,8 +1905,6 @@ async function renderEngineerHome(engName) {
       receiptBtn.addEventListener("click", () => {
         window.location.href = `${window.location.href.split("?")[0]}?note=${encodeURIComponent(d.noteNumber)}`;
       });
-      card.appendChild(hdr);
-      card.appendChild(body);
       card.appendChild(receiptBtn);
       listArea.appendChild(card);
     });
@@ -1681,8 +1936,8 @@ if (note) {
     else renderPINScreen(name => renderEngineerHome(name));
   } else {
     const clerkSession = getClerkSession();
-    if (clerkSession) renderProjectSelect();
-    else renderClerkPINScreen(name => renderProjectSelect());
+    if (clerkSession) renderCompanySelect();
+    else renderClerkPINScreen(renderCompanySelect);
   }
 }
 </script>

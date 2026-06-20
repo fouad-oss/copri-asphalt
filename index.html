@@ -853,6 +853,10 @@ function locDisplay(d) {
 }
 // Digits-only phone for tel:/wa.me links (strips +, spaces, dashes).
 function cleanPhone(p) { return String(p || "").replace(/[^\d]/g, ""); }
+// Kuwait numbers are stored full (965 + local). The UI shows a fixed +965
+// prefix, so the input holds only the local digits.
+function localFromFull(full) { const d = cleanPhone(full); return d.indexOf("965") === 0 ? d.slice(3) : d; }
+function phoneToFull(local)   { const d = cleanPhone(local); if (!d) return ""; return d.indexOf("965") === 0 ? d : "965" + d; }
 
 // A two-button row letting the engineer contact the driver (call / WhatsApp).
 function driverContactRow(driverName, phone) {
@@ -1044,38 +1048,66 @@ function renderDispatch(ctx) {
   );
   card.appendChild(gWO);
 
-  const row2 = el("div", "field-row-2");
-  const { group: g2, input: truckInput } = fieldGroup("رقم الشاحنة", input("text", "رقم اللوحة"), true);
   const { group: gNaqel, input: naqelInput } = fieldGroup(
     "الناقل", select(CONFIG.naqelOptions, "اختر الناقل"), true
   );
-  row2.appendChild(g2); row2.appendChild(gNaqel);
-  card.appendChild(row2);
+  card.appendChild(gNaqel);
 
   // ── Driver section — rebuilt when الناقل changes ──────────────────
-  // Copri transport offers a quick-pick that auto-fills name + phone;
-  // both stay editable. External contractor = free text.
+  // The driver (quick-pick for Copri) comes first and auto-fills the phone
+  // and plate; all stay editable. Phone has a fixed +965 prefix, so the
+  // clerk types only the local digits. External contractor = free text.
   const driverWrap = el("div", "field-group"); driverWrap.style.gap = ".9rem";
-  let getDriver = () => ({ name: "", phone: "" });
+  let getDriver = () => ({ name: "", phone: "", truck: "" });
   function buildDriver() {
     driverWrap.innerHTML = "";
     const copri = naqelInput.value === "كوبري";
-    const { group: gName,  input: nameI }  = fieldGroup("اسم السائق", input("text", "الاسم الكامل"), true);
-    const { group: gPhone, input: phoneI } = fieldGroup("هاتف السائق", input("tel", "مثال: 96550001234", "tel"), false, "للتواصل من سجل المهندس");
+
+    // 1) Driver name — the field that populates phone + plate
+    const { group: gName, input: nameI } = fieldGroup("اسم السائق", input("text", "الاسم الكامل"), true);
+    let pickSel = null;
     if (copri && CONFIG.copriDrivers.length) {
-      const { group: gPick, input: pickSel } = fieldGroup(
+      const { group: gPick, input: ps } = fieldGroup(
         "اختر سائق كوبري", select(CONFIG.copriDrivers.map(d => d.name), "اختر من القائمة"), false,
         "يملأ الاسم والهاتف ورقم الشاحنة تلقائياً — يمكن تعديلها"
       );
-      pickSel.addEventListener("change", () => {
-        const d = CONFIG.copriDrivers.find(x => x.name === pickSel.value);
-        if (d) { nameI.value = d.name; phoneI.value = d.phone || ""; truckInput.value = d.truck || ""; }
-      });
+      pickSel = ps;
       driverWrap.appendChild(gPick);
     }
     driverWrap.appendChild(gName);
+
+    // 2) Phone — fixed +965 prefix, local digits only
+    const gPhone = el("div", "field-group");
+    const lblP = el("label"); lblP.textContent = "هاتف السائق"; gPhone.appendChild(lblP);
+    const phoneRow = el("div"); phoneRow.style.display = "flex"; phoneRow.style.gap = ".4rem";
+    phoneRow.style.direction = "ltr"; phoneRow.style.alignItems = "stretch";
+    const prefix = el("div"); prefix.textContent = "+965";
+    prefix.style.cssText = "display:flex;align-items:center;padding:0 .8rem;background:var(--surface-2);" +
+      "border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text-2);font-weight:700;white-space:nowrap;";
+    const phoneI = input("tel", "XXXXXXXX", "tel"); phoneI.maxLength = 8;
+    phoneI.style.direction = "ltr"; phoneI.style.textAlign = "left";
+    phoneRow.appendChild(prefix); phoneRow.appendChild(phoneI);
+    gPhone.appendChild(phoneRow);
+    const hintP = el("div", "field-hint"); hintP.textContent = "٨ أرقام محلية بدون 965 — للتواصل من سجل المهندس";
+    gPhone.appendChild(hintP);
     driverWrap.appendChild(gPhone);
-    getDriver = () => ({ name: nameI.value.trim(), phone: phoneI.value.trim() });
+
+    // 3) Plate number
+    const { group: gTruck, input: truckI } = fieldGroup("رقم الشاحنة", input("text", "رقم اللوحة"), true);
+    driverWrap.appendChild(gTruck);
+
+    if (pickSel) {
+      pickSel.addEventListener("change", () => {
+        const d = CONFIG.copriDrivers.find(x => x.name === pickSel.value);
+        if (d) { nameI.value = d.name; phoneI.value = localFromFull(d.phone); truckI.value = d.truck || ""; }
+      });
+    }
+
+    getDriver = () => ({
+      name:  nameI.value.trim(),
+      phone: phoneToFull(phoneI.value),
+      truck: truckI.value.trim(),
+    });
   }
   naqelInput.addEventListener("change", buildDriver);
   buildDriver();
@@ -1217,7 +1249,7 @@ function renderDispatch(ctx) {
       workOrder:    woInput.value.trim(),
       noteNumber:   noteInput.value.trim(),
       plant:        plantInput.value,
-      truckNumber:  truckInput.value.trim(),
+      truckNumber:  driver.truck,
       naqel:        naqelInput.value,
       driverName:   driver.name,
       driverPhone:  cleanPhone(driver.phone),

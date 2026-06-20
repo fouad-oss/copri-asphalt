@@ -677,9 +677,9 @@ const CONFIG = {
           locationType:     "block_street",
           allowNamedStreet: true,   // main streets can be entered by name
           engineers: [
-            { name: "أحمد عبد العزيز", pin: "8798", phone: "" },
-            { name: "أحمد بدوي",       pin: "8255", phone: "" },
-            { name: "إيهاب حسن",       pin: "5686", phone: "" },
+            { name: "أحمد عبد العزيز", pin: "8798", phone: "96551334626" },
+            { name: "أحمد بدوي",       pin: "8255", phone: "96566911641" },
+            { name: "إيهاب حسن",       pin: "5686", phone: "96550571838" },
             { name: "فؤاد الزغبي",     pin: "7764", phone: "96566767764" },
           ],
         },
@@ -1566,12 +1566,6 @@ function renderDispatchSuccess(ctx, data, receiptLink) {
     const done = el("p", "success-note"); done.textContent = "تم التسجيل بالمصنع — لا حاجة لإرسال للموقع."; s.appendChild(done);
   }
 
-  const printBtn = el("button", "btn-primary"); printBtn.style.marginTop = ".75rem";
-  printBtn.style.background = "var(--text-1)";
-  printBtn.innerHTML = "🖨 طباعة السند";
-  printBtn.addEventListener("click", () => printDeliveryNote(data, receiptLink));
-  s.appendChild(printBtn);
-
   const newBtn = el("button", "btn-ghost"); newBtn.textContent = "إرسال شحنة جديدة";
   newBtn.addEventListener("click", () => renderDispatch(ctx));
   s.appendChild(newBtn);
@@ -1698,33 +1692,8 @@ async function renderReceipt(noteNumber, preAuthName) {
   if (dispatch && dispatch.workOrder) woReceiptInput.value = dispatch.workOrder;
   card.appendChild(gWOr);
 
-  // Weight at arrival
-  const { group: g2, input: weightArrInput } = fieldGroup(
-    "الوزن عند الاستلام (طن)",
-    input("number", "أدخل الوزن الفعلي", "decimal"),
-    true,
-    dispatch ? `الوزن المرسل: ${dispatch.weight} طن` : "أدخل وزن الشاحنة عند الوصول"
-  );
-  weightArrInput.step = "0.01";
-  const weightDeltaDiv = el("div", "weight-delta"); weightDeltaDiv.style.display = "none";
-  g2.appendChild(weightDeltaDiv);
-  card.appendChild(g2);
-
-  weightArrInput.addEventListener("input", () => {
-    if (!dispatch || !weightArrInput.value) { weightDeltaDiv.style.display = "none"; return; }
-    const diff = Number(dispatch.weight) - Number(weightArrInput.value);
-    weightDeltaDiv.style.display = "block";
-    if (Math.abs(diff) <= CONFIG.weightShortage) {
-      weightDeltaDiv.className = "weight-delta weight-ok";
-      weightDeltaDiv.textContent = `✓ الوزن مطابق — فرق: ${Math.abs(diff).toFixed(2)} طن`;
-    } else if (diff > 0) {
-      weightDeltaDiv.className = "weight-delta weight-warn";
-      weightDeltaDiv.textContent = `⚠ نقص في الوزن — ${diff.toFixed(2)} طن`;
-    } else {
-      weightDeltaDiv.className = "weight-delta weight-ok";
-      weightDeltaDiv.textContent = `✓ وزن إضافي — ${Math.abs(diff).toFixed(2)} طن`;
-    }
-  });
+  // Arrival weight is no longer entered by the engineer — it defaults to the
+  // dispatched weight (recorded at the plant scale). See submit handler below.
 
   // Temperature at arrival
   const row = el("div", "field-row-2");
@@ -1792,7 +1761,6 @@ async function renderReceipt(noteNumber, preAuthName) {
 
   submitBtn.addEventListener("click", async () => {
     if (!engInput.value) { errDiv.textContent = "يرجى اختيار اسم المهندس"; errDiv.style.display = "block"; return; }
-    if (!weightArrInput.value) { errDiv.textContent = "يرجى إدخال الوزن عند الاستلام"; errDiv.style.display = "block"; return; }
     if (!tempArrInput.value) { errDiv.textContent = "يرجى إدخال الحرارة عند الوصول"; errDiv.style.display = "block"; return; }
     if (!decision) { errDiv.textContent = "يرجى اختيار قبول أو رفض"; errDiv.style.display = "block"; return; }
     if (decision === "مرفوض" && !reasonInput.value) { errDiv.textContent = "يرجى اختيار سبب الرفض"; errDiv.style.display = "block"; return; }
@@ -1806,7 +1774,7 @@ async function renderReceipt(noteNumber, preAuthName) {
         engineerName:  engInput.value,
         workOrder:     woReceiptInput.value.trim(),
         decision,
-        weightArrival: weightArrInput.value,
+        weightArrival: dispatch ? dispatch.weight : "",
         tempArrival:   tempArrInput.value,
         remarks:       decision === "مرفوض" ? reasonInput.value : remarksInput.value,
         timestamp:     timestamp(),

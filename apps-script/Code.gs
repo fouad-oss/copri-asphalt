@@ -50,6 +50,7 @@ const DISPATCH_HEADERS = [
   "الشركة",                   // S
   "الناقل",                   // T
   "هاتف السائق",              // U
+  "رقم الحمولة",              // V  (auto load count per site+block+street, resets at noon)
 ];
 
 const RECEIPT_HEADERS = [
@@ -84,6 +85,17 @@ function isoOrRaw(v) {
   return (v instanceof Date) ? v.toISOString() : String(v || "");
 }
 
+// Start of the current load-counting shift = the most recent 12:00 noon in
+// Kuwait (work runs overnight, so the day boundary is noon, not midnight).
+// Kuwait is UTC+3 year-round (no DST), so the +03:00 offset is safe.
+function shiftStart() {
+  const now      = new Date();
+  const ymd      = Utilities.formatDate(now, TZ, "yyyy-MM-dd");
+  let   boundary = new Date(ymd + "T12:00:00+03:00");
+  if (now.getTime() < boundary.getTime()) boundary = new Date(boundary.getTime() - 86400000);
+  return boundary;
+}
+
 // ── GET: fetch dispatch row by note number ──────────────────────────
 function doGet(e) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
@@ -106,6 +118,37 @@ function doGet(e) {
       }
     }
     return jsonResponse({ alreadyReceived: false });
+  }
+
+  // ── 1b. Next load number for an exact location this shift ─────────
+  // Counts dispatch rows matching project + site + block + street whose
+  // timestamp is at/after the most recent noon (Kuwait), then returns +1.
+  if (e.parameter.nextLoad) {
+    const proj   = String(e.parameter.project || "").trim();
+    const site   = String(e.parameter.site   || "").trim();
+    const block  = String(e.parameter.block  || "").trim();
+    const street = String(e.parameter.street || "").trim();
+    const sheet  = ss.getSheetByName(DISPATCH_SHEET);
+    const data   = sheet.getDataRange().getValues();
+    const h      = data[0];
+    const tsIdx  = h.indexOf("الطابع الزمني");
+    const pIdx   = h.indexOf("المشروع");
+    const sIdx   = h.indexOf("الموقع المستلم");
+    const bIdx   = h.indexOf("القطعة / من كم");
+    const stIdx  = h.indexOf("الشارع / إلى كم");
+    const boundary = shiftStart().getTime();
+    let count = 0;
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i]; if (!row[0]) continue;
+      const t = row[tsIdx];
+      if (!(t instanceof Date) || t.getTime() < boundary) continue;
+      if (String(row[pIdx]).trim()  !== proj)   continue;
+      if (String(row[sIdx]).trim()  !== site)   continue;
+      if (String(row[bIdx]).trim()  !== block)  continue;
+      if (String(row[stIdx]).trim() !== street) continue;
+      count++;
+    }
+    return jsonResponse({ count: count, next: count + 1 });
   }
 
   // ── 2. Engineer history (receipts + pending) ─────────────────────
@@ -142,6 +185,7 @@ function doGet(e) {
         workOrder:        dispRow ? dispRow[dh.indexOf("رقم أمر العمل")] || "" : "",
         mixType:          dispRow ? dispRow[dh.indexOf("نوع الخلطة")] || "" : "",
         weightDispatched: dispRow ? dispRow[dh.indexOf("الوزن (طن)")] || "" : "",
+        loadNumber:       dispRow ? dispRow[dh.indexOf("رقم الحمولة")] || "" : "",
       });
     }
 
@@ -165,6 +209,7 @@ function doGet(e) {
           weight:       row[dh.indexOf("الوزن (طن)")] || "",
           tempDispatch: row[dh.indexOf("درجة الحرارة عند الإرسال")] || "",
           site:         row[dh.indexOf("الموقع المستلم")] || "",
+          loadNumber:   row[dh.indexOf("رقم الحمولة")] || "",
         });
       }
     }
@@ -203,6 +248,7 @@ function doGet(e) {
           street:       row[h.indexOf("الشارع / إلى كم")] || "",
           locationType: locCode(row[h.indexOf("نوع الموقع")]), // ✦ FIX 3: label → code
           clerkName:    row[h.indexOf("اسم المشرف")],
+          loadNumber:   row[h.indexOf("رقم الحمولة")] || "",
           timestamp:    fmtKW(row[h.indexOf("الطابع الزمني")]),  // ✦ FIX 2
         }
       });
@@ -252,6 +298,7 @@ function doPost(e) {
         p.company     || "",
         p.naqel       || "",
         p.driverPhone || "",
+        p.loadNumber  || "",
       ]);
     }
 

@@ -1569,13 +1569,6 @@ function renderDispatchSuccess(ctx, data, receiptLink) {
     const done = el("p", "success-note"); done.textContent = "تم التسجيل بالمصنع — لا حاجة لإرسال للموقع."; s.appendChild(done);
   }
 
-  // TEMP: print button re-enabled for the engineer test — remove when done.
-  const printBtn = el("button", "btn-primary"); printBtn.style.marginTop = ".75rem";
-  printBtn.style.background = "var(--text-1)";
-  printBtn.innerHTML = "🖨 طباعة السند";
-  printBtn.addEventListener("click", () => printDeliveryNote(data, receiptLink));
-  s.appendChild(printBtn);
-
   const newBtn = el("button", "btn-ghost"); newBtn.textContent = "إرسال شحنة جديدة";
   newBtn.addEventListener("click", () => renderDispatch(ctx));
   s.appendChild(newBtn);

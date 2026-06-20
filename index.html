@@ -859,8 +859,9 @@ function localFromFull(full) { const d = cleanPhone(full); return d.indexOf("965
 function phoneToFull(local)   { const d = cleanPhone(local); if (!d) return ""; return d.indexOf("965") === 0 ? d : "965" + d; }
 
 // Auto load count — asks the backend for the next load number at this exact
-// location (project + site + block + street) within the current shift
-// (resets at noon Kuwait). Returns the next number, or null on failure.
+// location (project + site + block + street; a named street is carried in
+// block) within the current shift (resets at noon Kuwait). Each dispatch
+// advances it — no site confirmation needed. Returns the next number, or null.
 async function fetchNextLoad(projectName, site, block, street) {
   try {
     const u = `${CONFIG.scriptUrl}?nextLoad=1` +
@@ -1390,7 +1391,7 @@ function renderDispatch(ctx) {
   let loadReqSeq = 0;
   async function refreshLoadNumber() {
     const loc = getLocation();
-    if (!loc.block) { liveLoad = null; loadBox.textContent = "رقم الحمولة لهذا الموقع: —"; return; }
+    if (!siteInput.value || !loc.block) { liveLoad = null; loadBox.textContent = "رقم الحمولة لهذا الموقع: —"; return; }
     const seq = ++loadReqSeq;
     loadBox.textContent = "رقم الحمولة لهذا الموقع: جارٍ الحساب…";
     const n = await fetchNextLoad(projectName, siteInput.value, loc.block, loc.street);

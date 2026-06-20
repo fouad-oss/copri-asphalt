@@ -132,6 +132,9 @@ function doGet(e) {
   // 1b. Next load number for an exact location this shift
   // Counts dispatch rows matching project + site + block + street whose
   // timestamp is at/after the most recent noon (Kuwait), then returns +1.
+  // (For a named street the name is stored in block with street empty, so it
+  // is counted the same way.) Each dispatch advances the count immediately —
+  // no receipt confirmation from the site is required.
   if (e.parameter.nextLoad) {
     const proj   = String(e.parameter.project || "").trim();
     const site   = String(e.parameter.site   || "").trim();

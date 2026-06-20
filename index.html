@@ -1012,6 +1012,9 @@ function generateQR(noteNumber, baseUrl) {
   qrDiv.innerHTML = '';
   if (typeof QRCode !== 'undefined') {
     new QRCode(qrDiv, { text: receiptUrl, width: 72, height: 72, colorDark: "#1a1a2e", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+    // qrcodejs renders both a <canvas> and an <img>; hide the canvas so they don't overlap
+    var _img = qrDiv.querySelector('img'); var _cv = qrDiv.querySelector('canvas');
+    if (_img && _cv) _cv.style.display = 'none';
   }
 }
 <\/script>
@@ -1565,6 +1568,13 @@ function renderDispatchSuccess(ctx, data, receiptLink) {
   } else {
     const done = el("p", "success-note"); done.textContent = "تم التسجيل بالمصنع — لا حاجة لإرسال للموقع."; s.appendChild(done);
   }
+
+  // TEMP: print button re-enabled for the engineer test — remove when done.
+  const printBtn = el("button", "btn-primary"); printBtn.style.marginTop = ".75rem";
+  printBtn.style.background = "var(--text-1)";
+  printBtn.innerHTML = "🖨 طباعة السند";
+  printBtn.addEventListener("click", () => printDeliveryNote(data, receiptLink));
+  s.appendChild(printBtn);
 
   const newBtn = el("button", "btn-ghost"); newBtn.textContent = "إرسال شحنة جديدة";
   newBtn.addEventListener("click", () => renderDispatch(ctx));

@@ -118,11 +118,22 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
   // Sample QR pointing at a sample receipt link
-  new QRCode(document.getElementById('qr-code'), {
-    text: 'https://copri-asphalt.example/?note=125560',
-    width: 72, height: 72, colorDark: '#1a1a2e', colorLight: '#ffffff',
-    correctLevel: QRCode.CorrectLevel.M
-  });
+  (function () {
+    var box = document.getElementById('qr-code');
+    new QRCode(box, {
+      text: 'https://copri-asphalt.example/?note=125560',
+      width: 72, height: 72, colorDark: '#1a1a2e', colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M
+    });
+    // qrcodejs renders BOTH a <canvas> and an <img> of the same code, which
+    // overlap. Keep just the <img> (prints reliably) and hide the canvas.
+    function dedupe() {
+      var img = box.querySelector('img');
+      var canvas = box.querySelector('canvas');
+      if (img && canvas) canvas.style.display = 'none';
+    }
+    dedupe(); setTimeout(dedupe, 60);
+  })();
 </script>
 
 </body>

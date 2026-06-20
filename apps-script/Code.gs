@@ -136,10 +136,11 @@ function doGet(e) {
   // is counted the same way.) Each dispatch advances the count immediately —
   // no receipt confirmation from the site is required.
   if (e.parameter.nextLoad) {
-    const proj   = String(e.parameter.project || "").trim();
-    const site   = String(e.parameter.site   || "").trim();
-    const block  = String(e.parameter.block  || "").trim();
-    const street = String(e.parameter.street || "").trim();
+    const proj     = String(e.parameter.project || "").trim();
+    const site     = String(e.parameter.site   || "").trim();
+    const block    = String(e.parameter.block  || "").trim();
+    const street   = String(e.parameter.street || "").trim();
+    const siteOnly = !!e.parameter.siteOnly;   // count by project+site only (block/street optional)
     const sheet  = ss.getSheetByName(DISPATCH_SHEET);
     const data   = sheet.getDataRange().getValues();
     const h      = data[0];
@@ -154,10 +155,12 @@ function doGet(e) {
       const row = data[i]; if (!row[0]) continue;
       const t = row[tsIdx];
       if (!(t instanceof Date) || t.getTime() < boundary) continue;
-      if (String(row[pIdx]).trim()  !== proj)   continue;
-      if (String(row[sIdx]).trim()  !== site)   continue;
-      if (String(row[bIdx]).trim()  !== block)  continue;
-      if (String(row[stIdx]).trim() !== street) continue;
+      if (String(row[pIdx]).trim() !== proj) continue;
+      if (String(row[sIdx]).trim() !== site) continue;
+      if (!siteOnly) {
+        if (String(row[bIdx]).trim()  !== block)  continue;
+        if (String(row[stIdx]).trim() !== street) continue;
+      }
       count++;
     }
     return jsonResponse({ count: count, next: count + 1 });

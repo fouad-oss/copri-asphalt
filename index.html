@@ -862,13 +862,14 @@ function phoneToFull(local)   { const d = cleanPhone(local); if (!d) return ""; 
 // location (project + site + block + street; a named street is carried in
 // block) within the current shift (resets at noon Kuwait). Each dispatch
 // advances it — no site confirmation needed. Returns the next number, or null.
-async function fetchNextLoad(projectName, site, block, street) {
+async function fetchNextLoad(projectName, site, block, street, siteOnly) {
   try {
     const u = `${CONFIG.scriptUrl}?nextLoad=1` +
       `&project=${encodeURIComponent(projectName || "")}` +
       `&site=${encodeURIComponent(site || "")}` +
       `&block=${encodeURIComponent(block || "")}` +
-      `&street=${encodeURIComponent(street || "")}`;
+      `&street=${encodeURIComponent(street || "")}` +
+      (siteOnly ? `&siteOnly=1` : ``);
     const r = await fetch(u);
     const j = await r.json();
     return (typeof j.next === "number") ? j.next : null;
@@ -1387,14 +1388,17 @@ function renderDispatch(ctx) {
   loadBox.textContent = "رقم الحمولة لهذا الموقع: —";
   card.appendChild(loadBox);
 
+  // Non-Copri (e.g. Green Line): block/street optional, so count by site only.
+  const loadSiteOnly = !isCopri;
   let liveLoad = null;
   let loadReqSeq = 0;
   async function refreshLoadNumber() {
     const loc = getLocation();
-    if (!siteInput.value || !loc.block) { liveLoad = null; loadBox.textContent = "رقم الحمولة لهذا الموقع: —"; return; }
+    const ready = loadSiteOnly ? !!siteInput.value : (!!siteInput.value && !!loc.block);
+    if (!ready) { liveLoad = null; loadBox.textContent = "رقم الحمولة لهذا الموقع: —"; return; }
     const seq = ++loadReqSeq;
     loadBox.textContent = "رقم الحمولة لهذا الموقع: جارٍ الحساب…";
-    const n = await fetchNextLoad(projectName, siteInput.value, loc.block, loc.street);
+    const n = await fetchNextLoad(projectName, siteInput.value, loc.block, loc.street, loadSiteOnly);
     if (seq !== loadReqSeq) return;   // a newer request superseded this one
     liveLoad = n;
     loadBox.textContent = n
@@ -1501,7 +1505,7 @@ function renderDispatch(ctx) {
 
     // Authoritative load number for this exact location, fetched right before
     // writing so it reflects the latest count (resets at noon Kuwait).
-    const authLoad = await fetchNextLoad(data.project, data.site, data.block, data.street);
+    const authLoad = await fetchNextLoad(data.project, data.site, data.block, data.street, !isCopri);
     data.loadNumber = (authLoad != null) ? authLoad : (liveLoad != null ? liveLoad : "");
 
     btn.textContent = "جارٍ الإرسال...";

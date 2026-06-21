@@ -853,6 +853,8 @@ function locDisplay(d) {
 }
 // Digits-only phone for tel:/wa.me links (strips +, spaces, dashes).
 function cleanPhone(p) { return String(p || "").replace(/[^\d]/g, ""); }
+// Trim + collapse inner whitespace — keeps street-name load counts consistent.
+function normSp(s) { return String(s || "").trim().replace(/\s+/g, " "); }
 // Kuwait numbers are stored full (965 + local). The UI shows a fixed +965
 // prefix, so the input holds only the local digits.
 function localFromFull(full) { const d = cleanPhone(full); return d.indexOf("965") === 0 ? d.slice(3) : d; }
@@ -1352,11 +1354,11 @@ function renderDispatch(ctx) {
       card.appendChild(lbl); card.appendChild(toggle);
       tBlocks.addEventListener("click", () => {
         if (locMode === "blocks") return;
-        locMode = "blocks"; tBlocks.classList.add("active"); tNamed.classList.remove("active"); buildLoc();
+        locMode = "blocks"; tBlocks.classList.add("active"); tNamed.classList.remove("active"); buildLoc(); refreshLoadNumber();
       });
       tNamed.addEventListener("click", () => {
         if (locMode === "named") return;
-        locMode = "named"; tNamed.classList.add("active"); tBlocks.classList.remove("active"); buildLoc();
+        locMode = "named"; tNamed.classList.add("active"); tBlocks.classList.remove("active"); buildLoc(); refreshLoadNumber();
       });
     }
 
@@ -1388,17 +1390,20 @@ function renderDispatch(ctx) {
   loadBox.textContent = "رقم الحمولة لهذا الموقع: —";
   card.appendChild(loadBox);
 
-  // Non-Copri (e.g. Green Line): block/street optional, so count by site only.
-  const loadSiteOnly = !isCopri;
+  // Count by site only when block/street can't be relied on as a key:
+  //  - non-Copri projects (block/street optional), or
+  //  - named-street entries (free-typed name varies in spelling/spacing).
+  // Numbered block/street (and km range) stay granular.
   let liveLoad = null;
   let loadReqSeq = 0;
   async function refreshLoadNumber() {
     const loc = getLocation();
-    const ready = loadSiteOnly ? !!siteInput.value : (!!siteInput.value && !!loc.block);
+    const siteOnly = !isCopri || loc.locationType === "named";
+    const ready = siteOnly ? !!siteInput.value : (!!siteInput.value && !!loc.block);
     if (!ready) { liveLoad = null; loadBox.textContent = "رقم الحمولة لهذا الموقع: —"; return; }
     const seq = ++loadReqSeq;
     loadBox.textContent = "رقم الحمولة لهذا الموقع: جارٍ الحساب…";
-    const n = await fetchNextLoad(projectName, siteInput.value, loc.block, loc.street, loadSiteOnly);
+    const n = await fetchNextLoad(projectName, siteInput.value, loc.block, loc.street, siteOnly);
     if (seq !== loadReqSeq) return;   // a newer request superseded this one
     liveLoad = n;
     loadBox.textContent = n
@@ -1469,9 +1474,9 @@ function renderDispatch(ctx) {
       mixType:      mixInput.value,
       weight:       weightInput.value,
       tempDispatch: tempInput.value,
-      site:         siteInput.value,
-      block:        loc.block,
-      street:       loc.street,
+      site:         normSp(siteInput.value),
+      block:        normSp(loc.block),
+      street:       normSp(loc.street),
       locationType: loc.locationType,
       clerkName:    clerkInput.value,
       notifyEngineer: notifyInput ? notifyInput.value : "",
@@ -1505,7 +1510,8 @@ function renderDispatch(ctx) {
 
     // Authoritative load number for this exact location, fetched right before
     // writing so it reflects the latest count (resets at noon Kuwait).
-    const authLoad = await fetchNextLoad(data.project, data.site, data.block, data.street, !isCopri);
+    const loadSiteOnly = !isCopri || data.locationType === "named";
+    const authLoad = await fetchNextLoad(data.project, data.site, data.block, data.street, loadSiteOnly);
     data.loadNumber = (authLoad != null) ? authLoad : (liveLoad != null ? liveLoad : "");
 
     btn.textContent = "جارٍ الإرسال...";

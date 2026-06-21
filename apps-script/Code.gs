@@ -45,6 +45,7 @@ const COL = {
   naqel:       "الناقل",
   driverPhone: "هاتف السائق",
   loadNumber:  "رقم الحمولة",
+  notifyEng:   "مهندس الإخطار",
   engineer:    "اسم المهندس",
   decision:    "القرار",
   weightArr:   "الوزن عند الاستلام (طن)",
@@ -68,7 +69,7 @@ const DISPATCH_HEADERS = [
   COL.ts, COL.project, COL.contract, COL.workOrder, COL.note, COL.plant,
   COL.truck, COL.driver, COL.mix, COL.weight, COL.tempDisp, COL.site,
   COL.block, COL.street, COL.locType, COL.clerk, COL.remarks, COL.status,
-  COL.company, COL.naqel, COL.driverPhone, COL.loadNumber,
+  COL.company, COL.naqel, COL.driverPhone, COL.loadNumber, COL.notifyEng,
 ];
 
 const RECEIPT_HEADERS = [
@@ -93,6 +94,9 @@ function fmtKW(v) {
 function isoOrRaw(v) {
   return (v instanceof Date) ? v.toISOString() : String(v || "");
 }
+// Normalize for matching: trim + collapse runs of whitespace to one space.
+// Keeps the load count stable when a street name is typed with extra/odd spaces.
+function norm(s) { return String(s || "").trim().replace(/\s+/g, " "); }
 
 // Start of the current load-counting shift = the most recent 12:00 noon in
 // Kuwait (work runs overnight, so the day boundary is noon, not midnight).
@@ -136,10 +140,10 @@ function doGet(e) {
   // is counted the same way.) Each dispatch advances the count immediately —
   // no receipt confirmation from the site is required.
   if (e.parameter.nextLoad) {
-    const proj     = String(e.parameter.project || "").trim();
-    const site     = String(e.parameter.site   || "").trim();
-    const block    = String(e.parameter.block  || "").trim();
-    const street   = String(e.parameter.street || "").trim();
+    const proj     = norm(e.parameter.project);
+    const site     = norm(e.parameter.site);
+    const block    = norm(e.parameter.block);
+    const street   = norm(e.parameter.street);
     const siteOnly = !!e.parameter.siteOnly;   // count by project+site only (block/street optional)
     const sheet  = ss.getSheetByName(DISPATCH_SHEET);
     const data   = sheet.getDataRange().getValues();
@@ -155,11 +159,11 @@ function doGet(e) {
       const row = data[i]; if (!row[0]) continue;
       const t = row[tsIdx];
       if (!(t instanceof Date) || t.getTime() < boundary) continue;
-      if (String(row[pIdx]).trim() !== proj) continue;
-      if (String(row[sIdx]).trim() !== site) continue;
+      if (norm(row[pIdx]) !== proj) continue;
+      if (norm(row[sIdx]) !== site) continue;
       if (!siteOnly) {
-        if (String(row[bIdx]).trim()  !== block)  continue;
-        if (String(row[stIdx]).trim() !== street) continue;
+        if (norm(row[bIdx])  !== block)  continue;
+        if (norm(row[stIdx]) !== street) continue;
       }
       count++;
     }
@@ -202,10 +206,15 @@ function doGet(e) {
     }
 
     const pending = [];
+    const notifyIdx = dh.indexOf(COL.notifyEng);
     for (let i = 1; i < dData.length; i++) {
       const row     = dData[i]; if (!row[0]) continue;
       const status  = String(row[dh.indexOf(COL.status)] || "");
       const noteNum = String(row[dh.indexOf(COL.note)]);
+      // Only this engineer's assigned loads. Excludes plant-only dispatches
+      // (e.g. Green Line) which have no notified engineer.
+      const notifiedEng = notifyIdx > -1 ? String(row[notifyIdx] || "").trim() : "";
+      if (notifiedEng !== String(engName).trim()) continue;
       if ((status === STATUS_TRANSIT || !status) && !receivedNotes.has(noteNum)) {
         pending.push({
           noteNumber:   noteNum,
@@ -270,6 +279,11 @@ function doGet(e) {
 
 // ── POST ────────────────────────────────────────────────────────────
 function doPost(e) {
+  // Serialize writes so the duplicate-note guard is atomic. Without this,
+  // two near-simultaneous submits can both pass the check and double-write.
+  const lock = LockService.getScriptLock();
+  try { lock.waitLock(15000); }
+  catch (err) { return jsonResponse({ success: false, error: "busy, please retry" }); }
   try {
     const p  = JSON.parse(e.postData.contents);
     const ss = SpreadsheetApp.openById(SHEET_ID);
@@ -311,7 +325,9 @@ function doPost(e) {
         p.naqel       || "",
         p.driverPhone || "",
         p.loadNumber  || "",
+        p.notifyEngineer || "",
       ]);
+      SpreadsheetApp.flush();   // commit before releasing the lock
     }
 
     if (p.type === "receipt") {
@@ -344,6 +360,8 @@ function doPost(e) {
     return jsonResponse({ success: true });
   } catch (err) {
     return jsonResponse({ error: err.message });
+  } finally {
+    lock.releaseLock();
   }
 }
 

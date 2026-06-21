@@ -87,12 +87,14 @@ const REP = {
   otherTons:   "وزن أخرى (طن)",
   hTempDisp:   "حرارة الإرسال",
   hTempArr:    "حرارة الوصول",
+  hDelta:      "مدة الوصول",
   plantTitle:  "تقرير المصنع اليومي",
   copriTitle:  "تقرير كوبري اليومي",
   workDay:     "يوم العمل (من الظهر إلى الظهر)",
   totalLoads:  "إجمالي الحمولات",
   totalTons:   "إجمالي الوزن (طن)",
   byPlant:     "حسب المصنع",
+  bySite:      "حسب الموقع",
   byMix:       "حسب نوع الخلطة",
   byCompany:   "حسب الشركة",
   details:     "التفاصيل",
@@ -112,6 +114,7 @@ const REP = {
   hStatus:     "الحالة",
   hWO:         "أمر العمل",
   hCompany:    "الشركة",
+  footer:      "كوبري للمشاريع الإنشائية — منظومة التتبع الرقمي",
 };
 
 // ── Column order for each sheet (pure ASCII, built from COL) ─────────
@@ -540,10 +543,10 @@ function collectShift(win) {
 
   const recByNote = {};
   const rNote = rh.indexOf(COL.note), rDec = rh.indexOf(COL.decision),
-        rTempArr = rh.indexOf(COL.tempArr), rWeightArr = rh.indexOf(COL.weightArr);
+        rTempArr = rh.indexOf(COL.tempArr), rWeightArr = rh.indexOf(COL.weightArr), rTs = rh.indexOf(COL.ts);
   for (let i = 1; i < r.length; i++) {
     const note = String(r[i][rNote] || ""); if (!note) continue;
-    recByNote[note] = { decision: r[i][rDec] || "", tempArr: r[i][rTempArr] || "", weightArr: r[i][rWeightArr] || "" };
+    recByNote[note] = { decision: r[i][rDec] || "", tempArr: r[i][rTempArr] || "", weightArr: r[i][rWeightArr] || "", ts: r[i][rTs] };
   }
 
   const ix = {
@@ -577,64 +580,110 @@ function collectShift(win) {
       status: String(row[ix.status] || ""),
       decision: rec ? rec.decision : "",
       tempArr: rec ? rec.tempArr : "",
+      delta: (rec && rec.ts instanceof Date) ? fmtDur_(rec.ts.getTime() - t.getTime()) : "-",
     });
   }
   return out;
 }
 
+// Format a duration (ms) as H:MM; "-" if unknown/invalid.
+function fmtDur_(ms) {
+  if (!(ms > 0)) return "-";
+  const mins = Math.round(ms / 60000);
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return h + ":" + (m < 10 ? "0" + m : m);
+}
+
 function esc_(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 function fmt2_(n) { return (Math.round((Number(n) || 0) * 100) / 100).toFixed(2); }
+
+// Shared, Copri-branded styling so both PDFs look identical.
 function reportCss_() {
   return "<style>" +
-    "body{font-family:Arial,'Arial Unicode MS',sans-serif;direction:rtl;color:#111;font-size:11px;}" +
-    "h1{font-size:16px;color:#007A3D;margin:0 0 2px;}" +
-    ".sub{color:#555;font-size:10px;margin-bottom:8px;}" +
-    "h2{font-size:12px;background:#1a1a2e;color:#fff;padding:3px 6px;margin:10px 0 4px;}" +
-    "table{border-collapse:collapse;width:100%;margin-bottom:6px;}" +
-    "th,td{border:1px solid #999;padding:2px 4px;text-align:center;font-size:10px;}" +
-    "th{background:#eee;}.tot{font-weight:bold;background:#e8f5ee;font-size:11px;}" +
+    "body{font-family:Arial,'Arial Unicode MS',sans-serif;direction:rtl;color:#1A1A2E;font-size:11px;margin:0;}" +
+    ".hdr{width:100%;border-collapse:collapse;border-bottom:3px solid #00A651;margin-bottom:10px;}" +
+    ".hdr td{vertical-align:middle;padding:4px;}" +
+    ".logo{display:inline-block;font-size:18px;font-weight:bold;color:#00A651;border:2px solid #00A651;border-radius:6px;padding:3px 12px;text-align:center;}" +
+    ".logo .en{display:block;font-size:7px;color:#666;letter-spacing:2px;font-weight:normal;}" +
+    ".h-title{font-size:17px;font-weight:bold;color:#1A1A2E;}" +
+    ".h-sub{font-size:9px;color:#666;}" +
+    ".cards{width:100%;border-collapse:separate;border-spacing:6px 0;margin-bottom:10px;}" +
+    ".card{background:#e8f5ee;border:1px solid #00A651;border-radius:6px;padding:7px;text-align:center;}" +
+    ".card .lbl{font-size:9px;color:#007A3D;}" +
+    ".card .val{font-size:18px;font-weight:bold;color:#007A3D;}" +
+    "h2{font-size:11px;color:#fff;background:#1A1A2E;padding:4px 8px;margin:12px 0 4px;border-radius:4px;}" +
+    "table.data{border-collapse:collapse;width:100%;margin-bottom:4px;}" +
+    "table.data th{background:#00A651;color:#fff;font-size:9px;padding:4px 3px;border:1px solid #00813f;}" +
+    "table.data td{border:1px solid #d8d8d2;padding:3px;font-size:9px;text-align:center;}" +
+    "tr.alt td{background:#f4f4f0;}" +
+    ".foot{margin-top:12px;border-top:1px solid #ddd;padding-top:4px;text-align:center;color:#999;font-size:8px;}" +
+    ".empty{color:#888;font-size:10px;padding:8px;}" +
     "</style>";
 }
 function workDayLabel_(win) {
-  return Utilities.formatDate(new Date(win.start), TZ, "dd/MM/yyyy HH:mm") + " — " +
+  return Utilities.formatDate(new Date(win.start), TZ, "dd/MM/yyyy HH:mm") + " - " +
          Utilities.formatDate(new Date(win.end),   TZ, "dd/MM/yyyy HH:mm");
+}
+function repHeader_(title, win) {
+  return reportCss_() +
+    "<table class='hdr'><tr>" +
+      "<td style='width:80px'><div class='logo'>" + esc_(COPRI_COMPANY) + "<span class='en'>COPRI</span></div></td>" +
+      "<td style='text-align:center'><div class='h-title'>" + title + "</div>" +
+        "<div class='h-sub'>" + REP.workDay + ": " + workDayLabel_(win) + "</div></td>" +
+      "<td style='width:120px;text-align:left'><div class='h-sub'>" + REP.updated + "<br>" +
+        Utilities.formatDate(new Date(), TZ, "dd/MM/yyyy HH:mm") + "</div></td>" +
+    "</tr></table>";
+}
+function repFooter_() { return "<div class='foot'>" + REP.footer + "</div>"; }
+function cards_(pairs) {
+  let t = "<table class='cards'><tr>";
+  pairs.forEach(function (p) { t += "<td class='card'><div class='lbl'>" + p[0] + "</div><div class='val'>" + p[1] + "</div></td>"; });
+  return t + "</tr></table>";
+}
+function dataRows_(arr) {
+  let t = "";
+  arr.forEach(function (cells, i) {
+    t += "<tr class='" + (i % 2 ? "alt" : "") + "'>";
+    cells.forEach(function (c) { t += "<td>" + c + "</td>"; });
+    t += "</tr>";
+  });
+  return t;
 }
 
 // Plant-side: every dispatch this shift, with totals by plant and by mix.
 function plantReportHtml_(rows, win) {
-  let totalTons = 0; const byPlant = {}, byMix = {};
+  let totalTons = 0; const byPlant = {}, bySite = {}, byMix = {};
   rows.forEach(function (x) {
     totalTons += x.tons;
     (byPlant[x.plant] = byPlant[x.plant] || { loads: 0, tons: 0 }); byPlant[x.plant].loads++; byPlant[x.plant].tons += x.tons;
+    (bySite[x.site] = bySite[x.site] || { loads: 0, tons: 0 }); bySite[x.site].loads++; bySite[x.site].tons += x.tons;
     (byMix[x.mix] = byMix[x.mix] || { loads: 0, tons: 0 }); byMix[x.mix].loads++; byMix[x.mix].tons += x.tons;
   });
-  let h = reportCss_();
-  h += "<h1>" + REP.plantTitle + "</h1><div class='sub'>" + REP.workDay + ": " + workDayLabel_(win) + "</div>";
-  h += "<table><tr><td class='tot'>" + REP.totalLoads + ": " + rows.length + "</td><td class='tot'>" + REP.totalTons + ": " + fmt2_(totalTons) + "</td></tr></table>";
-  function totTable(title, obj, head) {
-    let t = "<h2>" + title + "</h2><table><tr><th>" + head + "</th><th>" + REP.loads + "</th><th>" + REP.tons + "</th></tr>";
-    Object.keys(obj).forEach(function (k) { t += "<tr><td>" + esc_(k) + "</td><td>" + obj[k].loads + "</td><td>" + fmt2_(obj[k].tons) + "</td></tr>"; });
-    return t + "</table>";
+  let h = repHeader_(REP.plantTitle, win);
+  h += cards_([[REP.totalLoads, rows.length], [REP.totalTons, fmt2_(totalTons)]]);
+  function totBlock(title, obj, head) {
+    const body = Object.keys(obj).map(function (k) { return [esc_(k || "-"), obj[k].loads, fmt2_(obj[k].tons)]; });
+    return "<h2>" + title + "</h2><table class='data'><tr><th>" + head + "</th><th>" + REP.loads + "</th><th>" + REP.tons + "</th></tr>" + dataRows_(body) + "</table>";
   }
-  h += totTable(REP.byPlant, byPlant, REP.hPlant);
-  h += totTable(REP.byMix, byMix, REP.hMix);
+  h += totBlock(REP.byPlant, byPlant, REP.hPlant);
+  h += totBlock(REP.bySite, bySite, REP.hSite);
+  h += totBlock(REP.byMix, byMix, REP.hMix);
   h += "<h2>" + REP.details + "</h2>";
-  if (!rows.length) return h + "<div>" + REP.noData + "</div>";
-  h += "<table><tr><th>" + REP.hTime + "</th><th>" + REP.hNote + "</th><th>" + REP.hCompany + "</th><th>" + REP.hSite + "</th><th>" + REP.hMix + "</th><th>" + REP.hTons + "</th><th>" + REP.hTemp + "</th><th>" + REP.hPlant + "</th><th>" + REP.hDriver + "</th><th>" + REP.hStatus + "</th></tr>";
-  rows.forEach(function (x) {
-    h += "<tr><td>" + esc_(x.time) + "</td><td>" + esc_(x.note) + "</td><td>" + esc_(x.company) + "</td><td>" + esc_(x.site) + "</td><td>" + esc_(x.mix) + "</td><td>" + fmt2_(x.tons) + "</td><td>" + esc_(x.tempDisp) + "</td><td>" + esc_(x.plant) + "</td><td>" + esc_(x.driver) + "</td><td>" + esc_(x.status) + "</td></tr>";
-  });
-  return h + "</table>";
+  if (!rows.length) return h + "<div class='empty'>" + REP.noData + "</div>" + repFooter_();
+  h += "<table class='data'><tr><th>" + REP.hTime + "</th><th>" + REP.hNote + "</th><th>" + REP.hCompany + "</th><th>" + REP.hSite + "</th><th>" + REP.hMix + "</th><th>" + REP.hTons + "</th><th>" + REP.hTemp + "</th><th>" + REP.hPlant + "</th><th>" + REP.hDriver + "</th><th>" + REP.hStatus + "</th></tr>";
+  h += dataRows_(rows.map(function (x) {
+    return [esc_(x.time), esc_(x.note), esc_(x.company), esc_(x.site), esc_(x.mix), fmt2_(x.tons), esc_(x.tempDisp), esc_(x.plant), esc_(x.driver), esc_(x.status)];
+  }));
+  return h + "</table>" + repFooter_();
 }
 
 // Copri-side: Copri company only, grouped by project / site with receipt status.
 function copriReportHtml_(allRows, win) {
   const rows = allRows.filter(function (x) { return String(x.company).trim() === COPRI_COMPANY; });
-  let h = reportCss_();
-  h += "<h1>" + REP.copriTitle + "</h1><div class='sub'>" + REP.workDay + ": " + workDayLabel_(win) + "</div>";
-  if (!rows.length) return h + "<div>" + REP.noData + "</div>";
+  let h = repHeader_(REP.copriTitle, win);
+  if (!rows.length) return h + "<div class='empty'>" + REP.noData + "</div>" + repFooter_();
   let gTons = 0; rows.forEach(function (x) { gTons += x.tons; });
-  h += "<table><tr><td class='tot'>" + REP.totalLoads + ": " + rows.length + "</td><td class='tot'>" + REP.totalTons + ": " + fmt2_(gTons) + "</td></tr></table>";
+  h += cards_([[REP.totalLoads, rows.length], [REP.totalTons, fmt2_(gTons)]]);
   const groups = {};
   rows.forEach(function (x) {
     const p = x.project || "-", s = x.site || "-";
@@ -643,16 +692,16 @@ function copriReportHtml_(allRows, win) {
   Object.keys(groups).forEach(function (p) {
     Object.keys(groups[p]).forEach(function (s) {
       const list = groups[p][s]; let st = 0; list.forEach(function (x) { st += x.tons; });
-      h += "<h2>" + esc_(p) + " / " + esc_(s) + " — " + list.length + " " + REP.loads + " · " + fmt2_(st) + " " + REP.tons + "</h2>";
-      h += "<table><tr><th>" + REP.hTime + "</th><th>" + REP.hNote + "</th><th>" + REP.hLoad + "</th><th>" + REP.hWO + "</th><th>" + REP.hMix + "</th><th>" + REP.hTons + "</th><th>" + REP.hTemp + "</th><th>" + REP.hStatus + "</th></tr>";
-      list.forEach(function (x) {
+      h += "<h2>" + esc_(p) + " / " + esc_(s) + " &mdash; " + list.length + " " + REP.loads + " &middot; " + fmt2_(st) + " " + REP.tons + "</h2>";
+      h += "<table class='data'><tr><th>" + REP.hTime + "</th><th>" + REP.hNote + "</th><th>" + REP.hLoad + "</th><th>" + REP.hWO + "</th><th>" + REP.hMix + "</th><th>" + REP.hTons + "</th><th>" + REP.hTemp + "</th><th>" + REP.hDelta + "</th><th>" + REP.hStatus + "</th></tr>";
+      h += dataRows_(list.map(function (x) {
         const status = x.decision ? x.decision : x.status;
-        h += "<tr><td>" + esc_(x.time) + "</td><td>" + esc_(x.note) + "</td><td>" + esc_(x.load) + "</td><td>" + esc_(x.workOrder) + "</td><td>" + esc_(x.mix) + "</td><td>" + fmt2_(x.tons) + "</td><td>" + esc_(x.tempArr || x.tempDisp) + "</td><td>" + esc_(status) + "</td></tr>";
-      });
+        return [esc_(x.time), esc_(x.note), esc_(x.load), esc_(x.workOrder), esc_(x.mix), fmt2_(x.tons), esc_(x.tempArr || x.tempDisp), esc_(x.delta), esc_(status)];
+      }));
       h += "</table>";
     });
   });
-  return h;
+  return h + repFooter_();
 }
 
 function reportFolder_() {

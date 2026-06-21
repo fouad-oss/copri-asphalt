@@ -64,6 +64,43 @@ const STATUS_TRANSIT = "في الطريق";
 const AR_LEGACY_NOTE = "نموذج";
 const AR_LEGACY_WO   = "مهندس";
 
+// ── Daily work-day report config + labels (Arabic isolated here) ─────
+const REPORT_FOLDER = "Copri Asphalt Daily Reports";
+const REPORT_EMAIL  = "fszoghby@gmail.com";   // "" to skip email
+// Company name counted as the "Copri side" of the reports
+const COPRI_COMPANY = "كوبري";
+const REP = {
+  menuTitle:   "تقارير كوبري",
+  menuCurrent: "وردية اليوم الحالية (PDF)",
+  menuPrev:    "الوردية السابقة (PDF)",
+  done:        "تم إنشاء التقارير وحفظها في Drive وإرسالها بالبريد.",
+  plantTitle:  "تقرير المصنع اليومي",
+  copriTitle:  "تقرير كوبري اليومي",
+  workDay:     "يوم العمل (من الظهر إلى الظهر)",
+  totalLoads:  "إجمالي الحمولات",
+  totalTons:   "إجمالي الوزن (طن)",
+  byPlant:     "حسب المصنع",
+  byMix:       "حسب نوع الخلطة",
+  byCompany:   "حسب الشركة",
+  details:     "التفاصيل",
+  noData:      "لا توجد بيانات لهذه الوردية",
+  loads:       "حمولات",
+  tons:        "طن",
+  hTime:       "الوقت",
+  hNote:       "رقم السند",
+  hProject:    "المشروع",
+  hSite:       "الموقع",
+  hMix:        "الخلطة",
+  hTons:       "الوزن",
+  hTemp:       "الحرارة",
+  hDriver:     "السائق",
+  hPlant:      "المصنع",
+  hLoad:       "الحمولة",
+  hStatus:     "الحالة",
+  hWO:         "أمر العمل",
+  hCompany:    "الشركة",
+};
+
 // ── Column order for each sheet (pure ASCII, built from COL) ─────────
 const DISPATCH_HEADERS = [
   COL.ts, COL.project, COL.contract, COL.workOrder, COL.note, COL.plant,
@@ -447,4 +484,206 @@ function wipeAllData() {
   //   if (last > 1) sh.deleteRows(2, last - 1);
   // });
   // Logger.log("All data rows cleared (headers kept).");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DAILY WORK-DAY REPORTS (PDF)  — plant side + Copri side
+// ═══════════════════════════════════════════════════════════════════
+// Work day = noon..noon (Kuwait), matching the load counter. Generates two
+// PDFs for a shift, saves them to a Drive folder, and emails them.
+//   - Sheet menu (reload the sheet to see it): REP.menuTitle
+//   - Auto-daily: run createReportTrigger() once to install a ~12:15 trigger
+//     that reports the just-closed shift.
+// All Arabic comes from REP / data values — the builders below are ASCII.
+
+// Sheet menu (simple trigger; appears after reloading the spreadsheet)
+function onOpen() {
+  try {
+    SpreadsheetApp.getUi().createMenu(REP.menuTitle)
+      .addItem(REP.menuCurrent, "generateCurrentShiftReports")
+      .addItem(REP.menuPrev,    "generatePreviousShiftReports")
+      .addToUi();
+  } catch (e) { /* not in a UI context */ }
+}
+
+// The noon..noon window (ms) that contains the given instant.
+function shiftWindow(anchorMs) {
+  const anchor = new Date(anchorMs);
+  const ymd    = Utilities.formatDate(anchor, TZ, "yyyy-MM-dd");
+  const noon   = new Date(ymd + "T12:00:00+03:00").getTime();
+  if (anchorMs >= noon) return { start: noon, end: noon + 86400000 };
+  return { start: noon - 86400000, end: noon };
+}
+
+// Collect dispatch rows in the window, each joined with its receipt (if any).
+function collectShift(win) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const d  = ss.getSheetByName(DISPATCH_SHEET).getDataRange().getValues();
+  const dh = d[0];
+  const r  = ss.getSheetByName(RECEIPT_SHEET).getDataRange().getValues();
+  const rh = r[0];
+
+  const recByNote = {};
+  const rNote = rh.indexOf(COL.note), rDec = rh.indexOf(COL.decision),
+        rTempArr = rh.indexOf(COL.tempArr), rWeightArr = rh.indexOf(COL.weightArr);
+  for (let i = 1; i < r.length; i++) {
+    const note = String(r[i][rNote] || ""); if (!note) continue;
+    recByNote[note] = { decision: r[i][rDec] || "", tempArr: r[i][rTempArr] || "", weightArr: r[i][rWeightArr] || "" };
+  }
+
+  const ix = {
+    ts: dh.indexOf(COL.ts), note: dh.indexOf(COL.note), company: dh.indexOf(COL.company),
+    project: dh.indexOf(COL.project), site: dh.indexOf(COL.site), mix: dh.indexOf(COL.mix),
+    weight: dh.indexOf(COL.weight), tempDisp: dh.indexOf(COL.tempDisp), driver: dh.indexOf(COL.driver),
+    plant: dh.indexOf(COL.plant), wo: dh.indexOf(COL.workOrder), load: dh.indexOf(COL.loadNumber),
+    status: dh.indexOf(COL.status),
+  };
+  const out = [];
+  for (let j = 1; j < d.length; j++) {
+    const row = d[j]; const t = row[ix.ts];
+    if (!(t instanceof Date)) continue;
+    const ms = t.getTime();
+    if (ms < win.start || ms >= win.end) continue;
+    const note = String(row[ix.note] || "");
+    const rec  = recByNote[note] || null;
+    out.push({
+      time: Utilities.formatDate(t, TZ, "HH:mm"),
+      note: note,
+      company: row[ix.company] || "",
+      project: row[ix.project] || "",
+      site: row[ix.site] || "",
+      mix: row[ix.mix] || "",
+      tons: Number(row[ix.weight]) || 0,
+      tempDisp: row[ix.tempDisp] || "",
+      driver: row[ix.driver] || "",
+      plant: row[ix.plant] || "",
+      workOrder: row[ix.wo] || "",
+      load: row[ix.load] || "",
+      status: String(row[ix.status] || ""),
+      decision: rec ? rec.decision : "",
+      tempArr: rec ? rec.tempArr : "",
+    });
+  }
+  return out;
+}
+
+function esc_(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function fmt2_(n) { return (Math.round((Number(n) || 0) * 100) / 100).toFixed(2); }
+function reportCss_() {
+  return "<style>" +
+    "body{font-family:Arial,'Arial Unicode MS',sans-serif;direction:rtl;color:#111;font-size:11px;}" +
+    "h1{font-size:16px;color:#007A3D;margin:0 0 2px;}" +
+    ".sub{color:#555;font-size:10px;margin-bottom:8px;}" +
+    "h2{font-size:12px;background:#1a1a2e;color:#fff;padding:3px 6px;margin:10px 0 4px;}" +
+    "table{border-collapse:collapse;width:100%;margin-bottom:6px;}" +
+    "th,td{border:1px solid #999;padding:2px 4px;text-align:center;font-size:10px;}" +
+    "th{background:#eee;}.tot{font-weight:bold;background:#e8f5ee;font-size:11px;}" +
+    "</style>";
+}
+function workDayLabel_(win) {
+  return Utilities.formatDate(new Date(win.start), TZ, "dd/MM/yyyy HH:mm") + " — " +
+         Utilities.formatDate(new Date(win.end),   TZ, "dd/MM/yyyy HH:mm");
+}
+
+// Plant-side: every dispatch this shift, with totals by plant and by mix.
+function plantReportHtml_(rows, win) {
+  let totalTons = 0; const byPlant = {}, byMix = {};
+  rows.forEach(function (x) {
+    totalTons += x.tons;
+    (byPlant[x.plant] = byPlant[x.plant] || { loads: 0, tons: 0 }); byPlant[x.plant].loads++; byPlant[x.plant].tons += x.tons;
+    (byMix[x.mix] = byMix[x.mix] || { loads: 0, tons: 0 }); byMix[x.mix].loads++; byMix[x.mix].tons += x.tons;
+  });
+  let h = reportCss_();
+  h += "<h1>" + REP.plantTitle + "</h1><div class='sub'>" + REP.workDay + ": " + workDayLabel_(win) + "</div>";
+  h += "<table><tr><td class='tot'>" + REP.totalLoads + ": " + rows.length + "</td><td class='tot'>" + REP.totalTons + ": " + fmt2_(totalTons) + "</td></tr></table>";
+  function totTable(title, obj, head) {
+    let t = "<h2>" + title + "</h2><table><tr><th>" + head + "</th><th>" + REP.loads + "</th><th>" + REP.tons + "</th></tr>";
+    Object.keys(obj).forEach(function (k) { t += "<tr><td>" + esc_(k) + "</td><td>" + obj[k].loads + "</td><td>" + fmt2_(obj[k].tons) + "</td></tr>"; });
+    return t + "</table>";
+  }
+  h += totTable(REP.byPlant, byPlant, REP.hPlant);
+  h += totTable(REP.byMix, byMix, REP.hMix);
+  h += "<h2>" + REP.details + "</h2>";
+  if (!rows.length) return h + "<div>" + REP.noData + "</div>";
+  h += "<table><tr><th>" + REP.hTime + "</th><th>" + REP.hNote + "</th><th>" + REP.hCompany + "</th><th>" + REP.hSite + "</th><th>" + REP.hMix + "</th><th>" + REP.hTons + "</th><th>" + REP.hTemp + "</th><th>" + REP.hPlant + "</th><th>" + REP.hDriver + "</th><th>" + REP.hStatus + "</th></tr>";
+  rows.forEach(function (x) {
+    h += "<tr><td>" + esc_(x.time) + "</td><td>" + esc_(x.note) + "</td><td>" + esc_(x.company) + "</td><td>" + esc_(x.site) + "</td><td>" + esc_(x.mix) + "</td><td>" + fmt2_(x.tons) + "</td><td>" + esc_(x.tempDisp) + "</td><td>" + esc_(x.plant) + "</td><td>" + esc_(x.driver) + "</td><td>" + esc_(x.status) + "</td></tr>";
+  });
+  return h + "</table>";
+}
+
+// Copri-side: Copri company only, grouped by project / site with receipt status.
+function copriReportHtml_(allRows, win) {
+  const rows = allRows.filter(function (x) { return String(x.company).trim() === COPRI_COMPANY; });
+  let h = reportCss_();
+  h += "<h1>" + REP.copriTitle + "</h1><div class='sub'>" + REP.workDay + ": " + workDayLabel_(win) + "</div>";
+  if (!rows.length) return h + "<div>" + REP.noData + "</div>";
+  let gTons = 0; rows.forEach(function (x) { gTons += x.tons; });
+  h += "<table><tr><td class='tot'>" + REP.totalLoads + ": " + rows.length + "</td><td class='tot'>" + REP.totalTons + ": " + fmt2_(gTons) + "</td></tr></table>";
+  const groups = {};
+  rows.forEach(function (x) {
+    const p = x.project || "-", s = x.site || "-";
+    (groups[p] = groups[p] || {}); (groups[p][s] = groups[p][s] || []).push(x);
+  });
+  Object.keys(groups).forEach(function (p) {
+    Object.keys(groups[p]).forEach(function (s) {
+      const list = groups[p][s]; let st = 0; list.forEach(function (x) { st += x.tons; });
+      h += "<h2>" + esc_(p) + " / " + esc_(s) + " — " + list.length + " " + REP.loads + " · " + fmt2_(st) + " " + REP.tons + "</h2>";
+      h += "<table><tr><th>" + REP.hTime + "</th><th>" + REP.hNote + "</th><th>" + REP.hLoad + "</th><th>" + REP.hWO + "</th><th>" + REP.hMix + "</th><th>" + REP.hTons + "</th><th>" + REP.hTemp + "</th><th>" + REP.hStatus + "</th></tr>";
+      list.forEach(function (x) {
+        const status = x.decision ? x.decision : x.status;
+        h += "<tr><td>" + esc_(x.time) + "</td><td>" + esc_(x.note) + "</td><td>" + esc_(x.load) + "</td><td>" + esc_(x.workOrder) + "</td><td>" + esc_(x.mix) + "</td><td>" + fmt2_(x.tons) + "</td><td>" + esc_(x.tempArr || x.tempDisp) + "</td><td>" + esc_(status) + "</td></tr>";
+      });
+      h += "</table>";
+    });
+  });
+  return h;
+}
+
+function reportFolder_() {
+  const it = DriveApp.getFoldersByName(REPORT_FOLDER);
+  return it.hasNext() ? it.next() : DriveApp.createFolder(REPORT_FOLDER);
+}
+
+// Generate both PDFs for the shift containing anchorMs; save to Drive + email.
+function generateReportsForShift(anchorMs) {
+  const win  = shiftWindow(anchorMs);
+  const rows = collectShift(win);
+  const day  = Utilities.formatDate(new Date(win.start), TZ, "yyyy-MM-dd");
+  const plantPdf = Utilities.newBlob(plantReportHtml_(rows, win), "text/html", "p.html").getAs("application/pdf").setName("Plant_" + day + ".pdf");
+  const copriPdf = Utilities.newBlob(copriReportHtml_(rows, win), "text/html", "c.html").getAs("application/pdf").setName("Copri_" + day + ".pdf");
+  const folder = reportFolder_();
+  folder.createFile(plantPdf);
+  folder.createFile(copriPdf);
+  if (REPORT_EMAIL) {
+    MailApp.sendEmail({
+      to: REPORT_EMAIL,
+      subject: "Copri Asphalt daily reports - " + day,
+      body: "Plant-side and Copri-side work-day reports attached.\nWork day: " + workDayLabel_(win),
+      attachments: [plantPdf, copriPdf],
+    });
+  }
+  return win;
+}
+
+function generateCurrentShiftReports() {
+  generateReportsForShift(Date.now());
+  try { SpreadsheetApp.getUi().alert(REP.done); } catch (e) {}
+}
+function generatePreviousShiftReports() {
+  const cur = shiftWindow(Date.now());
+  generateReportsForShift(cur.start - 1000);   // anchor just before this shift's noon
+  try { SpreadsheetApp.getUi().alert(REP.done); } catch (e) {}
+}
+// Installed time-trigger handler: report the just-closed shift.
+function dailyReportTrigger() {
+  const cur = shiftWindow(Date.now());
+  generateReportsForShift(cur.start - 1000);
+}
+// Run once to install the daily ~12:15 trigger (just after the noon boundary).
+function createReportTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === "dailyReportTrigger") ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger("dailyReportTrigger").timeBased().atHour(12).nearMinute(15).everyDays(1).create();
 }

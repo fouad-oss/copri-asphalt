@@ -65,15 +65,28 @@ const AR_LEGACY_NOTE = "نموذج";
 const AR_LEGACY_WO   = "مهندس";
 
 // ── Daily work-day report config + labels (Arabic isolated here) ─────
-const REPORT_FOLDER = "Copri Asphalt Daily Reports";
-const REPORT_EMAIL  = "fszoghby@gmail.com";   // "" to skip email
+const REPORT_FOLDER  = "Copri Asphalt Daily Reports";
+const REPORT_EMAIL   = "fszoghby@gmail.com";   // "" to skip email
+const DAILYOPS_SHEET = "Daily Operations";     // tab rebuilt by rebuildDailyOps()
 // Company name counted as the "Copri side" of the reports
 const COPRI_COMPANY = "كوبري";
 const REP = {
   menuTitle:   "تقارير كوبري",
   menuCurrent: "وردية اليوم الحالية (PDF)",
   menuPrev:    "الوردية السابقة (PDF)",
+  menuOps:     "تحديث العمليات اليومية",
   done:        "تم إنشاء التقارير وحفظها في Drive وإرسالها بالبريد.",
+  doneOps:     "تم تحديث جدول العمليات اليومية.",
+  opsTitle:    "العمليات اليومية (حسب يوم العمل)",
+  updated:     "آخر تحديث",
+  dailySummary:"ملخص يومي",
+  workDayCol:  "يوم العمل",
+  copriLoads:  "حمولات كوبري",
+  copriTons:   "وزن كوبري (طن)",
+  otherLoads:  "حمولات أخرى",
+  otherTons:   "وزن أخرى (طن)",
+  hTempDisp:   "حرارة الإرسال",
+  hTempArr:    "حرارة الوصول",
   plantTitle:  "تقرير المصنع اليومي",
   copriTitle:  "تقرير كوبري اليومي",
   workDay:     "يوم العمل (من الظهر إلى الظهر)",
@@ -502,6 +515,8 @@ function onOpen() {
     SpreadsheetApp.getUi().createMenu(REP.menuTitle)
       .addItem(REP.menuCurrent, "generateCurrentShiftReports")
       .addItem(REP.menuPrev,    "generatePreviousShiftReports")
+      .addSeparator()
+      .addItem(REP.menuOps,     "rebuildDailyOps")
       .addToUi();
   } catch (e) { /* not in a UI context */ }
 }
@@ -675,10 +690,105 @@ function generatePreviousShiftReports() {
   generateReportsForShift(cur.start - 1000);   // anchor just before this shift's noon
   try { SpreadsheetApp.getUi().alert(REP.done); } catch (e) {}
 }
-// Installed time-trigger handler: report the just-closed shift.
+// Installed time-trigger handler: report the just-closed shift + refresh ops.
 function dailyReportTrigger() {
   const cur = shiftWindow(Date.now());
   generateReportsForShift(cur.start - 1000);
+  try { rebuildDailyOps(); } catch (e) {}
+}
+
+// The work-day (noon-shift) date string for a timestamp.
+function workDayKey(ms) {
+  return Utilities.formatDate(new Date(shiftWindow(ms).start), TZ, "yyyy-MM-dd");
+}
+
+// Rebuild the "Daily Operations" tab grouped by work day (noon-to-noon):
+// a per-day summary followed by the per-load detail with a work-day column.
+function rebuildDailyOps() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sh = ss.getSheetByName(DAILYOPS_SHEET) || ss.insertSheet(DAILYOPS_SHEET);
+  sh.clear();
+  sh.setRightToLeft(true);
+
+  const d = ss.getSheetByName(DISPATCH_SHEET).getDataRange().getValues(); const dh = d[0];
+  const r = ss.getSheetByName(RECEIPT_SHEET).getDataRange().getValues(); const rh = r[0];
+
+  const recByNote = {};
+  const rNote = rh.indexOf(COL.note), rDec = rh.indexOf(COL.decision), rTempArr = rh.indexOf(COL.tempArr);
+  for (let i = 1; i < r.length; i++) {
+    const n = String(r[i][rNote] || ""); if (!n) continue;
+    recByNote[n] = { decision: r[i][rDec] || "", tempArr: r[i][rTempArr] || "" };
+  }
+
+  const ix = {
+    ts: dh.indexOf(COL.ts), note: dh.indexOf(COL.note), company: dh.indexOf(COL.company),
+    project: dh.indexOf(COL.project), site: dh.indexOf(COL.site), mix: dh.indexOf(COL.mix),
+    weight: dh.indexOf(COL.weight), tempDisp: dh.indexOf(COL.tempDisp), driver: dh.indexOf(COL.driver),
+    plant: dh.indexOf(COL.plant), load: dh.indexOf(COL.loadNumber), status: dh.indexOf(COL.status),
+  };
+
+  const round2 = function (n) { return Math.round((Number(n) || 0) * 100) / 100; };
+  const summary = {}; const details = [];
+  for (let j = 1; j < d.length; j++) {
+    const row = d[j]; const t = row[ix.ts]; if (!(t instanceof Date)) continue;
+    const wd = workDayKey(t.getTime());
+    const company = row[ix.company] || ""; const tons = Number(row[ix.weight]) || 0;
+    const note = String(row[ix.note] || ""); const rec = recByNote[note] || null;
+    const isCopri = String(company).trim() === COPRI_COMPANY;
+    const s = (summary[wd] = summary[wd] || { loads: 0, tons: 0, cL: 0, cT: 0, oL: 0, oT: 0 });
+    s.loads++; s.tons += tons;
+    if (isCopri) { s.cL++; s.cT += tons; } else { s.oL++; s.oT += tons; }
+    details.push([
+      t.getTime(),  // sort key (removed before write)
+      wd, Utilities.formatDate(t, TZ, "HH:mm"), note, company,
+      row[ix.project] || "", row[ix.site] || "", row[ix.mix] || "", round2(tons),
+      row[ix.tempDisp] || "", rec ? rec.tempArr : "", row[ix.driver] || "",
+      row[ix.plant] || "", row[ix.load] || "",
+      (rec && rec.decision) ? rec.decision : String(row[ix.status] || ""),
+    ]);
+  }
+  details.sort(function (a, b) { return a[0] - b[0]; });
+  details.forEach(function (x) { x.shift(); });   // drop sort key
+
+  const W = 15;  // max columns (detail width)
+  const rows = [];
+  const pad = function (a) { while (a.length < W) a.push(""); return a; };
+  const mark = { titles: [], headers: [], sections: [] };
+  const add = function (a) { rows.push(pad(a)); return rows.length; };  // 1-based row index
+
+  mark.titles.push(add([REP.opsTitle]));
+  add([REP.updated + ": " + Utilities.formatDate(new Date(), TZ, "dd/MM/yyyy HH:mm")]);
+  add([]);
+  mark.sections.push(add([REP.dailySummary]));
+  mark.headers.push(add([REP.workDayCol, REP.totalLoads, REP.totalTons, REP.copriLoads, REP.copriTons, REP.otherLoads, REP.otherTons]));
+  Object.keys(summary).sort().forEach(function (wd) {
+    const s = summary[wd];
+    add([wd, s.loads, round2(s.tons), s.cL, round2(s.cT), s.oL, round2(s.oT)]);
+  });
+  add([]);
+  mark.sections.push(add([REP.details]));
+  mark.headers.push(add([
+    REP.workDayCol, REP.hTime, REP.hNote, REP.hCompany, REP.hProject, REP.hSite, REP.hMix,
+    REP.hTons, REP.hTempDisp, REP.hTempArr, REP.hDriver, REP.hPlant, REP.hLoad, REP.hStatus,
+  ]));
+  details.forEach(function (x) { add(x); });
+
+  sh.getRange(1, 1, rows.length, W).setValues(rows);
+
+  // Formatting
+  mark.titles.forEach(function (rIdx) {
+    sh.getRange(rIdx, 1).setFontSize(14).setFontWeight("bold").setFontColor("#007A3D");
+  });
+  mark.sections.forEach(function (rIdx) {
+    sh.getRange(rIdx, 1).setFontWeight("bold").setFontSize(12);
+  });
+  mark.headers.forEach(function (rIdx) {
+    sh.getRange(rIdx, 1, 1, W).setFontWeight("bold").setBackground("#1a1a2e").setFontColor("#ffffff");
+  });
+  sh.setFrozenRows(0);
+  try { sh.autoResizeColumns(1, W); } catch (e) {}
+
+  try { SpreadsheetApp.getUi().alert(REP.doneOps); } catch (e) {}
 }
 // Run once to install the daily ~12:15 trigger (just after the noon boundary).
 function createReportTrigger() {

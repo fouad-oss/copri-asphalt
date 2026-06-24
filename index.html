@@ -2368,17 +2368,21 @@ async function renderMillingEngineerHome(engName) {
 
   const body = el("div"); main.appendChild(body);
 
+  let activeTab = "mine";
   async function showMine() {
+    activeTab = "mine";
     tMine.classList.add("active"); tNew.classList.remove("active");
     body.innerHTML = "";
     const info = el("div", "info-box"); info.textContent = "جارٍ تحميل برامجك…"; body.appendChild(info);
     const data = await millingGet({ millingByEngineer: engName });
+    if (activeTab !== "mine") return;   // user switched tabs while loading
     body.innerHTML = "";
     const progs = (data.programs || []).sort((a, b) => String(b.submittedAt).localeCompare(String(a.submittedAt)));
     if (!progs.length) { const e = el("div", "info-box"); e.textContent = "لا توجد برامج بعد — ابدأ ببرنامج جديد."; body.appendChild(e); return; }
     progs.forEach(prog => body.appendChild(millingProgramCard(prog, engName, showMine)));
   }
   function showNew() {
+    activeTab = "new";
     tNew.classList.add("active"); tMine.classList.remove("active");
     body.innerHTML = "";
     body.appendChild(renderMillingProgramForm(engName, null, showMine));
@@ -2436,9 +2440,6 @@ function renderMillingProgramForm(engName, existing, onDone) {
   const { group: gProj, input: projInput } = fieldGroup("المشروع", select(millingAllProjects().map(p => p.name), "اختر المشروع"), true);
   card.appendChild(gProj);
 
-  const { group: gWO, input: woInput } = fieldGroup("رقم أمر العمل", input("text", "اختياري"), false);
-  card.appendChild(gWO);
-
   // Site (rebuilt when project changes)
   const siteWrap = el("div");
   let siteInput = null;
@@ -2450,13 +2451,27 @@ function renderMillingProgramForm(engName, existing, onDone) {
     if (existing && existing.site) siteInput.value = existing.site;
   }
   buildSite();
-  projInput.addEventListener("change", buildSite);
+  projInput.addEventListener("change", () => { buildSite(); refreshMillingWO(); });
   card.appendChild(siteWrap);
 
   const row = el("div", "field-row-2");
   const { group: gBlock,  input: blockInput }  = fieldGroup("القطعة", input("text", "رقم القطعة", "numeric"), false);
   const { group: gStreet, input: streetInput } = fieldGroup("الشارع / الجادة", input("text", "اختياري"), false);
   row.appendChild(gBlock); row.appendChild(gStreet); card.appendChild(row);
+
+  // Work order — derived from site + block/street (same rules as asphalt).
+  const { group: gWO, input: woInput } = fieldGroup(
+    "رقم أمر العمل", input("text", "—"), false, "يُحدَّد تلقائياً حسب الموقع والقطعة"
+  );
+  woInput.readOnly = true; woInput.style.background = "var(--surface-2)"; woInput.style.fontWeight = "700";
+  card.appendChild(gWO);
+  function refreshMillingWO() {
+    woInput.value = lookupWorkOrder(siteInput ? siteInput.value : "", blockInput.value.trim(), streetInput.value.trim(), "block_street");
+  }
+  siteWrap.addEventListener("change", refreshMillingWO);
+  blockInput.addEventListener("input", refreshMillingWO);
+  streetInput.addEventListener("input", refreshMillingWO);
+  refreshMillingWO();
 
   const { group: gDepth, input: depthInput } = fieldGroup("سماكة القشط", select((CONFIG.millingDepths || []).map(d => d.label), "اختر السماكة"), true);
   card.appendChild(gDepth);
@@ -2481,10 +2496,11 @@ function renderMillingProgramForm(engName, existing, onDone) {
   // Prefill on edit
   if (existing) {
     projInput.value = existing.project || ""; buildSite();
-    woInput.value = existing.workOrder || ""; blockInput.value = existing.block || "";
+    blockInput.value = existing.block || "";
     streetInput.value = existing.street || ""; depthInput.value = existing.depth || "";
     areaInput.value = existing.area || ""; dateInput.value = existing.requestedDate || "";
     prioInput.value = existing.priority || ""; notesInput.value = existing.engNotes || "";
+    refreshMillingWO();
   }
 
   const errDiv = el("div", "error-msg"); errDiv.style.display = "none"; card.appendChild(errDiv);
@@ -2493,7 +2509,7 @@ function renderMillingProgramForm(engName, existing, onDone) {
   btn.addEventListener("click", async () => {
     const depth = millingDepthByLabel(depthInput.value);
     const data = {
-      project: projInput.value, workOrder: woInput.value.trim(), site: siteInput ? siteInput.value : "",
+      project: projInput.value, workOrder: lookupWorkOrder(siteInput ? siteInput.value : "", blockInput.value.trim(), streetInput.value.trim(), "block_street"), site: siteInput ? siteInput.value : "",
       block: blockInput.value.trim(), street: streetInput.value.trim(),
       depth: depthInput.value, itemCode: depth ? depth.code : "",
       area: areaInput.value.trim(), requestedDate: dateInput.value,

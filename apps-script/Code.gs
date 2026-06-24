@@ -74,7 +74,9 @@ const REP = {
   menuTitle:   "تقارير كوبري",
   menuCurrent: "وردية اليوم الحالية (PDF)",
   menuPrev:    "الوردية السابقة (PDF)",
+  menuBackfill:"إنشاء تقارير كل أيام العمل (مرة واحدة)",
   menuOps:     "تحديث العمليات اليومية",
+  doneBackfill:"تم إنشاء تقارير جميع أيام العمل وحفظها في Drive.",
   done:        "تم إنشاء التقارير وحفظها في Drive وإرسالها بالبريد.",
   doneOps:     "تم تحديث جدول العمليات اليومية.",
   opsTitle:    "العمليات اليومية (حسب يوم العمل)",
@@ -520,6 +522,7 @@ function onOpen() {
       .addItem(REP.menuCurrent, "generateCurrentShiftReports")
       .addItem(REP.menuPrev,    "generatePreviousShiftReports")
       .addSeparator()
+      .addItem(REP.menuBackfill,"backfillReports")
       .addItem(REP.menuOps,     "rebuildDailyOps")
       .addToUi();
   } catch (e) { /* not in a UI context */ }
@@ -756,33 +759,34 @@ function reportFolder_() {
   return it.hasNext() ? it.next() : DriveApp.createFolder(REPORT_FOLDER);
 }
 
-// Generate both PDFs for the shift containing anchorMs; save to Drive + email.
+// Build the named report PDFs for a shift: plant, combined Copri, and one per
+// Copri project. Same builders everywhere → identical branding.
+function shiftPdfs_(rows, win, day) {
+  const pdfs = [
+    Utilities.newBlob(plantReportHtml_(rows, win), "text/html", "p.html").getAs("application/pdf").setName("Plant_" + day + ".pdf"),
+    Utilities.newBlob(copriReportHtml_(rows, win), "text/html", "c.html").getAs("application/pdf").setName("Copri_" + day + ".pdf"),
+  ];
+  copriProjects_(rows).forEach(function (p) {
+    pdfs.push(Utilities.newBlob(copriProjectReportHtml_(rows, win, p), "text/html", "x.html")
+                .getAs("application/pdf").setName("Copri_" + sanitizeFile_(p) + "_" + day + ".pdf"));
+  });
+  return pdfs;
+}
+
+// Generate reports for the shift containing anchorMs; save to Drive + email.
 function generateReportsForShift(anchorMs) {
   const win  = shiftWindow(anchorMs);
   const rows = collectShift(win);
   const day  = Utilities.formatDate(new Date(win.start), TZ, "yyyy-MM-dd");
   const folder = reportFolder_();
-
-  const plantPdf = Utilities.newBlob(plantReportHtml_(rows, win), "text/html", "p.html").getAs("application/pdf").setName("Plant_" + day + ".pdf");
-  const copriPdf = Utilities.newBlob(copriReportHtml_(rows, win), "text/html", "c.html").getAs("application/pdf").setName("Copri_" + day + ".pdf");
-  folder.createFile(plantPdf);
-  folder.createFile(copriPdf);
-  const attachments = [plantPdf, copriPdf];
-
-  // One standalone report per Copri project active this shift.
-  copriProjects_(rows).forEach(function (p) {
-    const pdf = Utilities.newBlob(copriProjectReportHtml_(rows, win, p), "text/html", "x.html")
-                  .getAs("application/pdf").setName("Copri_" + sanitizeFile_(p) + "_" + day + ".pdf");
-    folder.createFile(pdf);
-    attachments.push(pdf);
-  });
-
+  const pdfs = shiftPdfs_(rows, win, day);
+  pdfs.forEach(function (b) { folder.createFile(b); });
   if (REPORT_EMAIL) {
     MailApp.sendEmail({
       to: REPORT_EMAIL,
       subject: "Copri Asphalt daily reports - " + day,
       body: "Plant-side, Copri-side, and per-project work-day reports attached.\nWork day: " + workDayLabel_(win),
-      attachments: attachments,
+      attachments: pdfs,
     });
   }
   return win;
@@ -802,6 +806,42 @@ function dailyReportTrigger() {
   const cur = shiftWindow(Date.now());
   generateReportsForShift(cur.start - 1000);
   try { rebuildDailyOps(); } catch (e) {}
+}
+
+// ── One-time backfill: reports for every work day that has data ────────
+// Walks noon-to-noon work days from the first dispatch to the last and writes
+// the full report set for each day into the Drive folder, with the current
+// branding. Idempotent: files that already exist (by name) are skipped, so it
+// is safe to re-run — e.g. if it hits the Apps Script ~6-min limit, just run it
+// again to resume. Does NOT email (avoids flooding the inbox for old days).
+function backfillReports() {
+  const ss   = SpreadsheetApp.openById(SHEET_ID);
+  const d    = ss.getSheetByName(DISPATCH_SHEET).getDataRange().getValues();
+  const tsIx = d[0].indexOf(COL.ts);
+  let minMs = Infinity, maxMs = -Infinity;
+  for (let i = 1; i < d.length; i++) {
+    const t = d[i][tsIx];
+    if (t instanceof Date) { const ms = t.getTime(); if (ms < minMs) minMs = ms; if (ms > maxMs) maxMs = ms; }
+  }
+  if (!isFinite(minMs)) { Logger.log("Backfill: no dispatch data found."); return; }
+
+  const folder = reportFolder_();
+  let days = 0, created = 0, skipped = 0;
+  for (let anchor = shiftWindow(minMs).start; anchor <= maxMs; anchor = shiftWindow(anchor).end) {
+    const win  = shiftWindow(anchor);
+    const rows = collectShift(win);
+    if (!rows.length) continue;
+    const day = Utilities.formatDate(new Date(win.start), TZ, "yyyy-MM-dd");
+    shiftPdfs_(rows, win, day).forEach(function (blob) {
+      if (folder.getFilesByName(blob.getName()).hasNext()) { skipped++; return; }
+      folder.createFile(blob); created++;
+    });
+    days++;
+  }
+  const msg = "Backfill done: " + days + " work days, " + created + " files created, " + skipped + " already existed (folder: " + REPORT_FOLDER + ").";
+  Logger.log(msg);
+  try { SpreadsheetApp.getUi().alert(REP.doneBackfill + "\n\n" + msg); } catch (e) {}
+  return msg;
 }
 
 // The work-day (noon-shift) date string for a timestamp.

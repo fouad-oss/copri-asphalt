@@ -777,6 +777,36 @@ const CONFIG = {
   // Thresholds for automatic warnings
   tempDropWarning:   30,   // °C — flag if arrival temp drops more than this
   weightShortage:    0.5,  // tons — flag if weight difference exceeds this
+
+  // ══════════════════════════════════════════════════════
+  // MILLING MODULE — config (separable; see milling-module branch)
+  // ══════════════════════════════════════════════════════
+  // Milling-depth BOQ items (Hawalli contract, Section 004 / باب ٤).
+  // These feed MPW payment certificates.
+  millingDepths: [
+    { code: "1/4", label: "قشط بسماكة 2 سم",  depth: 2,  unit: "م²", rate: 0.200 },
+    { code: "2/4", label: "قشط بسماكة 3 سم",  depth: 3,  unit: "م²", rate: 0.220 },
+    { code: "3/4", label: "قشط بسماكة 4 سم",  depth: 4,  unit: "م²", rate: 0.270 },
+    { code: "4/4", label: "قشط بسماكة 5 سم",  depth: 5,  unit: "م²", rate: 0.290 },
+    { code: "5/4", label: "قشط بسماكة 6 سم",  depth: 6,  unit: "م²", rate: 0.320 },
+    { code: "6/4", label: "قشط بسماكة 7 سم",  depth: 7,  unit: "م²", rate: 0.370 },
+    { code: "7/4", label: "قشط بسماكة 8 سم",  depth: 8,  unit: "م²", rate: 0.430 },
+    { code: "8/4", label: "قشط بسماكة 9 سم",  depth: 9,  unit: "م²", rate: 0.490 },
+    { code: "9/4", label: "قشط بسماكة 10 سم", depth: 10, unit: "م²", rate: 0.560 },
+  ],
+  // Milling machines (generic until Marco provides real names/widths).
+  millingMachines: [
+    { id: "MM01", name: "ماكينة قشط 1", width: 1.0 },
+    { id: "MM02", name: "ماكينة قشط 2", width: 1.0 },
+  ],
+  // Project managers — one per project. PIN provided by Fouad (placeholder now).
+  projectManagers: [
+    { name: "فواد", pin: "0000", projects: ["كوبري — صيانة حولي", "كوبري — الطرق السريعة"] },
+  ],
+  // Marco — scheduling role. PIN provided by Fouad (placeholder now).
+  marco: { name: "ماركو", pin: "0000" },
+  // Milling program priorities.
+  millingPriorities: ["عادي", "عاجل", "حرج"],
 };
 
 // Flattened, de-duplicated engineer list across all projects — used by the
@@ -2216,18 +2246,343 @@ async function renderEngineerHome(engName) {
 // ════════════════════════════════════════════════════════
 // ROUTER
 // ════════════════════════════════════════════════════════
-const note = getNoteFromURL();
-if (note) {
-  // Receipt flow — check PIN first
-  const session = getEngineerSession();
-  if (session) {
-    renderReceipt(note, session.name);
-  } else {
-    renderPINScreen(name => renderReceipt(note, name));
+// ════════════════════════════════════════════════════════
+// ── MILLING MODULE (client) ─────────────────────────────
+// Engineer portal + public report view. PM/Marco portals are wired as
+// stubs for now (built in the next phase). All functions prefixed
+// renderMilling* / milling* so the module can be extracted later.
+// ════════════════════════════════════════════════════════
+const MILL_STATUS = {
+  pending:  "بانتظار الموافقة", rejected: "مرفوض", review: "مراجعة",
+  approved: "معتمد", scheduled: "مجدول", progress: "قيد التنفيذ", complete: "مكتمل",
+};
+
+// Flatten asphalt projects for milling dropdowns.
+function millingAllProjects() {
+  const out = [];
+  Object.values(CONFIG.companies).forEach(c =>
+    Object.entries(c.projects).forEach(([name, p]) =>
+      out.push({ name, sites: p.sites || [] })));
+  return out;
+}
+function millingProjectByName(name) { return millingAllProjects().find(p => p.name === name) || null; }
+function millingDepthByLabel(label) { return (CONFIG.millingDepths || []).find(d => d.label === label) || null; }
+
+// PM / Marco sessions (mirror the engineer session helpers; used next phase).
+function getPMSession()      { try { return JSON.parse(sessionStorage.getItem("pm_session")    || "null"); } catch { return null; } }
+function setPMSession(name)  { sessionStorage.setItem("pm_session",    JSON.stringify({ name, ts: Date.now() })); }
+function getMarcoSession()   { try { return JSON.parse(sessionStorage.getItem("marco_session") || "null"); } catch { return null; } }
+function setMarcoSession(n)  { sessionStorage.setItem("marco_session", JSON.stringify({ name: n, ts: Date.now() })); }
+
+// GET helper for milling reads (script returns JSON; readable, unlike the
+// no-cors POST). Returns the parsed object, or {} on failure.
+async function millingGet(params) {
+  try {
+    const qs = Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
+    const res = await fetch(`${CONFIG.scriptUrl}?${qs}`);
+    return await res.json();
+  } catch { return {}; }
+}
+
+// Client-side unique id — the no-cors POST can't read a server-assigned id.
+function millingNewProgramId() {
+  return `MILL-${new Date().getFullYear()}-${Date.now().toString(36).slice(-5).toUpperCase()}`;
+}
+
+function millingStatusColors(status) {
+  if (status === MILL_STATUS.rejected) return ["#fdecea", "#D32F2F"];
+  if (status === MILL_STATUS.pending || status === MILL_STATUS.review) return ["rgba(230,81,0,.10)", "#E65100"];
+  return ["var(--green-light)", "var(--green-dark)"];   // approved / scheduled / progress / complete
+}
+function millingStatusBadge(status) {
+  const [bg, fg] = millingStatusColors(status);
+  const b = el("span"); b.textContent = status || "—";
+  b.style.cssText = `display:inline-block;font-size:.7rem;font-weight:700;padding:.25rem .6rem;border-radius:999px;background:${bg};color:${fg};`;
+  return b;
+}
+function millingPriorityBadge(priority) {
+  const map = { "عادي": ["var(--surface-2)", "var(--text-2)"], "عاجل": ["rgba(230,81,0,.10)", "#E65100"], "حرج": ["#fdecea", "#D32F2F"] };
+  const [bg, fg] = map[priority] || map["عادي"];
+  const b = el("span"); b.textContent = priority || "—";
+  b.style.cssText = `display:inline-block;font-size:.68rem;font-weight:700;padding:.2rem .55rem;border-radius:999px;background:${bg};color:${fg};`;
+  return b;
+}
+function millingActionLabel(a) {
+  return ({ submitted: "تم التقديم", rejected: "مرفوض", revised: "تمت المراجعة",
+            approved: "تمت الموافقة", scheduled: "تمت الجدولة", started: "بدء التنفيذ",
+            completed: "اكتمل" })[a] || a;
+}
+function millingRoleLabel(r) {
+  return ({ engineer: "مهندس", pm: "مدير المشروع", marco: "ماركو" })[r] || r;
+}
+
+// A program details block (label/value rows), reused by cards and the report.
+function millingDetails(prog) {
+  const wrap = el("div");
+  wrap.appendChild(fieldRow("المشروع", prog.project));
+  wrap.appendChild(fieldRow("رقم أمر العمل", prog.workOrder));
+  wrap.appendChild(fieldRow("الموقع", prog.site));
+  const locParts = [prog.block ? `ق ${prog.block}` : "", prog.street ? `ش ${prog.street}` : ""].filter(Boolean).join(" / ");
+  if (locParts) wrap.appendChild(fieldRow("القطعة / الشارع", locParts));
+  wrap.appendChild(fieldRow("سماكة القشط", prog.depth));
+  wrap.appendChild(fieldRow("الكمية التقديرية (م²)", prog.area));
+  wrap.appendChild(fieldRow("التاريخ المطلوب", prog.requestedDate));
+  wrap.appendChild(fieldRow("اسم المهندس", prog.engineer));
+  if (prog.engNotes) wrap.appendChild(fieldRow("ملاحظات", prog.engNotes));
+  return wrap;
+}
+
+// Audit trail timeline.
+function millingTimeline(audit) {
+  const wrap = el("div"); wrap.style.cssText = "margin-top:.6rem;";
+  (audit || []).forEach(ev => {
+    const row = el("div"); row.style.cssText = "border-right:3px solid var(--green);padding:.3rem .7rem;margin-bottom:.5rem;background:var(--surface-2);border-radius:4px;";
+    const top = el("div"); top.style.cssText = "font-weight:700;font-size:.82rem;";
+    top.textContent = `${millingActionLabel(ev.action)} — ${ev.by || ""} (${millingRoleLabel(ev.role)})`;
+    const ts = el("div"); ts.style.cssText = "font-size:.7rem;color:var(--text-3);";
+    ts.textContent = (ev.ts || "").replace("T", " ").slice(0, 16);
+    row.appendChild(top); row.appendChild(ts);
+    if (ev.note) { const n = el("div"); n.style.cssText = "font-size:.78rem;color:var(--text-2);margin-top:.2rem;"; n.textContent = `« ${ev.note} »`; row.appendChild(n); }
+    wrap.appendChild(row);
+  });
+  return wrap;
+}
+
+// ── Engineer home — my programs + new submission ──────────────────
+async function renderMillingEngineerHome(engName) {
+  setEngineerSession(engName);
+  const main = renderShell("برنامج القشط — المهندس"); main.innerHTML = "";
+
+  const head = el("div", "card");
+  const hr = el("div"); hr.style.cssText = "display:flex;justify-content:space-between;align-items:center;";
+  const hi = el("div"); hi.innerHTML = `<div style="font-weight:700">${engName}</div><div style="font-size:.75rem;color:var(--text-3)">بوابة برامج القشط</div>`;
+  const out = el("button", "btn-secondary"); out.type = "button"; out.textContent = "خروج"; out.style.width = "auto";
+  out.addEventListener("click", () => { clearEngineerSession(); location.href = location.href.split("?")[0] + "?millingRole=engineer"; });
+  hr.appendChild(hi); hr.appendChild(out); head.appendChild(hr);
+  main.appendChild(head);
+
+  const tabs = el("div", "history-tabs");
+  const tMine = el("button", "history-tab active"); tMine.type = "button"; tMine.textContent = "برامجي";
+  const tNew  = el("button", "history-tab");        tNew.type  = "button"; tNew.textContent  = "برنامج جديد";
+  tabs.appendChild(tMine); tabs.appendChild(tNew); main.appendChild(tabs);
+
+  const body = el("div"); main.appendChild(body);
+
+  async function showMine() {
+    tMine.classList.add("active"); tNew.classList.remove("active");
+    body.innerHTML = "";
+    const info = el("div", "info-box"); info.textContent = "جارٍ تحميل برامجك…"; body.appendChild(info);
+    const data = await millingGet({ millingByEngineer: engName });
+    body.innerHTML = "";
+    const progs = (data.programs || []).sort((a, b) => String(b.submittedAt).localeCompare(String(a.submittedAt)));
+    if (!progs.length) { const e = el("div", "info-box"); e.textContent = "لا توجد برامج بعد — ابدأ ببرنامج جديد."; body.appendChild(e); return; }
+    progs.forEach(prog => body.appendChild(millingProgramCard(prog, engName, showMine)));
   }
+  function showNew() {
+    tNew.classList.add("active"); tMine.classList.remove("active");
+    body.innerHTML = "";
+    body.appendChild(renderMillingProgramForm(engName, null, showMine));
+  }
+  tMine.addEventListener("click", showMine);
+  tNew.addEventListener("click", showNew);
+  showMine();
+}
+
+// A single program card in the engineer's list.
+function millingProgramCard(prog, engName, onChange) {
+  const card = el("div", "card");
+  const top = el("div"); top.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;";
+  const id = el("div"); id.style.cssText = "font-weight:700;font-size:.9rem;"; id.textContent = prog.programId;
+  top.appendChild(id); top.appendChild(millingStatusBadge(prog.status)); card.appendChild(top);
+
+  const prow = el("div"); prow.style.cssText = "margin-bottom:.4rem;"; prow.appendChild(millingPriorityBadge(prog.priority)); card.appendChild(prow);
+  card.appendChild(millingDetails(prog));
+
+  if (prog.status === MILL_STATUS.rejected && prog.pmNote) {
+    const rej = el("div"); rej.style.cssText = "margin-top:.5rem;padding:.5rem .7rem;background:#fdecea;border-radius:6px;color:#D32F2F;font-size:.8rem;";
+    rej.innerHTML = `<strong>سبب الرفض:</strong> ${prog.pmNote}`; card.appendChild(rej);
+  }
+
+  const actions = el("div"); actions.style.cssText = "display:flex;gap:.5rem;margin-top:.7rem;";
+  const view = el("a", "btn-secondary"); view.textContent = "عرض / طباعة"; view.style.cssText = "width:auto;text-decoration:none;text-align:center;";
+  view.href = `${location.href.split("?")[0]}?millingReport=${encodeURIComponent(prog.programId)}`; view.target = "_blank";
+  actions.appendChild(view);
+
+  const editable = prog.status === MILL_STATUS.pending || prog.status === MILL_STATUS.rejected;
+  if (editable && prog.engineer === engName) {
+    const edit = el("button", "btn-primary"); edit.type = "button"; edit.style.width = "auto";
+    edit.textContent = prog.status === MILL_STATUS.rejected ? "تعديل وإعادة تقديم" : "تعديل";
+    edit.addEventListener("click", () => {
+      const main = document.getElementById("main-content"); if (!main) return;
+      main.innerHTML = ""; main.appendChild(renderMillingProgramForm(engName, prog, () => renderMillingEngineerHome(engName)));
+    });
+    actions.appendChild(edit);
+  }
+  card.appendChild(actions);
+  return card;
+}
+
+// ── Submission / revision form ────────────────────────────────────
+function renderMillingProgramForm(engName, existing, onDone) {
+  const card = el("div", "card");
+  card.appendChild(sectionTitle(existing ? "تعديل برنامج القشط" : "برنامج قشط جديد"));
+
+  if (existing && existing.status === MILL_STATUS.rejected && existing.pmNote) {
+    const rej = el("div"); rej.style.cssText = "margin-bottom:.8rem;padding:.6rem .8rem;background:#fdecea;border-radius:6px;color:#D32F2F;font-size:.82rem;";
+    rej.innerHTML = `<strong>ملاحظة الرفض من مدير المشروع:</strong><br>${existing.pmNote}`; card.appendChild(rej);
+  }
+
+  // Project (drives the site list)
+  const { group: gProj, input: projInput } = fieldGroup("المشروع", select(millingAllProjects().map(p => p.name), "اختر المشروع"), true);
+  card.appendChild(gProj);
+
+  const { group: gWO, input: woInput } = fieldGroup("رقم أمر العمل", input("text", "اختياري"), false);
+  card.appendChild(gWO);
+
+  // Site (rebuilt when project changes)
+  const siteWrap = el("div");
+  let siteInput = null;
+  function buildSite() {
+    siteWrap.innerHTML = "";
+    const proj = millingProjectByName(projInput.value);
+    const { group, input: s } = fieldGroup("الموقع", select((proj && proj.sites) || [], "اختر الموقع"), true);
+    siteInput = s; siteWrap.appendChild(group);
+    if (existing && existing.site) siteInput.value = existing.site;
+  }
+  buildSite();
+  projInput.addEventListener("change", buildSite);
+  card.appendChild(siteWrap);
+
+  const row = el("div", "field-row-2");
+  const { group: gBlock,  input: blockInput }  = fieldGroup("القطعة", input("text", "رقم القطعة", "numeric"), false);
+  const { group: gStreet, input: streetInput } = fieldGroup("الشارع / الجادة", input("text", "اختياري"), false);
+  row.appendChild(gBlock); row.appendChild(gStreet); card.appendChild(row);
+
+  const { group: gDepth, input: depthInput } = fieldGroup("سماكة القشط", select((CONFIG.millingDepths || []).map(d => d.label), "اختر السماكة"), true);
+  card.appendChild(gDepth);
+
+  const row2 = el("div", "field-row-2");
+  const { group: gArea, input: areaInput } = fieldGroup("الكمية التقديرية (م²)", input("number", "0", "decimal"), true);
+  areaInput.step = "0.01";
+  const { group: gDate, input: dateInput } = fieldGroup("التاريخ المطلوب", input("date", ""), true);
+  row2.appendChild(gArea); row2.appendChild(gDate); card.appendChild(row2);
+
+  const { group: gPrio, input: prioInput } = fieldGroup("الأولوية", select(CONFIG.millingPriorities || [], "اختر الأولوية"), true);
+  card.appendChild(gPrio);
+
+  const { group: gNotes, input: notesInput } = fieldGroup("ملاحظات", textarea("قيود، صعوبات وصول، إلخ..."), false);
+  card.appendChild(gNotes);
+
+  // Engineer (locked)
+  const { group: gEng, input: engInput } = fieldGroup("اسم المهندس", input("text", ""), true);
+  engInput.value = engName; engInput.readOnly = true; engInput.style.background = "var(--surface-2)";
+  card.appendChild(gEng);
+
+  // Prefill on edit
+  if (existing) {
+    projInput.value = existing.project || ""; buildSite();
+    woInput.value = existing.workOrder || ""; blockInput.value = existing.block || "";
+    streetInput.value = existing.street || ""; depthInput.value = existing.depth || "";
+    areaInput.value = existing.area || ""; dateInput.value = existing.requestedDate || "";
+    prioInput.value = existing.priority || ""; notesInput.value = existing.engNotes || "";
+  }
+
+  const errDiv = el("div", "error-msg"); errDiv.style.display = "none"; card.appendChild(errDiv);
+  const btn = el("button", "btn-primary"); btn.type = "button"; btn.textContent = existing ? "إعادة التقديم" : "تقديم البرنامج"; card.appendChild(btn);
+
+  btn.addEventListener("click", async () => {
+    const depth = millingDepthByLabel(depthInput.value);
+    const data = {
+      project: projInput.value, workOrder: woInput.value.trim(), site: siteInput ? siteInput.value : "",
+      block: blockInput.value.trim(), street: streetInput.value.trim(),
+      depth: depthInput.value, itemCode: depth ? depth.code : "",
+      area: areaInput.value.trim(), requestedDate: dateInput.value,
+      priority: prioInput.value, engineerName: engName, notes: notesInput.value.trim(),
+    };
+    const required = ["project", "site", "depth", "area", "requestedDate", "priority"];
+    if (required.some(k => !data[k])) { errDiv.textContent = "يرجى تعبئة جميع الحقول المطلوبة"; errDiv.style.display = "block"; return; }
+    errDiv.style.display = "none"; btn.disabled = true; btn.textContent = "جارٍ الإرسال…";
+
+    const programId = existing ? existing.programId : millingNewProgramId();
+    const type = existing ? "reviseMillingProgram" : "submitMillingProgram";
+    try {
+      await postToScript({ type, programId, ...data });
+      renderMillingSubmitSuccess(programId, !!existing, () => (onDone ? onDone() : renderMillingEngineerHome(engName)));
+    } catch {
+      btn.disabled = false; btn.textContent = existing ? "إعادة التقديم" : "تقديم البرنامج";
+      errDiv.textContent = "حدث خطأ، يرجى المحاولة مجدداً"; errDiv.style.display = "block";
+    }
+  });
+
+  return card;
+}
+
+function renderMillingSubmitSuccess(programId, isRevision, backFn) {
+  const main = document.getElementById("main-content"); if (!main) return;
+  main.innerHTML = "";
+  const s = el("div", "success-screen");
+  const icon = el("div", "success-icon ok"); icon.textContent = "✓"; s.appendChild(icon);
+  const h = el("h2"); h.textContent = isRevision ? "تمت إعادة التقديم" : "تم تقديم البرنامج"; s.appendChild(h);
+  const p = el("p"); p.innerHTML = `رقم البرنامج: <strong>${programId}</strong>`; s.appendChild(p);
+  const p2 = el("p", "success-note"); p2.textContent = isRevision ? "أُرسل البرنامج لمدير المشروع لإعادة المراجعة." : "بانتظار موافقة مدير المشروع."; s.appendChild(p2);
+  const link = el("a", "btn-secondary"); link.textContent = "عرض / طباعة البرنامج"; link.style.cssText = "text-decoration:none;text-align:center;";
+  link.href = `${location.href.split("?")[0]}?millingReport=${encodeURIComponent(programId)}`; link.target = "_blank"; s.appendChild(link);
+  const back = el("button", "btn-primary"); back.type = "button"; back.textContent = "العودة إلى برامجي"; back.addEventListener("click", backFn); s.appendChild(back);
+  main.appendChild(s);
+}
+
+// ── Public report view (no PIN) ───────────────────────────────────
+async function renderMillingReportView(programId) {
+  const main = renderShell("برنامج القشط"); main.innerHTML = "";
+  const info = el("div", "info-box"); info.textContent = "جارٍ تحميل البرنامج…"; main.appendChild(info);
+  const data = await millingGet({ millingReport: programId });
+  main.innerHTML = "";
+  const prog = data.program;
+  if (!prog) { const e = el("div", "info-box"); e.textContent = "لم يتم العثور على البرنامج."; main.appendChild(e); return; }
+
+  const card = el("div", "card");
+  const top = el("div"); top.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem;";
+  const id = el("div"); id.style.cssText = "font-weight:700;font-size:1rem;"; id.textContent = prog.programId;
+  top.appendChild(id); top.appendChild(millingStatusBadge(prog.status)); card.appendChild(top);
+  const prow = el("div"); prow.style.cssText = "margin-bottom:.5rem;"; prow.appendChild(millingPriorityBadge(prog.priority)); card.appendChild(prow);
+  card.appendChild(millingDetails(prog));
+  card.appendChild(sectionTitle("سجل الإجراءات"));
+  card.appendChild(millingTimeline(prog.audit));
+  main.appendChild(card);
+
+  const print = el("button", "btn-primary"); print.type = "button"; print.textContent = "🖨 طباعة"; print.addEventListener("click", () => window.print()); main.appendChild(print);
+}
+
+// ── Stub portals (built in the next phase) ────────────────────────
+function renderMillingComingSoon(title) {
+  const main = renderShell(title); main.innerHTML = "";
+  const box = el("div", "info-box");
+  box.textContent = "هذه البوابة قيد الإنشاء — ستتوفر قريباً.";
+  main.appendChild(box);
+}
+
+// ── Router (milling-aware) ──
+const _mparams = new URLSearchParams(window.location.search);
+const millingReport = _mparams.get("millingReport");
+const millingRole   = _mparams.get("millingRole");
+const note = getNoteFromURL();
+
+if (millingReport) {
+  renderMillingReportView(millingReport);                 // public, no PIN
+} else if (millingRole === "engineer") {
+  const session = getEngineerSession();
+  if (session) renderMillingEngineerHome(session.name);
+  else renderPINScreen(name => renderMillingEngineerHome(name));
+} else if (millingRole === "pm") {
+  renderMillingComingSoon("بوابة مدير المشروع");
+} else if (millingRole === "marco") {
+  renderMillingComingSoon("بوابة ماركو");
+} else if (note) {
+  const session = getEngineerSession();
+  if (session) renderReceipt(note, session.name);
+  else renderPINScreen(name => renderReceipt(note, name));
 } else {
-  // Check URL for engineer mode
-  const isEngineerRole = new URLSearchParams(window.location.search).get("role") === "engineer";
+  const isEngineerRole = _mparams.get("role") === "engineer";
   if (isEngineerRole) {
     const session = getEngineerSession();
     if (session) renderEngineerHome(session.name);
@@ -2238,6 +2593,7 @@ if (note) {
     else renderClerkPINScreen(renderCompanySelect);
   }
 }
+
 </script>
 </body>
 </html>

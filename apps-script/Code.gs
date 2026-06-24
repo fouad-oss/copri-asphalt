@@ -170,6 +170,10 @@ function shiftStart() {
 function doGet(e) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
 
+  // Milling module (separable) — returns a response if it handled the request.
+  const _mg = millingDoGet_(e);
+  if (_mg) return _mg;
+
   // 1. One-time receipt check
   if (e.parameter.checkReceipt) {
     const note    = e.parameter.checkReceipt;
@@ -344,6 +348,10 @@ function doPost(e) {
   try {
     const p  = JSON.parse(e.postData.contents);
     const ss = SpreadsheetApp.openById(SHEET_ID);
+
+    // Milling module (separable) — returns a response if it handled the action.
+    const _mp = millingDoPost_(p);
+    if (_mp) return _mp;
 
     if (p.type === "dispatch") {
       const dispatch = ss.getSheetByName(DISPATCH_SHEET);
@@ -1007,4 +1015,214 @@ function createReportTrigger() {
     if (t.getHandlerFunction() === "dailyReportTrigger") ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger("dailyReportTrigger").timeBased().atHour(12).nearMinute(15).everyDays(1).create();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── MILLING MODULE ─────────────────────────────────────────────────
+// Self-contained milling-program workflow. Wired into doGet/doPost via
+// millingDoGet_() and millingDoPost_(). All names prefixed "milling"/MCOL/
+// MILL so the module can be extracted cleanly later.
+// ═══════════════════════════════════════════════════════════════════
+const MILLING_SHEET = "Milling Programs";
+const MCOL = {
+  programId:        "رقم البرنامج",
+  project:          "المشروع",
+  workOrder:        "رقم أمر العمل",
+  site:             "الموقع",
+  block:            "القطعة",
+  street:           "الشارع",
+  depth:            "سماكة القشط",
+  itemCode:         "رمز البند",
+  area:             "الكمية التقديرية (م²)",
+  requestedDate:    "التاريخ المطلوب",
+  priority:         "الأولوية",
+  engineer:         "اسم المهندس",
+  submittedAt:      "وقت التقديم",
+  status:           "الحالة",
+  pmName:           "اسم مدير المشروع",
+  pmDecision:       "قرار مدير المشروع",
+  pmNote:           "ملاحظات مدير المشروع",
+  pmDecidedAt:      "وقت قرار المدير",
+  audit:            "سجل المراجعات",
+  marcoScheduledAt: "وقت جدولة ماركو",
+  marcoNote:        "ملاحظات ماركو",
+  engNotes:         "ملاحظات المهندس",
+};
+const MILLING_HEADERS = [
+  MCOL.programId, MCOL.project, MCOL.workOrder, MCOL.site, MCOL.block, MCOL.street,
+  MCOL.depth, MCOL.itemCode, MCOL.area, MCOL.requestedDate, MCOL.priority,
+  MCOL.engineer, MCOL.submittedAt, MCOL.status, MCOL.pmName, MCOL.pmDecision,
+  MCOL.pmNote, MCOL.pmDecidedAt, MCOL.audit, MCOL.marcoScheduledAt, MCOL.marcoNote,
+  MCOL.engNotes,
+];
+// Status values (Arabic).
+const MILL = {
+  pending:  "بانتظار الموافقة",
+  rejected: "مرفوض",
+  review:   "مراجعة",
+  approved: "معتمد",
+  scheduled:"مجدول",
+  progress: "قيد التنفيذ",
+  complete: "مكتمل",
+};
+
+// Run once in the Apps Script editor to create the Milling Programs tab.
+function setupMillingSheet() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  let sh = ss.getSheetByName(MILLING_SHEET);
+  if (!sh) sh = ss.insertSheet(MILLING_SHEET);
+  const range = sh.getRange(1, 1, 1, MILLING_HEADERS.length);
+  range.setValues([MILLING_HEADERS]);
+  range.setFontWeight("bold").setBackground("#1a1a2e").setFontColor("#00A651").setFontSize(10);
+  sh.setFrozenRows(1);
+  sh.setColumnWidths(1, MILLING_HEADERS.length, 150);
+  SpreadsheetApp.flush();
+  Logger.log("Milling Programs sheet ready - " + MILLING_HEADERS.length + " cols.");
+}
+
+function millingSheet_() { return SpreadsheetApp.openById(SHEET_ID).getSheetByName(MILLING_SHEET); }
+function millingNow_()   { return Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd'T'HH:mm:ssXXX"); }
+
+function millingRowToObj_(headers, row) {
+  const o = {};
+  Object.keys(MCOL).forEach(function (k) { o[k] = row[headers.indexOf(MCOL[k])]; });
+  try { o.audit = JSON.parse(o.audit || "[]"); } catch (e) { o.audit = []; }
+  if (o.requestedDate instanceof Date) o.requestedDate = Utilities.formatDate(o.requestedDate, TZ, "yyyy-MM-dd");
+  else o.requestedDate = String(o.requestedDate || "");
+  return o;
+}
+function millingAllObjs_() {
+  const sh = millingSheet_(); if (!sh) return [];
+  const data = sh.getDataRange().getValues(); if (data.length < 2) return [];
+  const h = data[0];
+  return data.slice(1).map(function (r) { return millingRowToObj_(h, r); });
+}
+function millingFindRow_(programId) {
+  const sh = millingSheet_(); if (!sh) return null;
+  const data = sh.getDataRange().getValues();
+  const idx = data[0].indexOf(MCOL.programId);
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][idx]) === String(programId)) return { sheet: sh, headers: data[0], rowIndex: i + 1, row: data[i] };
+  }
+  return null;
+}
+// Build a sheet row (header order) from an object keyed by MCOL keys.
+function millingObjToRow_(o) {
+  return MILLING_HEADERS.map(function (hdr) {
+    for (var k in MCOL) { if (MCOL[k] === hdr) return (o[k] != null ? o[k] : ""); }
+    return "";
+  });
+}
+
+// ── GET routing ──
+function millingDoGet_(e) {
+  const p = e.parameter;
+  if (p.millingProgram || p.millingReport) {
+    const id = p.millingProgram || p.millingReport;
+    const found = millingFindRow_(id);
+    return jsonResponse({ program: found ? millingRowToObj_(found.headers, found.row) : null });
+  }
+  if (p.millingByEngineer) {
+    const name = String(p.millingByEngineer);
+    return jsonResponse({ programs: millingAllObjs_().filter(function (x) { return String(x.engineer) === name; }) });
+  }
+  if (p.millingPMQueue) {   // awaiting a PM decision (client filters by PM's projects)
+    return jsonResponse({ programs: millingAllObjs_().filter(function (x) { return x.status === MILL.pending || x.status === MILL.review; }) });
+  }
+  if (p.millingDecided) {   // PM history — everything already decided
+    return jsonResponse({ programs: millingAllObjs_().filter(function (x) { return x.status !== MILL.pending && x.status !== MILL.review; }) });
+  }
+  if (p.millingMarcoQueue) {
+    return jsonResponse({ programs: millingAllObjs_().filter(function (x) { return x.status === MILL.approved || x.status === MILL.scheduled || x.status === MILL.progress; }) });
+  }
+  return null;
+}
+
+// ── POST routing ──
+function millingDoPost_(p) {
+  if (p.type === "submitMillingProgram") return millingSubmit_(p);
+  if (p.type === "updateMillingStatus")  return millingUpdateStatus_(p);
+  if (p.type === "reviseMillingProgram") return millingRevise_(p);
+  return null;
+}
+
+function millingSubmit_(p) {
+  const sh = millingSheet_();
+  if (!sh) return jsonResponse({ success: false, error: "Milling sheet missing - run setupMillingSheet()" });
+  if (millingFindRow_(p.programId)) return jsonResponse({ success: false, duplicate: true });
+  const now = millingNow_();
+  const audit = [{ action: "submitted", by: p.engineerName || "", role: "engineer", ts: now }];
+  const o = {
+    programId: p.programId, project: p.project || "", workOrder: p.workOrder || "",
+    site: p.site || "", block: p.block || "", street: p.street || "",
+    depth: p.depth || "", itemCode: p.itemCode || "", area: p.area || "",
+    requestedDate: p.requestedDate || "", priority: p.priority || "",
+    engineer: p.engineerName || "", submittedAt: now, status: MILL.pending,
+    pmName: "", pmDecision: "", pmNote: "", pmDecidedAt: "",
+    audit: JSON.stringify(audit), marcoScheduledAt: "", marcoNote: "", engNotes: p.notes || "",
+  };
+  sh.appendRow(millingObjToRow_(o));
+  SpreadsheetApp.flush();
+  return jsonResponse({ success: true, programId: p.programId });
+}
+
+function millingUpdateStatus_(p) {
+  const found = millingFindRow_(p.programId);
+  if (!found) return jsonResponse({ success: false, error: "not found" });
+  const obj = millingRowToObj_(found.headers, found.row);
+  const audit = obj.audit || [];
+  const now = millingNow_();
+  const sets = {};
+  var action, role = p.role || "";
+  switch (p.decision) {
+    case "approve":
+      sets.status = MILL.approved; sets.pmName = p.by || ""; sets.pmDecision = MILL.approved;
+      sets.pmNote = p.note || ""; sets.pmDecidedAt = now; action = "approved"; role = "pm"; break;
+    case "reject":
+      if (!p.note) return jsonResponse({ success: false, error: "note required" });
+      sets.status = MILL.rejected; sets.pmName = p.by || ""; sets.pmDecision = MILL.rejected;
+      sets.pmNote = p.note; sets.pmDecidedAt = now; action = "rejected"; role = "pm"; break;
+    case "schedule":
+      sets.status = MILL.scheduled; sets.marcoScheduledAt = now; sets.marcoNote = p.note || "";
+      action = "scheduled"; role = "marco"; break;
+    case "start":
+      sets.status = MILL.progress; action = "started"; role = "marco"; break;
+    case "complete":
+      sets.status = MILL.complete; action = "completed"; break;
+    default:
+      return jsonResponse({ success: false, error: "unknown decision" });
+  }
+  const ev = { action: action, by: p.by || "", role: role, ts: now };
+  if (p.note) ev.note = p.note;
+  audit.push(ev);
+  sets.audit = JSON.stringify(audit);
+  Object.keys(sets).forEach(function (k) {
+    const col = found.headers.indexOf(MCOL[k]) + 1;
+    if (col > 0) found.sheet.getRange(found.rowIndex, col).setValue(sets[k]);
+  });
+  SpreadsheetApp.flush();
+  return jsonResponse({ success: true, status: sets.status });
+}
+
+function millingRevise_(p) {
+  const found = millingFindRow_(p.programId);
+  if (!found) return jsonResponse({ success: false, error: "not found" });
+  const obj = millingRowToObj_(found.headers, found.row);
+  if (obj.status !== MILL.rejected) return jsonResponse({ success: false, error: "not revisable" });
+  const audit = obj.audit || [];
+  const now = millingNow_();
+  const sets = {
+    project: p.project, workOrder: p.workOrder, site: p.site, block: p.block, street: p.street,
+    depth: p.depth, itemCode: p.itemCode, area: p.area, requestedDate: p.requestedDate,
+    priority: p.priority, engNotes: p.notes, status: MILL.review,
+  };
+  audit.push({ action: "revised", by: p.engineerName || obj.engineer, role: "engineer", ts: now });
+  sets.audit = JSON.stringify(audit);
+  Object.keys(sets).forEach(function (k) {
+    if (sets[k] === undefined) return;
+    const col = found.headers.indexOf(MCOL[k]) + 1;
+    if (col > 0) found.sheet.getRange(found.rowIndex, col).setValue(sets[k]);
+  });
+  SpreadsheetApp.flush();
+  return jsonResponse({ success: true });
 }

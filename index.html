@@ -680,11 +680,15 @@ const CONFIG = {
           sites:            ["بيان", "مشرف", "سلوى", "أخرى"],
           locationType:     "block_street",
           allowNamedStreet: true,   // main streets can be entered by name
+          // Named streets shown as a dropdown, per site (area). Sites not listed
+          // here fall back to free-text in "اسم الشارع" mode.
+          namedStreets:     { "بيان": ["خالد بن عبد العزيز"], "مشرف": ["52"] },
           engineers: [
             { name: "أحمد عبد العزيز", pin: "8798", phone: "96551334626" },
             { name: "أحمد بدوي",       pin: "8255", phone: "96566911641" },
             { name: "إيهاب حسن",       pin: "5686", phone: "96550571838" },
             { name: "فؤاد الزغبي",     pin: "7764", phone: "96566767764" },
+            { name: "توفيق",           pin: "4193", phone: "96594779974" },
           ],
         },
         "كوبري — الطرق السريعة": {
@@ -692,8 +696,7 @@ const CONFIG = {
           sites:        ["طريق الملك فهد", "طريق الفحيحيل", "أخرى"],
           locationType: "km_range",
           engineers: [
-            // TODO: Highways engineers — pending list (name / pin / phone).
-            // Until added, the dispatch "notify engineer" dropdown is empty.
+            { name: "أحمد عبد الرحمن", pin: "7058", phone: "96550385607" },
           ],
         },
       },
@@ -744,6 +747,19 @@ const CONFIG = {
 
   // Transporter (الناقل) — who hauls the asphalt to site
   naqelOptions: ["كوبري", "مقاول خارجي"],
+
+  // Fixed work-order numbers, keyed by site + block (or named street).
+  //   { site, block, wo }  → matches all streets in that block.
+  //   { site, street, wo } → matches by street/name regardless of block
+  //                          (street = the typed name for a "named" street).
+  // Locations with no rule get "*". KEEP IN SYNC with WORK_ORDERS in Code.gs.
+  workOrders: [
+    { site: "بيان", block: "11", wo: "67" },
+    { site: "بيان", block: "10", wo: "68" },
+    { site: "سلوى", block: "9",  wo: "64" },
+    { site: "مشرف", street: "52", wo: "49" },
+    { site: "بيان", street: "خالد بن عبد العزيز", wo: "53" },
+  ],
 
   // Legacy — kept for receipt form site list fallback
   sites: ["بيان", "مشرف", "سلوى", "أخرى"],
@@ -854,6 +870,24 @@ function locDisplay(d) {
   if (d.block)  parts.push(`ق ${d.block}`);
   if (d.street) parts.push(`ش ${d.street}`);
   return parts.join(" / ");
+}
+// Fixed work-order number for a location, from CONFIG.workOrders. A rule with
+// only `block` matches all streets in that block; only `street` matches by
+// street/name regardless of block (named streets carry the name in `block`).
+// Returns "*" when there is no rule. KEEP IN SYNC with woFor_() in Code.gs.
+function lookupWorkOrder(site, block, street, locationType) {
+  const siteKey = normSp(site);
+  let blockKey = "", streetKey = "";
+  if (locationType === "named") { streetKey = normSp(block); }       // name stored in block
+  else if (locationType === "km_range") { return "*"; }              // highways — no WO map
+  else { blockKey = normSp(block); streetKey = normSp(street); }
+  for (const r of (CONFIG.workOrders || [])) {
+    if (normSp(r.site) !== siteKey) continue;
+    if (r.block  != null && normSp(r.block)  !== blockKey)  continue;
+    if (r.street != null && normSp(r.street) !== streetKey) continue;
+    return String(r.wo);
+  }
+  return "*";
 }
 // Digits-only phone for tel:/wa.me links (strips +, spaces, dashes).
 function cleanPhone(p) { return String(p || "").replace(/[^\d]/g, ""); }
@@ -1222,9 +1256,14 @@ function renderDispatch(ctx) {
   );
   card.appendChild(gPlant);
 
+  // Work order is fixed by site + block — read-only, computed live below.
   const { group: gWO, input: woInput } = fieldGroup(
-    "رقم أمر العمل", input("text", "مثال: 29", "numeric"), true
+    "رقم أمر العمل", input("text", "—"), false,
+    "يُحدَّد تلقائياً حسب الموقع والقطعة"
   );
+  woInput.readOnly = true;
+  woInput.style.background = "var(--surface-2)";
+  woInput.style.fontWeight = "700";
   card.appendChild(gWO);
 
   const { group: gNaqel, input: naqelInput } = fieldGroup(
@@ -1348,20 +1387,24 @@ function renderDispatch(ctx) {
       card.appendChild(lbl); card.appendChild(toggle);
       tBlocks.addEventListener("click", () => {
         if (locMode === "blocks") return;
-        locMode = "blocks"; tBlocks.classList.add("active"); tNamed.classList.remove("active"); buildLoc(); refreshLoadNumber();
+        locMode = "blocks"; tBlocks.classList.add("active"); tNamed.classList.remove("active"); buildLoc(); refreshLoadNumber(); refreshWorkOrder();
       });
       tNamed.addEventListener("click", () => {
         if (locMode === "named") return;
-        locMode = "named"; tNamed.classList.add("active"); tBlocks.classList.remove("active"); buildLoc(); refreshLoadNumber();
+        locMode = "named"; tNamed.classList.add("active"); tBlocks.classList.remove("active"); buildLoc(); refreshLoadNumber(); refreshWorkOrder();
       });
     }
 
     function buildLoc() {
       locWrap.innerHTML = "";
       if (locMode === "named") {
-        const { group: gName, input: nameI } = fieldGroup(
-          "اسم الشارع / الموقع", input("text", "مثال: شارع بيروت"), true
-        );
+        // Named streets are a dropdown when the chosen site has a list;
+        // otherwise fall back to free text.
+        const list = (project.namedStreets && project.namedStreets[siteInput.value]) || [];
+        const nameI = list.length
+          ? select(list, "اختر الشارع")
+          : input("text", "مثال: شارع بيروت");
+        const { group: gName } = fieldGroup("اسم الشارع / الموقع", nameI, true);
         locWrap.appendChild(gName);
         getLocation = () => ({ block: nameI.value.trim(), street: "", locationType: "named" });
       } else {
@@ -1374,6 +1417,8 @@ function renderDispatch(ctx) {
       }
     }
     buildLoc();
+    // Named-street options depend on the chosen site — rebuild on site change.
+    siteInput.addEventListener("change", () => { if (locMode === "named") { buildLoc(); refreshWorkOrder(); } });
     card.appendChild(locWrap);
   }
 
@@ -1404,8 +1449,24 @@ function renderDispatch(ctx) {
       ? `رقم الحمولة لهذا الموقع: ${n}  ·  منذ ظهر اليوم`
       : "رقم الحمولة لهذا الموقع: —";
   }
+  // Live work-order preview — recomputes from site + block/street. For block+
+  // street, it only resolves once site, block, and street are all chosen.
+  function refreshWorkOrder() {
+    const loc = getLocation(), site = siteInput.value;
+    const ready =
+      loc.locationType === "block_street" ? (site && loc.block && loc.street) :
+      loc.locationType === "named"        ? (site && loc.block) :
+      true;
+    woInput.value = ready ? lookupWorkOrder(site, loc.block, loc.street, loc.locationType) : "—";
+  }
   siteInput.addEventListener("change", refreshLoadNumber);
-  if (locContainer) locContainer.addEventListener("change", refreshLoadNumber);
+  siteInput.addEventListener("change", refreshWorkOrder);
+  if (locContainer) {
+    locContainer.addEventListener("change", refreshLoadNumber);
+    locContainer.addEventListener("change", refreshWorkOrder);
+    locContainer.addEventListener("input",  refreshWorkOrder);
+  }
+  refreshWorkOrder();
 
   // Engineer to notify — Copri only (other companies end at the plant)
   let notifyInput = null;
@@ -1458,7 +1519,7 @@ function renderDispatch(ctx) {
       company:      companyName,
       project:      project.isOther ? (otherProjectInput ? otherProjectInput.value.trim() : projectName) : projectName,
       contract:     project.isOther ? (otherContractInput ? otherContractInput.value.trim() : "") : project.contract,
-      workOrder:    woInput.value.trim(),
+      workOrder:    lookupWorkOrder(siteInput.value, loc.block, loc.street, loc.locationType),
       noteNumber:   noteInput.value.trim(),
       plant:        plantInput.value,
       truckNumber:  driver.truck,
@@ -1477,7 +1538,7 @@ function renderDispatch(ctx) {
       remarks:      remarksInput.value.trim(),
     };
     // street is not required in km_range "from only"? both required; in named mode only block (the name) is required.
-    const required = ["workOrder","noteNumber","plant","truckNumber","naqel","driverName","mixType","weight","tempDispatch","block","clerkName"];
+    const required = ["noteNumber","plant","truckNumber","naqel","driverName","mixType","weight","tempDispatch","block","clerkName"];
     if (data.locationType !== "named") required.push("street");
     if (isCopri) required.push("site", "notifyEngineer");
     if (project.isOther && otherProjectInput && !otherProjectInput.value.trim()) {
@@ -1693,11 +1754,17 @@ async function renderReceipt(noteNumber, preAuthName) {
   if (preAuthName) { engInput.value = preAuthName; engInput.disabled = true; }
   card.appendChild(g1);
 
+  // Work order is fixed by the dispatch location — read-only on the receipt too.
   const { group: gWOr, input: woReceiptInput } = fieldGroup(
-    "رقم أمر العمل", input("text", "مثال: 29", "numeric"), true,
-    dispatch ? `أمر العمل المرسل: ${dispatch.workOrder || "—"}` : ""
+    "رقم أمر العمل", input("text", "—"), false,
+    "يُحدَّد تلقائياً من بيانات الإرسال"
   );
-  if (dispatch && dispatch.workOrder) woReceiptInput.value = dispatch.workOrder;
+  woReceiptInput.value = dispatch
+    ? lookupWorkOrder(dispatch.site, dispatch.block, dispatch.street, dispatch.locationType)
+    : "*";
+  woReceiptInput.readOnly = true;
+  woReceiptInput.style.background = "var(--surface-2)";
+  woReceiptInput.style.fontWeight = "700";
   card.appendChild(gWOr);
 
   // Arrival weight is no longer entered by the engineer — it defaults to the

@@ -77,6 +77,7 @@ const REP = {
   menuBackfill:"إنشاء تقارير كل أيام العمل (مرة واحدة)",
   menuFixWO:   "تصحيح أوامر العمل للبيانات السابقة",
   menuOps:     "تحديث العمليات اليومية",
+  menuClean:   "تحديث بيانات Looker (Asphalt — Clean)",
   doneBackfill:"تم إنشاء تقارير جميع أيام العمل وحفظها في Drive.",
   done:        "تم إنشاء التقارير وحفظها في Drive وإرسالها بالبريد.",
   doneOps:     "تم تحديث جدول العمليات اليومية.",
@@ -534,6 +535,7 @@ function onOpen() {
       .addItem(REP.menuBackfill,"backfillReports")
       .addItem(REP.menuFixWO,   "applyFixedWorkOrders")
       .addItem(REP.menuOps,     "rebuildDailyOps")
+      .addItem(REP.menuClean,   "rebuildAsphaltClean")
       .addToUi();
   } catch (e) { /* not in a UI context */ }
 }
@@ -848,6 +850,7 @@ function dailyReportTrigger() {
   const cur = shiftWindow(Date.now());
   generateReportsForShift(cur.start - 1000);
   try { rebuildDailyOps(); } catch (e) {}
+  try { rebuildAsphaltClean(); } catch (e) {}
 }
 
 // ── One-time backfill: reports for every work day that has data ────────
@@ -1226,4 +1229,185 @@ function millingRevise_(p) {
   });
   SpreadsheetApp.flush();
   return jsonResponse({ success: true });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DATA HYGIENE & LOOKER LAYER
+// ═══════════════════════════════════════════════════════════════════
+// Raw logs (Dispatch/Receipt) stay append-only and UNTOUCHED. This adds a
+// non-destructive derived layer for cleanup + dashboards:
+//   • backupRegister()      — timestamped full copy (run before anything).
+//   • listTabs()            — log every tab + row/col counts.
+//   • setupReferenceTab()   — a "Reference" tab with the canonical street map
+//                             (single source of truth; edit it freely).
+//   • rebuildAsphaltClean() — a derived "Asphalt — Clean" tab: one normalized
+//                             row per dispatch (joined to its receipt) → Looker.
+// ═══════════════════════════════════════════════════════════════════
+const REFERENCE_SHEET = "Reference";
+const CLEAN_SHEET     = "Asphalt — Clean";
+const TEMP_DROP_WARN  = 30;    // °C — flag if arrival temp drops more than this
+const WEIGHT_SHORT    = 0.5;   // tons — flag if received is short by more than this
+
+// Default street canonicalization (raw spelling -> approved name), seeded from
+// the live data. The Reference tab overrides this once created.
+const STREET_CANON = {
+  "خالد بن عبد العزيز":     "خالد بن عبد العزيز",
+  "خالد بن عبدالعزيز":       "خالد بن عبد العزيز",
+  "شارع خالد بن عبد العزيز": "خالد بن عبد العزيز",
+  "شارع خالد بن عبدالعزيز":  "خالد بن عبد العزيز",
+  "شارع خالد عبدالعزيز":     "خالد بن عبد العزيز",
+  "شارع عبدالعزيز الخالد":   "خالد بن عبد العزيز",
+  "شارع عبدالله دشت":       "عبدالله دشت",
+};
+
+function backupRegister() {
+  const file = DriveApp.getFileById(SHEET_ID);
+  const name = file.getName() + " — backup " + Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH-mm");
+  const copy = file.makeCopy(name);
+  Logger.log("Backup created: " + name + "\n" + copy.getUrl());
+  return copy.getUrl();
+}
+
+function listTabs() {
+  SpreadsheetApp.openById(SHEET_ID).getSheets().forEach(function (s) {
+    Logger.log(s.getName() + "  —  " + Math.max(s.getLastRow() - 1, 0) + " rows, " + s.getLastColumn() + " cols");
+  });
+}
+
+function setupReferenceTab() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sh = ss.getSheetByName(REFERENCE_SHEET) || ss.insertSheet(REFERENCE_SHEET);
+  sh.clearContents();
+  const rows = [["النص المُدخل (الشارع)", "الاسم المعتمد"]];
+  Object.keys(STREET_CANON).forEach(function (k) { rows.push([k, STREET_CANON[k]]); });
+  sh.getRange(1, 1, rows.length, 2).setValues(rows);
+  sh.setFrozenRows(1);
+  sh.getRange(1, 1, 1, 2).setFontWeight("bold").setBackground("#1a1a2e").setFontColor("#00A651");
+  sh.autoResizeColumns(1, 2);
+  SpreadsheetApp.flush();
+  Logger.log("Reference tab ready — " + (rows.length - 1) + " street mappings (edit freely).");
+}
+
+// Street map from the Reference tab if present, else the built-in default.
+function readStreetMap_() {
+  const sh = SpreadsheetApp.openById(SHEET_ID).getSheetByName(REFERENCE_SHEET);
+  if (!sh) return STREET_CANON;
+  const data = sh.getDataRange().getValues();
+  const map = {};
+  for (let i = 1; i < data.length; i++) {
+    const k = normSp_(data[i][0]), v = normSp_(data[i][1]);
+    if (k && v) map[k] = v;
+  }
+  return Object.keys(map).length ? map : STREET_CANON;
+}
+function canonStreet_(map, s) {
+  const v = normSp_(s);
+  if (!v) return "";
+  if (map[v]) return map[v];
+  const v2 = v.replace(/^شارع\s+/, "");   // drop a leading "شارع " for consistency
+  return map[v2] || v2;
+}
+function cleanPhone_(p) {
+  const d = String(p == null ? "" : p).replace(/[^\d]/g, "");
+  if (!d) return "";
+  if (d.indexOf("965") === 0 && d.length === 11) return "+965" + d.slice(3);
+  if (d.length === 8) return "+965" + d;
+  return "+" + d;   // foreign / unexpected — kept, flagged with the leading +
+}
+function cleanTruck_(v) {
+  if (v == null || v === "") return "";
+  if (typeof v === "number" && Math.floor(v) === v) return String(v);
+  return String(v).trim();
+}
+
+// Build the derived "Asphalt — Clean" tab — the Looker source. One normalized
+// row per dispatch, joined to its receipt. Non-destructive (raw logs untouched).
+function rebuildAsphaltClean() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const d  = ss.getSheetByName(DISPATCH_SHEET).getDataRange().getValues();
+  const r  = ss.getSheetByName(RECEIPT_SHEET).getDataRange().getValues();
+  const dh = d[0], rh = r[0];
+  const smap = readStreetMap_();
+
+  const rN = rh.indexOf(COL.note), rDec = rh.indexOf(COL.decision), rEng = rh.indexOf(COL.engineer),
+        rTempArr = rh.indexOf(COL.tempArr), rWArr = rh.indexOf(COL.weightArr), rTs = rh.indexOf(COL.ts);
+  const recByNote = {};
+  for (let i = 1; i < r.length; i++) {
+    const note = String(r[i][rN] || ""); if (!note) continue;
+    recByNote[note] = { decision: r[i][rDec] || "", engineer: r[i][rEng] || "",
+                        tempArr: r[i][rTempArr], weightArr: r[i][rWArr], ts: r[i][rTs] };
+  }
+  const ix = {};
+  ["ts","note","company","project","contract","site","mix","weight","tempDisp","driver",
+   "driverPhone","truck","naqel","plant","loadNumber","status","block","street","locType"]
+    .forEach(function (k) { ix[k] = dh.indexOf(COL[k]); });
+
+  const headers = ["يوم العمل","التاريخ","الوقت","الشركة","المشروع","رقم العقد","رقم أمر العمل",
+    "الموقع","القطعة","الشارع","نوع الموقع","رقم السند","المصنع","الناقل","السائق","هاتف السائق",
+    "رقم الشاحنة","نوع الخلطة","طن مرسل","طن مستلم","فرق الطن","حرارة الإرسال","حرارة الوصول",
+    "فرق الحرارة","رقم الحمولة","المهندس","الحالة","القرار","مدة الوصول (دقيقة)","مستلم؟",
+    "انحراف حرارة","نقص وزن",
+    "مستلم (1/0)","انحراف (1/0)","مرفوض (1/0)","الأسبوع","ساعة الإرسال",
+    "كوبري (1/0)","طن مرسل (كوبري)"];
+  const out = [headers];
+
+  for (let j = 1; j < d.length; j++) {
+    const row = d[j]; const t = row[ix.ts];
+    if (!(t instanceof Date)) continue;
+    const note = String(row[ix.note] || "");
+    const rec  = recByNote[note] || null;
+    const lt   = locCode(row[ix.locType]);
+    const isKm = lt === "km_range", isNamed = lt === "named";
+
+    const rawStreet = isNamed ? row[ix.block] : row[ix.street];
+    const canonSt   = isKm ? normSp_(row[ix.street]) : canonStreet_(smap, rawStreet);
+    const blockOut  = isNamed ? "" : normSp_(row[ix.block]);
+
+    let woX;
+    if (isNamed)    woX = { site: row[ix.site] || "", block: canonSt, street: "", locationType: "named" };
+    else if (isKm)  woX = { site: row[ix.site] || "", block: "", street: "", locationType: "km_range" };
+    else            woX = { site: row[ix.site] || "", block: normSp_(row[ix.block]), street: canonSt, locationType: "block_street" };
+    const wo = woFor_(woX);
+
+    const tonsD = Number(row[ix.weight]) || 0;
+    const tonsR = (rec && Number(rec.weightArr) > 0) ? Number(rec.weightArr) : "";
+    const dTons = (tonsR !== "") ? Math.round((tonsR - tonsD) * 100) / 100 : "";
+    const tD = Number(row[ix.tempDisp]);
+    const tA = (rec && Number(rec.tempArr) > 0) ? Number(rec.tempArr) : "";
+    const dTemp = (!isNaN(tD) && tA !== "") ? Math.round((tA - tD) * 10) / 10 : "";
+    const transit = (rec && rec.ts instanceof Date) ? Math.round((rec.ts.getTime() - t.getTime()) / 60000) : "";
+    const received = (rec && rec.ts instanceof Date) ? "نعم" : "لا";
+    const tempDev   = (dTemp !== "" && dTemp <= -TEMP_DROP_WARN);
+    const weightDev = (dTons !== "" && dTons <= -WEIGHT_SHORT);
+    const recvNum   = (rec && rec.ts instanceof Date) ? 1 : 0;
+    const rejNum    = /رفض/.test(rec ? String(rec.decision) : "") ? 1 : 0;
+    const week      = Utilities.formatDate(t, TZ, "YYYY-'W'ww");
+    const hour      = Number(Utilities.formatDate(t, TZ, "H"));
+    const isCopri   = String(row[ix.company] || "").trim() === COPRI_COMPANY;
+
+    out.push([
+      workDayKey(t.getTime()),
+      Utilities.formatDate(t, TZ, "yyyy-MM-dd"),
+      Utilities.formatDate(t, TZ, "HH:mm"),
+      row[ix.company] || "", row[ix.project] || "", row[ix.contract] || "", wo,
+      row[ix.site] || "", blockOut, canonSt, (LABEL[lt] || lt), note,
+      row[ix.plant] || "", row[ix.naqel] || "", row[ix.driver] || "", cleanPhone_(row[ix.driverPhone]),
+      cleanTruck_(row[ix.truck]), row[ix.mix] || "", tonsD, tonsR, dTons,
+      (isNaN(tD) ? "" : tD), tA, dTemp, row[ix.loadNumber] || "",
+      rec ? rec.engineer : "", String(row[ix.status] || ""), rec ? rec.decision : "",
+      transit, received,
+      tempDev ? "⚠" : "", weightDev ? "⚠" : "",
+      recvNum, (tempDev || weightDev) ? 1 : 0, rejNum, week, hour,
+      isCopri ? 1 : 0, isCopri ? tonsD : "",
+    ]);
+  }
+
+  const sh = ss.getSheetByName(CLEAN_SHEET) || ss.insertSheet(CLEAN_SHEET);
+  sh.clearContents();
+  sh.getRange(1, 1, out.length, headers.length).setValues(out);
+  sh.setFrozenRows(1);
+  sh.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#1a1a2e").setFontColor("#00A651").setFontSize(10);
+  SpreadsheetApp.flush();
+  Logger.log("Asphalt — Clean rebuilt: " + (out.length - 1) + " rows.");
+  return out.length - 1;
 }

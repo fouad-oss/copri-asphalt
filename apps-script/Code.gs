@@ -1033,7 +1033,8 @@ const MCOL = {
   street:           "الشارع",
   depth:            "سماكة القشط",
   itemCode:         "رمز البند",
-  area:             "الكمية التقديرية (م²)",
+  area:             "المساحة المطلوب قشطها (م²)",
+  machines:         "عدد ماكينات القشط",
   requestedDate:    "التاريخ المطلوب",
   priority:         "الأولوية",
   engineer:         "اسم المهندس",
@@ -1050,7 +1051,7 @@ const MCOL = {
 };
 const MILLING_HEADERS = [
   MCOL.programId, MCOL.project, MCOL.workOrder, MCOL.site, MCOL.block, MCOL.street,
-  MCOL.depth, MCOL.itemCode, MCOL.area, MCOL.requestedDate, MCOL.priority,
+  MCOL.depth, MCOL.itemCode, MCOL.area, MCOL.machines, MCOL.requestedDate, MCOL.priority,
   MCOL.engineer, MCOL.submittedAt, MCOL.status, MCOL.pmName, MCOL.pmDecision,
   MCOL.pmNote, MCOL.pmDecidedAt, MCOL.audit, MCOL.marcoScheduledAt, MCOL.marcoNote,
   MCOL.engNotes,
@@ -1155,7 +1156,7 @@ function millingSubmit_(p) {
   const o = {
     programId: p.programId, project: p.project || "", workOrder: p.workOrder || "",
     site: p.site || "", block: p.block || "", street: p.street || "",
-    depth: p.depth || "", itemCode: p.itemCode || "", area: p.area || "",
+    depth: p.depth || "", itemCode: p.itemCode || "", area: p.area || "", machines: p.machines || "",
     requestedDate: p.requestedDate || "", priority: p.priority || "",
     engineer: p.engineerName || "", submittedAt: now, status: MILL.pending,
     pmName: "", pmDecision: "", pmNote: "", pmDecidedAt: "",
@@ -1213,7 +1214,7 @@ function millingRevise_(p) {
   const now = millingNow_();
   const sets = {
     project: p.project, workOrder: p.workOrder, site: p.site, block: p.block, street: p.street,
-    depth: p.depth, itemCode: p.itemCode, area: p.area, requestedDate: p.requestedDate,
+    depth: p.depth, itemCode: p.itemCode, area: p.area, machines: p.machines, requestedDate: p.requestedDate,
     priority: p.priority, engNotes: p.notes, status: MILL.review,
   };
   audit.push({ action: "revised", by: p.engineerName || obj.engineer, role: "engineer", ts: now });

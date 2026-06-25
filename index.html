@@ -2262,7 +2262,7 @@ function millingAllProjects() {
   const out = [];
   Object.values(CONFIG.companies).forEach(c =>
     Object.entries(c.projects).forEach(([name, p]) =>
-      out.push({ name, sites: p.sites || [] })));
+      out.push({ name, sites: p.sites || [], namedStreets: p.namedStreets || null })));
   return out;
 }
 function millingProjectByName(name) { return millingAllProjects().find(p => p.name === name) || null; }
@@ -2325,7 +2325,9 @@ function millingDetails(prog) {
   const locParts = [prog.block ? `ق ${prog.block}` : "", prog.street ? `ش ${prog.street}` : ""].filter(Boolean).join(" / ");
   if (locParts) wrap.appendChild(fieldRow("القطعة / الشارع", locParts));
   wrap.appendChild(fieldRow("سماكة القشط", prog.depth));
-  wrap.appendChild(fieldRow("الكمية التقديرية (م²)", prog.area));
+  wrap.appendChild(fieldRow("المساحة المطلوب قشطها (م²)", prog.area));
+  if (prog.machines) wrap.appendChild(fieldRow("عدد ماكينات القشط", prog.machines));
+  if (prog.priority) wrap.appendChild(fieldRow("الأولوية", prog.priority));
   wrap.appendChild(fieldRow("التاريخ المطلوب", prog.requestedDate));
   wrap.appendChild(fieldRow("اسم المهندس", prog.engineer));
   if (prog.engNotes) wrap.appendChild(fieldRow("ملاحظات", prog.engNotes));
@@ -2451,13 +2453,47 @@ function renderMillingProgramForm(engName, existing, onDone) {
     if (existing && existing.site) siteInput.value = existing.site;
   }
   buildSite();
-  projInput.addEventListener("change", () => { buildSite(); refreshMillingWO(); });
+  projInput.addEventListener("change", () => { buildSite(); buildMillingLoc(); refreshMillingWO(); });
   card.appendChild(siteWrap);
 
-  const row = el("div", "field-row-2");
-  const { group: gBlock,  input: blockInput }  = fieldGroup("القطعة", input("text", "رقم القطعة", "numeric"), false);
-  const { group: gStreet, input: streetInput } = fieldGroup("الشارع / الجادة", input("text", "اختياري"), false);
-  row.appendChild(gBlock); row.appendChild(gStreet); card.appendChild(row);
+  // Location — block + street, or a named street picked from the site's list
+  // (same named streets as the asphalt module). Toggle appears only for sites
+  // that have named streets defined.
+  const locWrap = el("div");
+  let locMode = "blocks";                 // "blocks" | "named"
+  let getMillingLoc = () => ({ block: "", street: "" });
+  function millingNamed() {
+    const proj = millingProjectByName(projInput.value);
+    return (proj && proj.namedStreets && siteInput && proj.namedStreets[siteInput.value]) || [];
+  }
+  function buildMillingLoc() {
+    locWrap.innerHTML = "";
+    const named = millingNamed();
+    if (!named.length) locMode = "blocks";
+    if (named.length) {
+      const toggle = el("div", "history-tabs"); toggle.style.marginBottom = ".6rem";
+      const tB = el("button", "history-tab" + (locMode === "blocks" ? " active" : "")); tB.type = "button"; tB.textContent = "قطعة وشارع";
+      const tN = el("button", "history-tab" + (locMode === "named"  ? " active" : "")); tN.type = "button"; tN.textContent = "اسم الشارع";
+      toggle.appendChild(tB); toggle.appendChild(tN); locWrap.appendChild(toggle);
+      tB.addEventListener("click", () => { if (locMode === "blocks") return; locMode = "blocks"; buildMillingLoc(); refreshMillingWO(); });
+      tN.addEventListener("click", () => { if (locMode === "named")  return; locMode = "named";  buildMillingLoc(); refreshMillingWO(); });
+    }
+    if (locMode === "named") {
+      const { group, input: s } = fieldGroup("اسم الشارع / الجادة", select(named, "اختر الشارع"), false);
+      locWrap.appendChild(group);
+      s.addEventListener("change", refreshMillingWO);
+      getMillingLoc = () => ({ block: "", street: s.value.trim() });
+    } else {
+      const r = el("div", "field-row-2");
+      const { group: gB, input: b }  = fieldGroup("القطعة", input("text", "رقم القطعة", "numeric"), false);
+      const { group: gS, input: st } = fieldGroup("الشارع / الجادة", input("text", "اختياري"), false);
+      r.appendChild(gB); r.appendChild(gS); locWrap.appendChild(r);
+      b.addEventListener("input", refreshMillingWO);
+      st.addEventListener("input", refreshMillingWO);
+      getMillingLoc = () => ({ block: b.value.trim(), street: st.value.trim() });
+    }
+  }
+  card.appendChild(locWrap);
 
   // Work order — derived from site + block/street (same rules as asphalt).
   const { group: gWO, input: woInput } = fieldGroup(
@@ -2466,24 +2502,27 @@ function renderMillingProgramForm(engName, existing, onDone) {
   woInput.readOnly = true; woInput.style.background = "var(--surface-2)"; woInput.style.fontWeight = "700";
   card.appendChild(gWO);
   function refreshMillingWO() {
-    woInput.value = lookupWorkOrder(siteInput ? siteInput.value : "", blockInput.value.trim(), streetInput.value.trim(), "block_street");
+    const loc = getMillingLoc();
+    woInput.value = lookupWorkOrder(siteInput ? siteInput.value : "", loc.block, loc.street, "block_street");
   }
-  siteWrap.addEventListener("change", refreshMillingWO);
-  blockInput.addEventListener("input", refreshMillingWO);
-  streetInput.addEventListener("input", refreshMillingWO);
+  siteWrap.addEventListener("change", () => { buildMillingLoc(); refreshMillingWO(); });
+  buildMillingLoc();
   refreshMillingWO();
 
   const { group: gDepth, input: depthInput } = fieldGroup("سماكة القشط", select((CONFIG.millingDepths || []).map(d => d.label), "اختر السماكة"), true);
   card.appendChild(gDepth);
 
   const row2 = el("div", "field-row-2");
-  const { group: gArea, input: areaInput } = fieldGroup("الكمية التقديرية (م²)", input("number", "0", "decimal"), true);
+  const { group: gArea, input: areaInput } = fieldGroup("المساحة المطلوب قشطها (م²)", input("number", "0", "decimal"), true);
   areaInput.step = "0.01";
   const { group: gDate, input: dateInput } = fieldGroup("التاريخ المطلوب", input("date", ""), true);
   row2.appendChild(gArea); row2.appendChild(gDate); card.appendChild(row2);
 
+  const row3 = el("div", "field-row-2");
+  const { group: gMach, input: machInput } = fieldGroup("عدد ماكينات القشط المطلوبة", input("number", "1", "numeric"), true);
+  machInput.min = "1"; machInput.step = "1";
   const { group: gPrio, input: prioInput } = fieldGroup("الأولوية", select(CONFIG.millingPriorities || [], "اختر الأولوية"), true);
-  card.appendChild(gPrio);
+  row3.appendChild(gMach); row3.appendChild(gPrio); card.appendChild(row3);
 
   const { group: gNotes, input: notesInput } = fieldGroup("ملاحظات", textarea("قيود، صعوبات وصول، إلخ..."), false);
   card.appendChild(gNotes);
@@ -2496,9 +2535,19 @@ function renderMillingProgramForm(engName, existing, onDone) {
   // Prefill on edit
   if (existing) {
     projInput.value = existing.project || ""; buildSite();
-    blockInput.value = existing.block || "";
-    streetInput.value = existing.street || ""; depthInput.value = existing.depth || "";
-    areaInput.value = existing.area || ""; dateInput.value = existing.requestedDate || "";
+    if (existing.site) siteInput.value = existing.site;
+    locMode = (existing.street && millingNamed().indexOf(existing.street) >= 0) ? "named" : "blocks";
+    buildMillingLoc();
+    if (locMode === "named") {
+      const sel = locWrap.querySelector("select"); if (sel) sel.value = existing.street || "";
+    } else {
+      const ins = locWrap.querySelectorAll("input");
+      if (ins[0]) ins[0].value = existing.block || "";
+      if (ins[1]) ins[1].value = existing.street || "";
+    }
+    depthInput.value = existing.depth || "";
+    areaInput.value = existing.area || ""; machInput.value = existing.machines || "";
+    dateInput.value = existing.requestedDate || "";
     prioInput.value = existing.priority || ""; notesInput.value = existing.engNotes || "";
     refreshMillingWO();
   }
@@ -2508,14 +2557,18 @@ function renderMillingProgramForm(engName, existing, onDone) {
 
   btn.addEventListener("click", async () => {
     const depth = millingDepthByLabel(depthInput.value);
+    const loc = getMillingLoc();
     const data = {
-      project: projInput.value, workOrder: lookupWorkOrder(siteInput ? siteInput.value : "", blockInput.value.trim(), streetInput.value.trim(), "block_street"), site: siteInput ? siteInput.value : "",
-      block: blockInput.value.trim(), street: streetInput.value.trim(),
+      project: projInput.value,
+      workOrder: lookupWorkOrder(siteInput ? siteInput.value : "", loc.block, loc.street, "block_street"),
+      site: siteInput ? siteInput.value : "",
+      block: loc.block, street: loc.street,
       depth: depthInput.value, itemCode: depth ? depth.code : "",
-      area: areaInput.value.trim(), requestedDate: dateInput.value,
-      priority: prioInput.value, engineerName: engName, notes: notesInput.value.trim(),
+      area: areaInput.value.trim(), machines: machInput.value.trim(),
+      requestedDate: dateInput.value, priority: prioInput.value,
+      engineerName: engName, notes: notesInput.value.trim(),
     };
-    const required = ["project", "site", "depth", "area", "requestedDate", "priority"];
+    const required = ["project", "site", "depth", "area", "machines", "requestedDate", "priority"];
     if (required.some(k => !data[k])) { errDiv.textContent = "يرجى تعبئة جميع الحقول المطلوبة"; errDiv.style.display = "block"; return; }
     errDiv.style.display = "none"; btn.disabled = true; btn.textContent = "جارٍ الإرسال…";
 

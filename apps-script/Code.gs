@@ -1128,7 +1128,8 @@ function rebuildAsphaltClean() {
     "رقم الشاحنة","نوع الخلطة","طن مرسل","طن مستلم","فرق الطن","حرارة الإرسال","حرارة الوصول",
     "فرق الحرارة","رقم الحمولة","المهندس","الحالة","القرار","مدة الوصول (دقيقة)","مستلم؟",
     "انحراف حرارة","نقص وزن",
-    "مستلم (1/0)","انحراف (1/0)","مرفوض (1/0)","الأسبوع","ساعة الإرسال"];
+    "مستلم (1/0)","انحراف (1/0)","مرفوض (1/0)","الأسبوع","ساعة الإرسال",
+    "كوبري (1/0)","طن مرسل (كوبري)"];
   const out = [headers];
 
   for (let j = 1; j < d.length; j++) {
@@ -1163,6 +1164,7 @@ function rebuildAsphaltClean() {
     const rejNum    = /رفض/.test(rec ? String(rec.decision) : "") ? 1 : 0;
     const week      = Utilities.formatDate(t, TZ, "YYYY-'W'ww");
     const hour      = Number(Utilities.formatDate(t, TZ, "H"));
+    const isCopri   = String(row[ix.company] || "").trim() === COPRI_COMPANY;
 
     out.push([
       workDayKey(t.getTime()),
@@ -1177,6 +1179,7 @@ function rebuildAsphaltClean() {
       transit, received,
       tempDev ? "⚠" : "", weightDev ? "⚠" : "",
       recvNum, (tempDev || weightDev) ? 1 : 0, rejNum, week, hour,
+      isCopri ? 1 : 0, isCopri ? tonsD : "",
     ]);
   }
 

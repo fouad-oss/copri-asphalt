@@ -2263,7 +2263,7 @@ function millingAllProjects() {
   Object.values(CONFIG.companies).forEach(c => {
     if (!c.isCopri) return;   // milling is for Copri projects only
     Object.entries(c.projects).forEach(([name, p]) =>
-      out.push({ name, sites: p.sites || [], namedStreets: p.namedStreets || null }));
+      out.push({ name, sites: p.sites || [], namedStreets: p.namedStreets || null, locationType: p.locationType || "block_street" }));
   });
   return out;
 }
@@ -2324,8 +2324,14 @@ function millingDetails(prog) {
   wrap.appendChild(fieldRow("المشروع", prog.project));
   wrap.appendChild(fieldRow("رقم أمر العمل", prog.workOrder));
   wrap.appendChild(fieldRow("الموقع", prog.site));
-  const locParts = [prog.block ? `ق ${prog.block}` : "", prog.street ? `ش ${prog.street}` : ""].filter(Boolean).join(" / ");
-  if (locParts) wrap.appendChild(fieldRow("القطعة / الشارع", locParts));
+  const _mp = millingProjectByName(prog.project);
+  if (_mp && _mp.locationType === "km_range") {
+    const km = [prog.block, prog.street].filter(Boolean).join(" — ");
+    if (km) wrap.appendChild(fieldRow("النطاق (كم)", km));
+  } else {
+    const locParts = [prog.block ? `ق ${prog.block}` : "", prog.street ? `ش ${prog.street}` : ""].filter(Boolean).join(" / ");
+    if (locParts) wrap.appendChild(fieldRow("القطعة / الشارع", locParts));
+  }
   wrap.appendChild(fieldRow("سماكة القشط", prog.depth));
   wrap.appendChild(fieldRow("المساحة المطلوب قشطها (م²)", prog.area));
   if (prog.machines) wrap.appendChild(fieldRow("عدد ماكينات القشط", prog.machines));
@@ -2470,6 +2476,17 @@ function renderMillingProgramForm(engName, existing, onDone) {
   }
   function buildMillingLoc() {
     locWrap.innerHTML = "";
+    const projLt = millingProjectByName(projInput.value);
+    if (projLt && projLt.locationType === "km_range") {
+      const r = el("div", "field-row-2");
+      const { group: gF, input: kmFrom } = fieldGroup("من الكيلومتر", input("text", "مثال: 12.5", "decimal"), false);
+      const { group: gT, input: kmTo }   = fieldGroup("إلى الكيلومتر", input("text", "مثال: 14.0", "decimal"), false);
+      r.appendChild(gF); r.appendChild(gT); locWrap.appendChild(r);
+      kmFrom.addEventListener("input", refreshMillingWO);
+      kmTo.addEventListener("input", refreshMillingWO);
+      getMillingLoc = () => ({ block: kmFrom.value.trim(), street: kmTo.value.trim() });
+      return;
+    }
     const named = millingNamed();
     if (!named.length) locMode = "blocks";
     if (named.length) {
@@ -2505,7 +2522,9 @@ function renderMillingProgramForm(engName, existing, onDone) {
   card.appendChild(gWO);
   function refreshMillingWO() {
     const loc = getMillingLoc();
-    woInput.value = lookupWorkOrder(siteInput ? siteInput.value : "", loc.block, loc.street, "block_street");
+    const proj = millingProjectByName(projInput.value);
+    const ltype = (proj && proj.locationType === "km_range") ? "km_range" : "block_street";
+    woInput.value = lookupWorkOrder(siteInput ? siteInput.value : "", loc.block, loc.street, ltype);
   }
   siteWrap.addEventListener("change", () => { buildMillingLoc(); refreshMillingWO(); });
   buildMillingLoc();
@@ -2560,9 +2579,11 @@ function renderMillingProgramForm(engName, existing, onDone) {
   btn.addEventListener("click", async () => {
     const depth = millingDepthByLabel(depthInput.value);
     const loc = getMillingLoc();
+    const projObj = millingProjectByName(projInput.value);
+    const ltype = (projObj && projObj.locationType === "km_range") ? "km_range" : "block_street";
     const data = {
       project: projInput.value,
-      workOrder: lookupWorkOrder(siteInput ? siteInput.value : "", loc.block, loc.street, "block_street"),
+      workOrder: lookupWorkOrder(siteInput ? siteInput.value : "", loc.block, loc.street, ltype),
       site: siteInput ? siteInput.value : "",
       block: loc.block, street: loc.street,
       depth: depthInput.value, itemCode: depth ? depth.code : "",

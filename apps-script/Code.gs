@@ -1127,7 +1127,8 @@ function rebuildAsphaltClean() {
     "الموقع","القطعة","الشارع","نوع الموقع","رقم السند","المصنع","الناقل","السائق","هاتف السائق",
     "رقم الشاحنة","نوع الخلطة","طن مرسل","طن مستلم","فرق الطن","حرارة الإرسال","حرارة الوصول",
     "فرق الحرارة","رقم الحمولة","المهندس","الحالة","القرار","مدة الوصول (دقيقة)","مستلم؟",
-    "انحراف حرارة","نقص وزن"];
+    "انحراف حرارة","نقص وزن",
+    "مستلم (1/0)","انحراف (1/0)","مرفوض (1/0)","الأسبوع","ساعة الإرسال"];
   const out = [headers];
 
   for (let j = 1; j < d.length; j++) {
@@ -1156,6 +1157,12 @@ function rebuildAsphaltClean() {
     const dTemp = (!isNaN(tD) && tA !== "") ? Math.round((tA - tD) * 10) / 10 : "";
     const transit = (rec && rec.ts instanceof Date) ? Math.round((rec.ts.getTime() - t.getTime()) / 60000) : "";
     const received = (rec && rec.ts instanceof Date) ? "نعم" : "لا";
+    const tempDev   = (dTemp !== "" && dTemp <= -TEMP_DROP_WARN);
+    const weightDev = (dTons !== "" && dTons <= -WEIGHT_SHORT);
+    const recvNum   = (rec && rec.ts instanceof Date) ? 1 : 0;
+    const rejNum    = /رفض/.test(rec ? String(rec.decision) : "") ? 1 : 0;
+    const week      = Utilities.formatDate(t, TZ, "YYYY-'W'ww");
+    const hour      = Number(Utilities.formatDate(t, TZ, "H"));
 
     out.push([
       workDayKey(t.getTime()),
@@ -1168,8 +1175,8 @@ function rebuildAsphaltClean() {
       (isNaN(tD) ? "" : tD), tA, dTemp, row[ix.loadNumber] || "",
       rec ? rec.engineer : "", String(row[ix.status] || ""), rec ? rec.decision : "",
       transit, received,
-      (dTemp !== "" && dTemp <= -TEMP_DROP_WARN) ? "⚠" : "",
-      (dTons !== "" && dTons <= -WEIGHT_SHORT) ? "⚠" : "",
+      tempDev ? "⚠" : "", weightDev ? "⚠" : "",
+      recvNum, (tempDev || weightDev) ? 1 : 0, rejNum, week, hour,
     ]);
   }
 

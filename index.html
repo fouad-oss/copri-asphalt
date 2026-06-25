@@ -2260,9 +2260,11 @@ const MILL_STATUS = {
 // Flatten asphalt projects for milling dropdowns.
 function millingAllProjects() {
   const out = [];
-  Object.values(CONFIG.companies).forEach(c =>
+  Object.values(CONFIG.companies).forEach(c => {
+    if (!c.isCopri) return;   // milling is for Copri projects only
     Object.entries(c.projects).forEach(([name, p]) =>
-      out.push({ name, sites: p.sites || [], namedStreets: p.namedStreets || null })));
+      out.push({ name, sites: p.sites || [], namedStreets: p.namedStreets || null }));
+  });
   return out;
 }
 function millingProjectByName(name) { return millingAllProjects().find(p => p.name === name) || null; }

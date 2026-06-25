@@ -2624,12 +2624,225 @@ async function renderMillingReportView(programId) {
   const print = el("button", "btn-primary"); print.type = "button"; print.textContent = "🖨 طباعة"; print.addEventListener("click", () => window.print()); main.appendChild(print);
 }
 
-// ── Stub portals (built in the next phase) ────────────────────────
-function renderMillingComingSoon(title) {
-  const main = renderShell(title); main.innerHTML = "";
-  const box = el("div", "info-box");
-  box.textContent = "هذه البوابة قيد الإنشاء — ستتوفر قريباً.";
-  main.appendChild(box);
+// ── PIN screen (shared by PM + Marco) ─────────────────────────────
+function millingPinScreen_(opts) {
+  const main = renderShell(opts.title); main.innerHTML = "";
+  const screen = el("div", "pin-screen");
+  const logo = el("div"); logo.innerHTML = `<svg width="48" height="48" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#00A651"/><path d="M6 22 L16 10 L26 22" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="4" y="22" width="24" height="3" rx="1.5" fill="white"/></svg>`;
+  screen.appendChild(logo);
+  const h = el("h2"); h.textContent = opts.title; screen.appendChild(h);
+  const p = el("p"); p.textContent = "اختر اسمك وأدخل الرمز السري للمتابعة"; screen.appendChild(p);
+
+  const { group: gName, input: nameInput } = fieldGroup("الاسم", select(opts.names, "اختر اسمك"), true);
+  if (opts.names.length === 1) nameInput.value = opts.names[0];
+  screen.appendChild(gName);
+
+  const pinWrap = el("div", "field-group");
+  const pinLabel = el("label"); pinLabel.innerHTML = 'الرمز السري <span class="req">*</span>';
+  const pinInput = input("password", "••••", "numeric"); pinInput.className += " pin-input"; pinInput.maxLength = 4;
+  pinWrap.appendChild(pinLabel); pinWrap.appendChild(pinInput); screen.appendChild(pinWrap);
+
+  const errDiv = el("div", "error-msg"); errDiv.style.display = "none"; screen.appendChild(errDiv);
+  const btn = el("button", "btn-primary"); btn.type = "button"; btn.textContent = "دخول"; btn.style.width = "100%"; screen.appendChild(btn);
+  main.appendChild(screen);
+
+  btn.addEventListener("click", () => {
+    const name = nameInput.value, pin = pinInput.value.trim();
+    if (!name) { errDiv.textContent = "يرجى اختيار اسمك"; errDiv.style.display = "block"; return; }
+    if (!pin)  { errDiv.textContent = "يرجى إدخال الرمز السري"; errDiv.style.display = "block"; return; }
+    if (opts.validate(name, pin)) opts.onSuccess(name);
+    else { errDiv.textContent = "رمز سري خاطئ"; errDiv.style.display = "block"; pinInput.value = ""; }
+  });
+  pinInput.addEventListener("keydown", e => { if (e.key === "Enter") btn.click(); });
+}
+function renderMillingPMPINScreen(onSuccess) {
+  millingPinScreen_({
+    title: "تسجيل الدخول — مدير المشروع",
+    names: (CONFIG.projectManagers || []).map(pm => pm.name),
+    validate: (name, pin) => { const pm = (CONFIG.projectManagers || []).find(x => x.name === name); return !!pm && pm.pin === pin; },
+    onSuccess: name => { setPMSession(name); onSuccess(name); },
+  });
+}
+function renderMillingMarcoPINScreen(onSuccess) {
+  millingPinScreen_({
+    title: "تسجيل الدخول — ماركو",
+    names: [(CONFIG.marco && CONFIG.marco.name) || "ماركو"],
+    validate: (name, pin) => !!CONFIG.marco && CONFIG.marco.pin === pin,
+    onSuccess: name => { setMarcoSession(name); onSuccess(name); },
+  });
+}
+
+// Post a status change, then refresh (the no-cors POST can't be read, so wait
+// briefly for the write to commit before re-fetching).
+async function millingAct_(payload, btns, onChange) {
+  (btns || []).forEach(b => { b.disabled = true; });
+  try { await postToScript(payload); await new Promise(r => setTimeout(r, 1100)); } catch {}
+  onChange();
+}
+
+// ── PM portal — approve / reject programs for the PM's projects ────
+async function renderMillingPMHome(pmName) {
+  setPMSession(pmName);
+  const main = renderShell("برنامج القشط — مدير المشروع"); main.innerHTML = "";
+  const pm = (CONFIG.projectManagers || []).find(x => x.name === pmName);
+  const myProjects = (pm && pm.projects) || [];
+
+  const head = el("div", "card");
+  const hr = el("div"); hr.style.cssText = "display:flex;justify-content:space-between;align-items:center;";
+  const hi = el("div"); hi.innerHTML = `<div style="font-weight:700">${pmName}</div><div style="font-size:.75rem;color:var(--text-3)">اعتماد برامج القشط</div>`;
+  const out = el("button", "btn-secondary"); out.type = "button"; out.textContent = "خروج"; out.style.width = "auto";
+  out.addEventListener("click", () => { sessionStorage.removeItem("pm_session"); location.href = location.href.split("?")[0] + "?millingRole=pm"; });
+  hr.appendChild(hi); hr.appendChild(out); head.appendChild(hr); main.appendChild(head);
+
+  const tabs = el("div", "history-tabs");
+  const tPend = el("button", "history-tab active"); tPend.type = "button"; tPend.textContent = "بانتظار الموافقة";
+  const tLog  = el("button", "history-tab"); tLog.type = "button"; tLog.textContent = "السجل";
+  tabs.appendChild(tPend); tabs.appendChild(tLog); main.appendChild(tabs);
+  const body = el("div"); main.appendChild(body);
+
+  let active = "pending";
+  async function showPending() {
+    active = "pending"; tPend.classList.add("active"); tLog.classList.remove("active");
+    body.innerHTML = ""; const info = el("div", "info-box"); info.textContent = "جارٍ التحميل…"; body.appendChild(info);
+    const data = await millingGet({ millingPMQueue: pmName });
+    if (active !== "pending") return;
+    body.innerHTML = "";
+    const progs = (data.programs || []).filter(p => myProjects.indexOf(p.project) >= 0)
+      .sort((a, b) => String(a.submittedAt).localeCompare(String(b.submittedAt)));
+    if (!progs.length) { const e = el("div", "info-box"); e.textContent = "لا توجد برامج بانتظار موافقتك."; body.appendChild(e); return; }
+    progs.forEach(p => body.appendChild(millingPMCard(p, pmName, showPending)));
+  }
+  async function showLog() {
+    active = "log"; tLog.classList.add("active"); tPend.classList.remove("active");
+    body.innerHTML = ""; const info = el("div", "info-box"); info.textContent = "جارٍ التحميل…"; body.appendChild(info);
+    const data = await millingGet({ millingDecided: 1 });
+    if (active !== "log") return;
+    body.innerHTML = "";
+    const progs = (data.programs || []).filter(p => myProjects.indexOf(p.project) >= 0)
+      .sort((a, b) => String(b.pmDecidedAt || b.submittedAt).localeCompare(String(a.pmDecidedAt || a.submittedAt)));
+    if (!progs.length) { const e = el("div", "info-box"); e.textContent = "لا توجد برامج في السجل."; body.appendChild(e); return; }
+    progs.forEach(p => {
+      const card = el("div", "card");
+      const top = el("div"); top.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;";
+      const id = el("div"); id.style.cssText = "font-weight:700;font-size:.9rem;"; id.textContent = p.programId;
+      top.appendChild(id); top.appendChild(millingStatusBadge(p.status)); card.appendChild(top);
+      card.appendChild(millingDetails(p));
+      if (p.pmNote) { const n = el("div"); n.style.cssText = "margin-top:.5rem;font-size:.8rem;color:var(--text-2);"; n.innerHTML = `<strong>ملاحظة:</strong> ${p.pmNote}`; card.appendChild(n); }
+      const view = el("a", "btn-secondary"); view.textContent = "عرض / طباعة"; view.style.cssText = "width:auto;text-decoration:none;text-align:center;margin-top:.6rem;display:inline-block;";
+      view.href = `${location.href.split("?")[0]}?millingReport=${encodeURIComponent(p.programId)}`; view.target = "_blank"; card.appendChild(view);
+      body.appendChild(card);
+    });
+  }
+  tPend.addEventListener("click", showPending);
+  tLog.addEventListener("click", showLog);
+  showPending();
+}
+function millingPMCard(prog, pmName, onChange) {
+  const card = el("div", "card");
+  const top = el("div"); top.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;";
+  const id = el("div"); id.style.cssText = "font-weight:700;font-size:.9rem;"; id.textContent = prog.programId;
+  top.appendChild(id); top.appendChild(millingStatusBadge(prog.status)); card.appendChild(top);
+  const prow = el("div"); prow.style.cssText = "margin-bottom:.4rem;"; prow.appendChild(millingPriorityBadge(prog.priority)); card.appendChild(prow);
+  card.appendChild(millingDetails(prog));
+
+  const actions = el("div"); actions.style.cssText = "display:flex;gap:.5rem;margin-top:.7rem;";
+  const approve = el("button", "btn-primary"); approve.type = "button"; approve.style.width = "auto"; approve.textContent = "موافقة ✓";
+  const reject  = el("button"); reject.type = "button"; reject.textContent = "رفض ✕";
+  reject.style.cssText = "width:auto;padding:.6rem 1rem;border-radius:var(--radius-sm);background:#fdecea;color:#D32F2F;border:1.5px solid #D32F2F;font-weight:700;font-family:inherit;cursor:pointer;";
+  actions.appendChild(approve); actions.appendChild(reject); card.appendChild(actions);
+
+  approve.addEventListener("click", () => {
+    millingAct_({ type: "updateMillingStatus", programId: prog.programId, decision: "approve", by: pmName, role: "pm" }, [approve, reject], onChange);
+  });
+  reject.addEventListener("click", () => {
+    actions.style.display = "none";
+    const box = el("div"); box.style.cssText = "margin-top:.6rem;";
+    const { group, input: noteI } = fieldGroup("سبب الرفض (إلزامي)", textarea("اكتب سبب الرفض ليتمكن المهندس من التعديل…"), true);
+    box.appendChild(group);
+    const err = el("div", "error-msg"); err.style.display = "none"; box.appendChild(err);
+    const rowB = el("div"); rowB.style.cssText = "display:flex;gap:.5rem;";
+    const confirm = el("button"); confirm.type = "button"; confirm.textContent = "تأكيد الرفض";
+    confirm.style.cssText = "width:auto;padding:.6rem 1rem;border-radius:var(--radius-sm);background:#D32F2F;color:#fff;border:none;font-weight:700;font-family:inherit;cursor:pointer;";
+    const cancel = el("button", "btn-secondary"); cancel.type = "button"; cancel.textContent = "إلغاء"; cancel.style.width = "auto";
+    rowB.appendChild(confirm); rowB.appendChild(cancel); box.appendChild(rowB); card.appendChild(box);
+    cancel.addEventListener("click", () => { box.remove(); actions.style.display = "flex"; });
+    confirm.addEventListener("click", () => {
+      const note = noteI.value.trim();
+      if (!note) { err.textContent = "سبب الرفض إلزامي"; err.style.display = "block"; return; }
+      millingAct_({ type: "updateMillingStatus", programId: prog.programId, decision: "reject", by: pmName, role: "pm", note }, [confirm, cancel], onChange);
+    });
+  });
+  return card;
+}
+
+// ── Marco portal — schedule approved programs ─────────────────────
+async function renderMillingMarcoHome(marcoName) {
+  marcoName = marcoName || (CONFIG.marco && CONFIG.marco.name) || "ماركو";
+  setMarcoSession(marcoName);
+  const main = renderShell("برنامج القشط — الجدولة"); main.innerHTML = "";
+
+  const head = el("div", "card");
+  const hr = el("div"); hr.style.cssText = "display:flex;justify-content:space-between;align-items:center;";
+  const hi = el("div"); hi.innerHTML = `<div style="font-weight:700">${marcoName}</div><div style="font-size:.75rem;color:var(--text-3)">جدولة برامج القشط</div>`;
+  const out = el("button", "btn-secondary"); out.type = "button"; out.textContent = "خروج"; out.style.width = "auto";
+  out.addEventListener("click", () => { sessionStorage.removeItem("marco_session"); location.href = location.href.split("?")[0] + "?millingRole=marco"; });
+  hr.appendChild(hi); hr.appendChild(out); head.appendChild(hr); main.appendChild(head);
+
+  const fWrap = el("div", "card");
+  const { group: gF, input: projFilter } = fieldGroup("تصفية حسب المشروع", select(millingAllProjects().map(p => p.name), "كل المشاريع"), false);
+  fWrap.appendChild(gF); main.appendChild(fWrap);
+
+  const body = el("div"); main.appendChild(body);
+  async function load() {
+    body.innerHTML = ""; const info = el("div", "info-box"); info.textContent = "جارٍ تحميل قائمة الجدولة…"; body.appendChild(info);
+    const data = await millingGet({ millingMarcoQueue: 1 });
+    body.innerHTML = "";
+    let progs = (data.programs || []);
+    if (projFilter.value) progs = progs.filter(p => p.project === projFilter.value);
+    progs.sort((a, b) => String(a.requestedDate).localeCompare(String(b.requestedDate)));
+    if (!progs.length) { const e = el("div", "info-box"); e.textContent = "لا توجد برامج معتمدة للجدولة."; body.appendChild(e); return; }
+    progs.forEach(p => body.appendChild(millingMarcoCard(p, marcoName, load)));
+  }
+  projFilter.addEventListener("change", load);
+  load();
+}
+function millingMarcoCard(prog, marcoName, onChange) {
+  const card = el("div", "card");
+  const top = el("div"); top.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;";
+  const id = el("div"); id.style.cssText = "font-weight:700;font-size:.9rem;"; id.textContent = prog.programId;
+  top.appendChild(id); top.appendChild(millingStatusBadge(prog.status)); card.appendChild(top);
+  const prow = el("div"); prow.style.cssText = "margin-bottom:.4rem;"; prow.appendChild(millingPriorityBadge(prog.priority)); card.appendChild(prow);
+  card.appendChild(millingDetails(prog));
+  if (prog.status === MILL_STATUS.scheduled && prog.marcoNote) {
+    const n = el("div"); n.style.cssText = "margin-top:.5rem;font-size:.8rem;color:var(--text-2);"; n.innerHTML = `<strong>ملاحظة الجدولة:</strong> ${prog.marcoNote}`; card.appendChild(n);
+  }
+
+  const actions = el("div"); actions.style.cssText = "display:flex;gap:.5rem;margin-top:.7rem;"; card.appendChild(actions);
+  if (prog.status === MILL_STATUS.approved) {
+    const sched = el("button", "btn-primary"); sched.type = "button"; sched.style.width = "auto"; sched.textContent = "جدولة 📅";
+    actions.appendChild(sched);
+    sched.addEventListener("click", () => {
+      actions.style.display = "none";
+      const box = el("div"); box.style.cssText = "margin-top:.6rem;";
+      const { group, input: noteI } = fieldGroup("ملاحظة الجدولة (اختياري)", input("text", "مثال: مجدول ليوم 22/06"), false);
+      box.appendChild(group);
+      const rowB = el("div"); rowB.style.cssText = "display:flex;gap:.5rem;";
+      const confirm = el("button", "btn-primary"); confirm.type = "button"; confirm.style.width = "auto"; confirm.textContent = "تأكيد الجدولة";
+      const cancel = el("button", "btn-secondary"); cancel.type = "button"; cancel.style.width = "auto"; cancel.textContent = "إلغاء";
+      rowB.appendChild(confirm); rowB.appendChild(cancel); box.appendChild(rowB); card.appendChild(box);
+      cancel.addEventListener("click", () => { box.remove(); actions.style.display = "flex"; });
+      confirm.addEventListener("click", () => {
+        millingAct_({ type: "updateMillingStatus", programId: prog.programId, decision: "schedule", by: marcoName, role: "marco", note: noteI.value.trim() }, [confirm, cancel], onChange);
+      });
+    });
+  } else if (prog.status === MILL_STATUS.scheduled) {
+    const start = el("button", "btn-primary"); start.type = "button"; start.style.width = "auto"; start.textContent = "بدء التنفيذ ▶";
+    actions.appendChild(start);
+    start.addEventListener("click", () => {
+      millingAct_({ type: "updateMillingStatus", programId: prog.programId, decision: "start", by: marcoName, role: "marco" }, [start], onChange);
+    });
+  }
+  return card;
 }
 
 // ── Router (milling-aware) ──
@@ -2645,9 +2858,13 @@ if (millingReport) {
   if (session) renderMillingEngineerHome(session.name);
   else renderPINScreen(name => renderMillingEngineerHome(name));
 } else if (millingRole === "pm") {
-  renderMillingComingSoon("بوابة مدير المشروع");
+  const pmSession = getPMSession();
+  if (pmSession) renderMillingPMHome(pmSession.name);
+  else renderMillingPMPINScreen(name => renderMillingPMHome(name));
 } else if (millingRole === "marco") {
-  renderMillingComingSoon("بوابة ماركو");
+  const marcoSession = getMarcoSession();
+  if (marcoSession) renderMillingMarcoHome(marcoSession.name);
+  else renderMillingMarcoPINScreen(name => renderMillingMarcoHome(name));
 } else if (note) {
   const session = getEngineerSession();
   if (session) renderReceipt(note, session.name);

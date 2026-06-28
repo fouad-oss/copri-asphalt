@@ -2395,7 +2395,9 @@ async function renderMillingEngineerHome(engName) {
     activeTab = "new";
     tNew.classList.add("active"); tMine.classList.remove("active");
     body.innerHTML = "";
-    body.appendChild(renderMillingProgramForm(engName, null, showMine));
+    // Re-render the whole home on return — the success screen clears #main-content,
+    // which would detach the `body` that showMine writes into.
+    body.appendChild(renderMillingProgramForm(engName, null, () => renderMillingEngineerHome(engName)));
   }
   tMine.addEventListener("click", showMine);
   tNew.addEventListener("click", showNew);

@@ -1122,7 +1122,9 @@ const TEMPLATE_HTML = `<!DOCTYPE html>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   @page { size: A5 landscape; margin: 8mm; }
   body { font-family: 'Segoe UI', 'Arial Unicode MS', Arial, sans-serif; font-size: 9pt; color: #000; direction: rtl; background: #fff; }
-  .note { width: 100%; border: 2px solid #000; padding: 4px; }
+  .note { width: 100%; border: 2px solid #000; padding: 4px; page-break-after: always; }
+  .note:last-of-type { page-break-after: auto; }
+  .copy-banner { text-align: center; font-size: 11pt; font-weight: 700; color: #fff; background: #00A651; letter-spacing: 1px; padding: 3px; margin: -4px -4px 4px -4px; }
   .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 4px; margin-bottom: 4px; }
   .header-logo { font-size: 13pt; font-weight: 700; color: #00A651; border: 2px solid #00A651; padding: 3px 10px; border-radius: 3px; }
   .header-title { text-align: center; flex: 1; }
@@ -1147,7 +1149,7 @@ const TEMPLATE_HTML = `<!DOCTYPE html>
   .sig-box .sig-line { border-bottom: 1px solid #999; margin: 0 6px; height: 18px; }
   .sig-box .sig-stamp { font-size: 7pt; color: #aaa; margin-top: 2px; }
   .note-footer { text-align: center; font-size: 6.5pt; color: #aaa; border-top: 1px solid #ddd; margin-top: 3px; padding-top: 2px; }
-  @media screen { body { background: #eaeae6; padding: 20px; } .note { max-width: 740px; margin: auto; background: #fff; box-shadow: 0 2px 16px rgba(0,0,0,0.15); padding: 8px; } }
+  @media screen { body { background: #eaeae6; padding: 20px; } .note { max-width: 740px; margin: 0 auto 16px; background: #fff; box-shadow: 0 2px 16px rgba(0,0,0,0.15); padding: 8px; } }
   @media print { body { background: #fff; } }
 </style>
 </head>
@@ -1215,11 +1217,14 @@ function generateQR(noteNumber, baseUrl) {
 </body>
 </html>`;
 
-// Open the print-ready delivery note in a new window, inject the dispatch
-// data + QR, and trigger the browser print dialog.
-function printDeliveryNote(data, receiptLink) {
-  const w = window.open("", "_blank", "width=900,height=650");
+// Delivery-note copies — one print job produces these 4 labelled pages.
+const DN_COPIES = ["نسخة السائق — Driver", "نسخة الموقع — Site", "نسخة المصنع — Plant", "نسخة الحسابات — Accounts"];
+// Open the print-ready delivery note in a new window, inject the dispatch data +
+// QR, clone it into the 4 labelled copies, and trigger the browser print dialog.
+function printDeliveryNote(data, receiptLink, preWin) {
+  const w = preWin || window.open("", "_blank", "width=900,height=650");
   if (!w) { alert("يرجى السماح بالنوافذ المنبثقة لطباعة السند"); return; }
+  w.document.open();          // clear any "preparing…" placeholder in a pre-opened window
   w.document.write(TEMPLATE_HTML);
   w.document.close();
 
@@ -1264,6 +1269,20 @@ function printDeliveryNote(data, receiptLink) {
       const base = (receiptLink || window.location.href).split("?")[0];
       if (typeof w.generateQR === "function") w.generateQR(data.noteNumber, base);
     } catch (e) { /* QR is best-effort */ }
+
+    // Duplicate the filled note into 4 labelled copies — one print job, 4 pages.
+    try {
+      const noteEl = d.querySelector(".note");
+      if (noteEl) {
+        const banner = txt => { const b = d.createElement("div"); b.className = "copy-banner"; b.textContent = txt; return b; };
+        noteEl.insertBefore(banner(DN_COPIES[0]), noteEl.firstChild);
+        for (let i = 1; i < DN_COPIES.length; i++) {
+          const c = noteEl.cloneNode(true);
+          c.querySelector(".copy-banner").textContent = DN_COPIES[i];
+          noteEl.parentNode.appendChild(c);
+        }
+      }
+    } catch (e) { /* clone is best-effort */ }
 
     setTimeout(() => { try { w.focus(); w.print(); } catch (e) {} }, 600);
   };
@@ -1690,11 +1709,20 @@ function renderDispatch(ctx) {
     errDiv.style.display = "none";
     btn.disabled = true; btn.textContent = "جارٍ التحقق...";
 
+    // Open the print window NOW, inside the click gesture, so the browser won't
+    // block it after the async submit. It's filled + printed on success below.
+    let printWin = null;
+    try {
+      printWin = window.open("", "_blank", "width=900,height=650");
+      if (printWin) printWin.document.write('<!doctype html><meta charset="utf-8"><body style="font-family:sans-serif;direction:rtl;padding:24px;color:#333">جارٍ تحضير سند التسليم…</body>');
+    } catch (e) { printWin = null; }
+
     // Prevent duplicate delivery-note numbers — block if this note already exists
     try {
       const dupRes  = await fetch(`${CONFIG.scriptUrl}?note=${encodeURIComponent(data.noteNumber)}`);
       const dupJson = await dupRes.json();
       if (dupJson.found) {
+        if (printWin) printWin.close();
         btn.disabled = false; btn.innerHTML = submitLabel;
         errDiv.textContent = `رقم السند ${data.noteNumber} مُستخدم مسبقاً — تأكد من الرقم`;
         errDiv.style.display = "block";
@@ -1712,8 +1740,10 @@ function renderDispatch(ctx) {
     try {
       await postToScript({ type: "dispatch", ...data, timestamp: timestamp() });
       const receiptLink = `${window.location.href.split("?")[0]}?note=${encodeURIComponent(data.noteNumber)}`;
+      printDeliveryNote(data, receiptLink, printWin);   // fill + print the 4 labelled copies
       renderDispatchSuccess(ctx, data, receiptLink);
     } catch {
+      if (printWin) printWin.close();
       btn.disabled = false; btn.innerHTML = submitLabel;
       errDiv.textContent = "حدث خطأ، يرجى المحاولة مجدداً";
       errDiv.style.display = "block";
@@ -1730,7 +1760,7 @@ function renderDispatchSuccess(ctx, data, receiptLink) {
   const icon = el("div", "success-icon ok"); icon.textContent = "✓"; s.appendChild(icon);
   const h = el("h2"); h.textContent = isCopri ? "تم الإرسال بنجاح" : "تم تسجيل الشحنة"; s.appendChild(h);
   const p1 = el("p"); p1.innerHTML = `<strong>${data.company}</strong> — ${data.project}`; s.appendChild(p1);
-  const p2b = el("p"); p2b.innerHTML = `أمر العمل: <strong>${data.workOrder}</strong> — رقم السند: <strong>${data.noteNumber}</strong>`; s.appendChild(p2b);
+  const p2b = el("p"); p2b.innerHTML = `رقم السند: <strong>${data.noteNumber}</strong>${data.workOrder ? ` — أمر العمل: <strong>${data.workOrder}</strong>` : ""}`; s.appendChild(p2b);
   const loc = locDisplay(data);
   const p2c = el("p"); p2c.textContent = `${data.plant} — ${data.site}${loc ? " / " + loc : ""}`; s.appendChild(p2c);
   if (data.loadNumber) {
@@ -1738,6 +1768,12 @@ function renderDispatchSuccess(ctx, data, receiptLink) {
     pLoad.textContent = `🔢 رقم الحمولة لهذا الموقع: ${data.loadNumber}`;
     s.appendChild(pLoad);
   }
+
+  // Delivery note auto-prints on submit (4 copies). This re-opens it on demand.
+  const reprintBtn = el("button", "btn-primary"); reprintBtn.style.marginTop = ".75rem";
+  reprintBtn.innerHTML = "🖨 طباعة سند التسليم (٤ نسخ)";
+  reprintBtn.addEventListener("click", () => printDeliveryNote(data, receiptLink));
+  s.appendChild(reprintBtn);
 
   // Copri only: site-engineer receipt link + WhatsApp notification.
   if (isCopri) {

@@ -122,6 +122,37 @@ const REP = {
   footer:      "كوبري للمشاريع الإنشائية — منظومة التتبع الرقمي",
 };
 
+// ── Weekly / monthly period reports ─────────────────────────────────
+// Days use the same noon-to-noon boundary as the daily report. A "week"
+// is 7 such work-days starting on the weekday below; a "month" is the
+// calendar month (1st noon → 1st-of-next-month noon).
+//   WEEK_START_U: ISO weekday the week begins on — 1=Mon … 7=Sun.
+//   6 = Saturday (Kuwait week). Change this one value to move the boundary.
+const WEEK_START_U = 6;
+// Arabic labels for the period reports (kept out of the ASCII code, like REP).
+const REPP = {
+  menuWeekCur:  "تقرير الأسبوع الحالي (PDF)",
+  menuWeekPrev: "تقرير الأسبوع السابق (PDF)",
+  menuMonthCur: "تقرير الشهر الحالي (PDF)",
+  menuMonthPrev:"تقرير الشهر السابق (PDF)",
+  weekPlantTitle:  "تقرير المصنع الأسبوعي",
+  weekCopriTitle:  "تقرير كوبري الأسبوعي",
+  monthPlantTitle: "تقرير المصنع الشهري",
+  monthCopriTitle: "تقرير كوبري الشهري",
+  periodWeek:  "الأسبوع",
+  periodMonth: "الشهر",
+  days:        "أيام",
+  flagsTitle:  "التنبيهات",
+  flagsCard:   "التنبيهات",
+  noFlags:     "لا توجد تنبيهات لهذه الفترة",
+  flagType:    "نوع التنبيه",
+  flagNotReceived: "لم يُستلم",
+  flagTempDrop:    "انخفاض حرارة",
+  flagRemarks:     "ملاحظات المهندس",
+  hDate:       "التاريخ",
+  hRemarks:    "الملاحظات",
+};
+
 // ── Column order for each sheet (pure ASCII, built from COL) ─────────
 const DISPATCH_HEADERS = [
   COL.ts, COL.project, COL.contract, COL.workOrder, COL.note, COL.plant,
@@ -174,6 +205,10 @@ function doGet(e) {
   // Milling module (separable) — returns a response if it handled the request.
   const _mg = millingDoGet_(e);
   if (_mg) return _mg;
+
+  // Materials module (separable) — returns a response if it handled the request.
+  const _mat = materialsDoGet_(e);
+  if (_mat) return _mat;
 
   // 1. One-time receipt check
   if (e.parameter.checkReceipt) {
@@ -354,6 +389,10 @@ function doPost(e) {
     const _mp = millingDoPost_(p);
     if (_mp) return _mp;
 
+    // Materials module (separable) — returns a response if it handled the action.
+    const _matp = materialsDoPost_(p);
+    if (_matp) return _matp;
+
     if (p.type === "dispatch") {
       const dispatch = ss.getSheetByName(DISPATCH_SHEET);
 
@@ -532,6 +571,11 @@ function onOpen() {
       .addItem(REP.menuCurrent, "generateCurrentShiftReports")
       .addItem(REP.menuPrev,    "generatePreviousShiftReports")
       .addSeparator()
+      .addItem(REPP.menuWeekCur,  "generateCurrentWeekReports")
+      .addItem(REPP.menuWeekPrev, "generatePreviousWeekReports")
+      .addItem(REPP.menuMonthCur, "generateCurrentMonthReports")
+      .addItem(REPP.menuMonthPrev,"generatePreviousMonthReports")
+      .addSeparator()
       .addItem(REP.menuBackfill,"backfillReports")
       .addItem(REP.menuFixWO,   "applyFixedWorkOrders")
       .addItem(REP.menuOps,     "rebuildDailyOps")
@@ -559,10 +603,12 @@ function collectShift(win) {
 
   const recByNote = {};
   const rNote = rh.indexOf(COL.note), rDec = rh.indexOf(COL.decision),
-        rTempArr = rh.indexOf(COL.tempArr), rWeightArr = rh.indexOf(COL.weightArr), rTs = rh.indexOf(COL.ts);
+        rTempArr = rh.indexOf(COL.tempArr), rWeightArr = rh.indexOf(COL.weightArr), rTs = rh.indexOf(COL.ts),
+        rRem = rh.indexOf(COL.remarks);
   for (let i = 1; i < r.length; i++) {
     const note = String(r[i][rNote] || ""); if (!note) continue;
-    recByNote[note] = { decision: r[i][rDec] || "", tempArr: r[i][rTempArr] || "", weightArr: r[i][rWeightArr] || "", ts: r[i][rTs] };
+    recByNote[note] = { decision: r[i][rDec] || "", tempArr: r[i][rTempArr] || "", weightArr: r[i][rWeightArr] || "", ts: r[i][rTs],
+                        remarks: (rRem > -1 ? (r[i][rRem] || "") : "") };
   }
 
   const ix = {
@@ -602,6 +648,10 @@ function collectShift(win) {
       decision: rec ? rec.decision : "",
       tempArr: rec ? rec.tempArr : "",
       delta: (rec && rec.ts instanceof Date) ? fmtDur_(rec.ts.getTime() - t.getTime()) : "-",
+      // Extra fields used by the weekly/monthly period reports (ignored by daily):
+      day: workDayKey(ms),
+      received: !!(rec && rec.ts instanceof Date),
+      recRemarks: rec ? (rec.remarks || "") : "",
     });
   }
   return out;
@@ -853,6 +903,231 @@ function dailyReportTrigger() {
   try { rebuildAsphaltClean(); } catch (e) {}
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// WEEKLY / MONTHLY PERIOD REPORTS (PDF)
+// ═══════════════════════════════════════════════════════════════════
+// Same builders/branding as the daily report, but summary-oriented so a
+// month's PDF stays short: totals per site and per mix (type), plus a
+// Flags section listing the problem loads (not received / big temp drop /
+// engineer remarks on receival). collectShift() already accepts any
+// {start,end} window, so the whole period is collected the same way.
+
+// The 7-work-day week window (noon..noon days) containing an instant.
+function weekWindow(anchorMs) {
+  const startNoon = shiftWindow(anchorMs).start;
+  const u    = parseInt(Utilities.formatDate(new Date(startNoon), TZ, "u"), 10); // 1=Mon..7=Sun
+  const diff = (u - WEEK_START_U + 7) % 7;
+  const start = startNoon - diff * 86400000;
+  return { start: start, end: start + 7 * 86400000 };
+}
+
+// The calendar-month window (1st noon → 1st-of-next-month noon) containing
+// an instant, judged by the work-day it belongs to.
+function monthWindow(anchorMs) {
+  const startNoon = shiftWindow(anchorMs).start;
+  const ym    = Utilities.formatDate(new Date(startNoon), TZ, "yyyy-MM");
+  const y     = parseInt(ym.slice(0, 4), 10), m = parseInt(ym.slice(5, 7), 10);
+  const ny    = (m === 12) ? y + 1 : y, nm = (m === 12) ? 1 : m + 1;
+  const start = new Date(ym + "-01T12:00:00+03:00").getTime();
+  const end   = new Date(ny + "-" + (nm < 10 ? "0" + nm : nm) + "-01T12:00:00+03:00").getTime();
+  return { start: start, end: end };
+}
+
+// Strip the "كوبري — " prefix from a project name (no Arabic literal in code).
+function shortProj_(p) {
+  return String(p).replace(new RegExp("^" + COPRI_COMPANY + "\\s*[\\u2014\\u2013-]\\s*"), "");
+}
+
+// dd/MM/yyyy – dd/MM/yyyy over the work-day labels covered by the window.
+function periodRangeLabel_(win) {
+  return Utilities.formatDate(new Date(win.start), TZ, "dd/MM/yyyy") + " – " +
+         Utilities.formatDate(new Date(win.end - 86400000), TZ, "dd/MM/yyyy");
+}
+function periodDayCount_(win) { return Math.round((win.end - win.start) / 86400000); }
+
+// Period header: same logos/branding as the daily one, period-aware sub-line.
+function periodHeader_(title, win, periodWord) {
+  return reportCss_() +
+    "<table class='hdr'><tr>" +
+      "<td style='width:140px;text-align:right'><img class='logo-img' src='" + COPRI_LOGO + "'/></td>" +
+      "<td style='text-align:center'><div class='h-title'>" + title + "</div>" +
+        "<div class='h-sub'>" + periodWord + ": " + periodRangeLabel_(win) +
+          " (" + periodDayCount_(win) + " " + REPP.days + ")</div>" +
+        "<div class='h-sub'>" + REP.updated + " " + Utilities.formatDate(new Date(), TZ, "dd/MM/yyyy HH:mm") + "</div></td>" +
+      "<td style='width:140px;text-align:left'><img class='mpw-img' src='" + MPW_LOGO + "'/></td>" +
+    "</tr></table>";
+}
+
+// { loads, tons } accumulator keyed by an arbitrary field.
+function bump_(obj, key, tons) {
+  const k = key || "-";
+  (obj[k] = obj[k] || { loads: 0, tons: 0 }); obj[k].loads++; obj[k].tons += tons;
+}
+// A totals table (key / loads / tons), keys sorted.
+function totBlock_(title, obj, head) {
+  const body = Object.keys(obj).sort().map(function (k) { return [esc_(k || "-"), obj[k].loads, fmt2_(obj[k].tons)]; });
+  return "<h2>" + title + "</h2><table class='data'><tr><th>" + head + "</th><th>" +
+         REP.loads + "</th><th>" + REP.tons + "</th></tr>" + dataRows_(body) + "</table>";
+}
+// Roll a set of rows into totals by plant / company / site / mix.
+function periodAgg_(rows) {
+  const a = { loads: rows.length, tons: 0, byPlant: {}, bySite: {}, byMix: {}, byCompany: {} };
+  rows.forEach(function (x) {
+    a.tons += x.tons;
+    bump_(a.byPlant, x.plant, x.tons);
+    bump_(a.byCompany, x.company, x.tons);
+    bump_(a.bySite, x.site, x.tons);
+    bump_(a.byMix, x.mix, x.tons);
+  });
+  return a;
+}
+
+// Flagged loads in a period: not received, big temp drop, or engineer
+// remarks on receival. A load can raise more than one flag.
+function periodFlags_(rows) {
+  const out = [];
+  rows.forEach(function (x) {
+    const types = [];
+    const tD = Number(x.tempDisp), tA = Number(x.tempArr);
+    if (!x.received) types.push(REPP.flagNotReceived);
+    if (!isNaN(tD) && !isNaN(tA) && tA > 0 && (tD - tA) > TEMP_DROP_WARN) types.push(REPP.flagTempDrop);
+    if (String(x.recRemarks || "").trim() !== "") types.push(REPP.flagRemarks);
+    if (types.length) out.push({ x: x, types: types });
+  });
+  out.sort(function (a, b) { return String(a.x.day).localeCompare(String(b.x.day)); });
+  return out;
+}
+function flagsTableHtml_(flagged) {
+  let h = "<h2>" + REPP.flagsTitle + " (" + flagged.length + ")</h2>";
+  if (!flagged.length) return h + "<div class='empty'>" + REPP.noFlags + "</div>";
+  h += "<table class='data'><tr>" +
+       "<th>" + REPP.hDate + "</th><th>" + REP.hNote + "</th><th>" + REP.hProject + "</th><th>" + REP.hSite + "</th>" +
+       "<th>" + REP.hMix + "</th><th>" + REP.hTons + "</th><th>" + REP.hTempDisp + "</th><th>" + REP.hTempArr + "</th>" +
+       "<th>" + REPP.flagType + "</th><th>" + REPP.hRemarks + "</th></tr>";
+  h += dataRows_(flagged.map(function (f) {
+    const x = f.x;
+    return [esc_(x.day), esc_(x.note), esc_(shortProj_(x.project)), esc_(x.site), esc_(x.mix),
+            fmt2_(x.tons), esc_(x.tempDisp), esc_(x.tempArr || "-"),
+            f.types.join(" • "), esc_(x.recRemarks || "")];
+  }));
+  return h + "</table>";
+}
+
+// Plant-side period report: overall totals + by plant / company / site / mix.
+function periodPlantHtml_(rows, win, title, periodWord) {
+  const a = periodAgg_(rows);
+  let h = periodHeader_(title, win, periodWord);
+  h += cards_([[REP.totalLoads, a.loads], [REP.totalTons, fmt2_(a.tons)]]);
+  if (!rows.length) return h + "<div class='empty'>" + REP.noData + "</div>" + repFooter_();
+  h += totBlock_(REP.byPlant, a.byPlant, REP.hPlant);
+  h += totBlock_(REP.byCompany, a.byCompany, REP.hCompany);
+  h += totBlock_(REP.bySite, a.bySite, REP.hSite);
+  h += totBlock_(REP.byMix, a.byMix, REP.hMix);
+  return h + repFooter_();
+}
+
+// Copri-side period report: per-project quantities per site and per mix (type),
+// plus the flags section. `project` limits it to one project (per-project PDF).
+function periodCopriHtml_(allRows, win, title, periodWord, project) {
+  let rows = copriRows_(allRows);
+  if (project) rows = rows.filter(function (x) { return (x.project || "-") === project; });
+  let h = periodHeader_(title, win, periodWord);
+  if (!rows.length) return h + "<div class='empty'>" + REP.noData + "</div>" + repFooter_();
+  const a = periodAgg_(rows);
+  const flagged = periodFlags_(rows);
+  h += cards_([[REP.totalLoads, a.loads], [REP.totalTons, fmt2_(a.tons)], [REPP.flagsCard, flagged.length]]);
+  const groups = {};
+  rows.forEach(function (x) { const p = x.project || "-"; (groups[p] = groups[p] || []).push(x); });
+  Object.keys(groups).forEach(function (p) {
+    const list = groups[p]; let projTons = 0, contractNo = "";
+    list.forEach(function (x) { projTons += x.tons; if (!contractNo) contractNo = x.contract || ""; });
+    h += "<div class='proj'><span class='nm'>" + esc_(p) + "</span>" +
+         (contractNo ? "<span class='ct'>" + REP.contractNo + ": " + esc_(contractNo) + "</span>" : "") +
+         "<span class='tt'>" + list.length + " " + REP.loads + " &middot; " + fmt2_(projTons) + " " + REP.tons + "</span></div>";
+    const bySite = {}, byMix = {};
+    list.forEach(function (x) { bump_(bySite, x.site, x.tons); bump_(byMix, x.mix, x.tons); });
+    h += totBlock_(REP.bySite, bySite, REP.hSite);
+    h += totBlock_(REP.byMix, byMix, REP.hMix);
+  });
+  h += flagsTableHtml_(flagged);
+  return h + repFooter_();
+}
+
+// Titles/labels/file-tag for a period kind ("week" | "month").
+function periodTitles_(kind) {
+  return (kind === "month")
+    ? { plant: REPP.monthPlantTitle, copri: REPP.monthCopriTitle, word: REPP.periodMonth, tagName: "Month" }
+    : { plant: REPP.weekPlantTitle,  copri: REPP.weekCopriTitle,  word: REPP.periodWeek,  tagName: "Week"  };
+}
+
+// Build the period PDFs: plant, combined Copri, one per Copri project.
+function periodPdfs_(rows, win, kind, tag) {
+  const t = periodTitles_(kind);
+  const pdfs = [
+    Utilities.newBlob(periodPlantHtml_(rows, win, t.plant, t.word), "text/html", "p.html")
+      .getAs("application/pdf").setName("Plant_" + t.tagName + "_" + tag + ".pdf"),
+    Utilities.newBlob(periodCopriHtml_(rows, win, t.copri, t.word, null), "text/html", "c.html")
+      .getAs("application/pdf").setName("Copri_" + t.tagName + "_" + tag + ".pdf"),
+  ];
+  copriProjects_(rows).forEach(function (p) {
+    pdfs.push(Utilities.newBlob(periodCopriHtml_(rows, win, t.copri + " — " + shortProj_(p), t.word, p), "text/html", "x.html")
+                .getAs("application/pdf").setName("Copri_" + sanitizeFile_(p) + "_" + t.tagName + "_" + tag + ".pdf"));
+  });
+  return pdfs;
+}
+
+// Collect the window, build the PDFs, save to Drive + email.
+function generatePeriodReports_(anchorMs, kind) {
+  const win  = (kind === "month") ? monthWindow(anchorMs) : weekWindow(anchorMs);
+  const rows = collectShift(win);
+  const tag  = (kind === "month")
+    ? Utilities.formatDate(new Date(win.start), TZ, "yyyy-MM")
+    : Utilities.formatDate(new Date(win.start), TZ, "yyyy-MM-dd");
+  const folder = reportFolder_();
+  const pdfs = periodPdfs_(rows, win, kind, tag);
+  pdfs.forEach(function (b) { folder.createFile(b); });
+  if (REPORT_EMAIL) {
+    MailApp.sendEmail({
+      to: REPORT_EMAIL,
+      subject: "Copri Asphalt " + (kind === "month" ? "monthly" : "weekly") + " reports - " + tag,
+      body: "Plant-side, Copri-side, and per-project reports attached.\nPeriod: " + periodRangeLabel_(win),
+      attachments: pdfs,
+    });
+  }
+  return win;
+}
+
+function generateCurrentWeekReports() {
+  generatePeriodReports_(Date.now(), "week");
+  try { SpreadsheetApp.getUi().alert(REP.done); } catch (e) {}
+}
+function generatePreviousWeekReports() {
+  generatePeriodReports_(weekWindow(Date.now()).start - 1000, "week");
+  try { SpreadsheetApp.getUi().alert(REP.done); } catch (e) {}
+}
+function generateCurrentMonthReports() {
+  generatePeriodReports_(Date.now(), "month");
+  try { SpreadsheetApp.getUi().alert(REP.done); } catch (e) {}
+}
+function generatePreviousMonthReports() {
+  generatePeriodReports_(monthWindow(Date.now()).start - 1000, "month");
+  try { SpreadsheetApp.getUi().alert(REP.done); } catch (e) {}
+}
+
+// Installed time-trigger handlers (report the period that just closed).
+function weeklyReportTrigger()  { generatePeriodReports_(weekWindow(Date.now()).start - 1000, "week"); }
+function monthlyReportTrigger() { generatePeriodReports_(monthWindow(Date.now()).start - 1000, "month"); }
+
+// Optional installers — run ONCE from the editor to auto-generate periods.
+// Weekly fires on the week-start weekday (Saturday) ~13:00 for the prior week;
+// monthly fires on the 1st ~13:00 for the prior month.
+function createWeeklyReportTrigger() {
+  ScriptApp.newTrigger("weeklyReportTrigger").timeBased().onWeekDay(ScriptApp.WeekDay.SATURDAY).atHour(13).create();
+}
+function createMonthlyReportTrigger() {
+  ScriptApp.newTrigger("monthlyReportTrigger").timeBased().onMonthDay(1).atHour(13).create();
+}
+
 // ── One-time backfill: reports for every work day that has data ────────
 // Walks noon-to-noon work days from the first dispatch to the last and writes
 // the full report set for each day into the Drive folder, with the current
@@ -1070,6 +1345,36 @@ const MILL = {
   complete: "مكتمل",
 };
 
+// ── MATERIALS RECEIPT MODULE — constants (separable) ────────────────
+// Arabic lives ONLY in MATCOL (one string per line) — the bidi-safety rule.
+const MATERIALS_SHEET = "Materials Log";
+const MATERIAL_FOLDER = "Materials Receipts";   // Drive folder for receipt photos
+const MATCOL = {
+  receiptId:     "رقم الاستلام",
+  timestamp:     "الطابع الزمني",
+  receiver:      "اسم المستلم",
+  project:       "المشروع",
+  site:          "الموقع",
+  block:         "القطعة",
+  street:        "الشارع / الموقع التفصيلي",
+  category:      "فئة المادة",
+  material:      "المادة",
+  quantity:      "الكمية",
+  unit:          "الوحدة",
+  rate:          "السعر",
+  amount:        "القيمة",
+  supplier:      "المورد",
+  subcontractor: "المقاول من الباطن",
+  photoUrl:      "صورة الإيصال",
+  remarks:       "ملاحظات",
+};
+const MATERIALS_HEADERS = [
+  MATCOL.receiptId, MATCOL.timestamp, MATCOL.receiver, MATCOL.project, MATCOL.site,
+  MATCOL.block, MATCOL.street, MATCOL.category, MATCOL.material, MATCOL.quantity,
+  MATCOL.unit, MATCOL.rate, MATCOL.amount, MATCOL.supplier, MATCOL.subcontractor,
+  MATCOL.photoUrl, MATCOL.remarks,
+];
+
 // Run once in the Apps Script editor to create the Milling Programs tab.
 function setupMillingSheet() {
   const ss = SpreadsheetApp.openById(SHEET_ID);
@@ -1229,6 +1534,110 @@ function millingRevise_(p) {
   });
   SpreadsheetApp.flush();
   return jsonResponse({ success: true });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MATERIALS RECEIPT MODULE — backend (separable)
+// Simple one-and-done record: receiver submits, we save the receipt photo to
+// Drive and append a row. No approval workflow. All ASCII; Arabic via MATCOL.
+// ═══════════════════════════════════════════════════════════════════
+// Run once in the Apps Script editor to create the Materials Log tab.
+function setupMaterialsSheet() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  let sh = ss.getSheetByName(MATERIALS_SHEET);
+  if (!sh) sh = ss.insertSheet(MATERIALS_SHEET);
+  const range = sh.getRange(1, 1, 1, MATERIALS_HEADERS.length);
+  range.setValues([MATERIALS_HEADERS]);
+  range.setFontWeight("bold").setBackground("#1a1a2e").setFontColor("#00A651").setFontSize(10);
+  sh.setFrozenRows(1);
+  sh.setColumnWidths(1, MATERIALS_HEADERS.length, 150);
+  SpreadsheetApp.flush();
+  Logger.log("Materials Log sheet ready - " + MATERIALS_HEADERS.length + " cols.");
+}
+
+function materialsSheet_() { return SpreadsheetApp.openById(SHEET_ID).getSheetByName(MATERIALS_SHEET); }
+
+// Drive folder for receipt photos (created on first use, like reportFolder_).
+function materialFolder_() {
+  const it = DriveApp.getFoldersByName(MATERIAL_FOLDER);
+  return it.hasNext() ? it.next() : DriveApp.createFolder(MATERIAL_FOLDER);
+}
+
+// Decode a base64 image data-URL, save it to Drive, return a shareable URL.
+function materialSavePhoto_(dataUrl, receiptId) {
+  if (!dataUrl) return "";
+  const m = String(dataUrl).match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
+  if (!m) return "";
+  const ext = (m[1].split("/")[1] || "jpg").toLowerCase();
+  const blob = Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], receiptId + "." + ext);
+  const file = materialFolder_().createFile(blob);
+  try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+  return file.getUrl();
+}
+
+function materialsRowToObj_(headers, row) {
+  const o = {};
+  Object.keys(MATCOL).forEach(function (k) { o[k] = row[headers.indexOf(MATCOL[k])]; });
+  o.timestamp = isoOrRaw(o.timestamp);
+  return o;
+}
+function materialsAllObjs_() {
+  const sh = materialsSheet_(); if (!sh) return [];
+  const data = sh.getDataRange().getValues(); if (data.length < 2) return [];
+  const h = data[0];
+  return data.slice(1).filter(function (r) { return r[0]; }).map(function (r) { return materialsRowToObj_(h, r); });
+}
+function materialsFindRow_(receiptId) {
+  const sh = materialsSheet_(); if (!sh) return null;
+  const data = sh.getDataRange().getValues();
+  const idx = data[0].indexOf(MATCOL.receiptId);
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][idx]) === String(receiptId)) return true;
+  }
+  return null;
+}
+function materialsObjToRow_(o) {
+  return MATERIALS_HEADERS.map(function (hdr) {
+    for (var k in MATCOL) { if (MATCOL[k] === hdr) return (o[k] != null ? o[k] : ""); }
+    return "";
+  });
+}
+
+// ── GET routing ──
+function materialsDoGet_(e) {
+  const p = e.parameter;
+  if (p.materialsByReceiver) {
+    const name = String(p.materialsByReceiver);
+    return jsonResponse({ receipts: materialsAllObjs_().filter(function (x) { return String(x.receiver) === name; }) });
+  }
+  if (p.materialsAll) {
+    return jsonResponse({ receipts: materialsAllObjs_() });
+  }
+  return null;
+}
+
+// ── POST routing ──
+function materialsDoPost_(p) {
+  if (p.type === "submitMaterialReceipt") return materialsSubmit_(p);
+  return null;
+}
+
+function materialsSubmit_(p) {
+  const sh = materialsSheet_();
+  if (!sh) return jsonResponse({ success: false, error: "Materials sheet missing - run setupMaterialsSheet()" });
+  if (materialsFindRow_(p.receiptId)) return jsonResponse({ success: false, duplicate: true });
+  const photoUrl = materialSavePhoto_(p.photoData, p.receiptId);
+  const o = {
+    receiptId: p.receiptId, timestamp: new Date(), receiver: p.receiverName || "",
+    project: p.project || "", site: p.site || "", block: p.block || "", street: p.street || "",
+    category: p.category || "", material: p.material || "", quantity: p.quantity || "",
+    unit: p.unit || "", rate: p.rate || "", amount: p.amount || "",
+    supplier: p.supplier || "", subcontractor: p.subcontractor || "",
+    photoUrl: photoUrl, remarks: p.remarks || "",
+  };
+  sh.appendRow(materialsObjToRow_(o));
+  SpreadsheetApp.flush();
+  return jsonResponse({ success: true, receiptId: p.receiptId });
 }
 
 // ═══════════════════════════════════════════════════════════════════

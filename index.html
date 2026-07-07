@@ -807,6 +807,67 @@ const CONFIG = {
   marco: { name: "ماركو", pin: "0000" },
   // Milling program priorities.
   millingPriorities: ["عادي", "عاجل", "حرج"],
+
+  // ══════════════════════════════════════════════════════
+  // MATERIALS RECEIPT MODULE — config (separable)
+  // ══════════════════════════════════════════════════════
+  // Site engineers/foremen who receive materials on site. PIN placeholder
+  // "0000" until real PINs are provided (like milling PM/Marco).
+  materialReceivers: [
+    { name: "محمد غنّام",        pin: "0000" },
+    { name: "صلاح صلاح الدين",   pin: "0000" },
+    { name: "مجدي أسامة الحسيني", pin: "0000" },
+    { name: "فادي عماد",         pin: "0000" },
+    { name: "عماد فيكتور",       pin: "0000" },
+    { name: "علي سلام",          pin: "0000" },
+  ],
+  // Material suppliers (الموردون) — dropdown on the receipt form.
+  materialSuppliers: [
+    "الشركة الكويتية الخدمية للخرسانة",
+    "مصنع العالمي لإنتاج الخرسانة",
+    "الصناعات الوطنية",
+    "اسكو (ESCO)",
+    "مصنع أبراج الكويت",
+    "شركة خليل يمن وشركاه",
+  ],
+  // Subcontractors (المقاول من الباطن) — dropdown on the receipt form.
+  materialSubcontractors: [
+    "شركة وايت بروجكت",
+    "شركة بويان المتحدة",
+    "شركة الإبداع للمقاولات العامة للمباني",
+    "شركة اليمامة الخليجية",
+    "شركة وفرة الوطنية لتشييد المباني",
+    "شركة المثنى بلس للتجارة العامة والمقاولات",
+    "شركة الجارحي المتحدة للمقاولات",
+    "الشركة الكندية الإقليمية للمقاولات العامة",
+  ],
+  // Material catalog: general category → detailed items, with a default unit.
+  // Picking a category filters the detailed-material dropdown and sets the unit.
+  materialCatalog: [
+    { category: "أنابيب", unit: "متر طولي", items: [
+      "أنبوب بولي إثيلين Ø300", "أنبوب بولي إثيلين Ø400", "أنبوب بولي إثيلين Ø500",
+      "أنبوب بولي إثيلين Ø600", "أنبوب بولي إثيلين Ø700", "أنبوب بولي إثيلين Ø800",
+      "أنبوب بولي إثيلين Ø900", "أنبوب بولي إثيلين Ø1000", "أنبوب بولي إثيلين Ø1200",
+      "أنبوب خرساني مسلح K150SRC", "أنبوب خرساني مسلح K300SRC",
+    ] },
+    { category: "حجر رصف", unit: "حبة", items: [
+      "كرستون A4", "كرستون A6", "حجر رصف قياسي", "كرستون 75",
+    ] },
+    { category: "بلاط وإنترلوك", unit: "م²", items: [
+      "إنترلوك i-shape", "بلاط X-shape", "رصف بلاط",
+    ] },
+    { category: "مصارف", unit: "عدد", items: [
+      "شبكة مصرف بإطار", "مصرف مسبق الصنع", "مصرف أمطار مسبق الصنع",
+    ] },
+    { category: "مناهل", unit: "عدد", items: [
+      "غطاء منهل + جهاز مجس إلكتروني", "تعلية / تصليح غطاء منهل",
+    ] },
+    { category: "خرسانة", unit: "م³", items: [
+      "خرسانة جاهزة C150", "خرسانة جاهزة C300", "خرسانة جاهزة C500",
+    ] },
+    { category: "حديد", unit: "طن", items: ["كمر حديد I-beam"] },
+    { category: "رمل ومواد ردم", unit: "م³", items: ["رمل"] },
+  ],
 };
 
 // Flattened, de-duplicated engineer list across all projects — used by the
@@ -2868,10 +2929,295 @@ function millingMarcoCard(prog, marcoName, onChange) {
   return card;
 }
 
+// ════════════════════════════════════════════════════════
+// MATERIALS RECEIPT MODULE (client) ───────────────────────
+// Site engineer/foreman receives materials on site and records them (simple
+// one-and-done, like a dispatch). Portal: ?matRole=receiver. All functions
+// prefixed renderMaterial* / material* / mat* so the module stays separable.
+// ════════════════════════════════════════════════════════
+function getMatSession()     { try { return JSON.parse(sessionStorage.getItem("mat_session") || "null"); } catch { return null; } }
+function setMatSession(name)  { sessionStorage.setItem("mat_session", JSON.stringify({ name, ts: Date.now() })); }
+function clearMatSession()    { sessionStorage.removeItem("mat_session"); }
+
+function matReceiverByName(name) { return (CONFIG.materialReceivers || []).find(r => r.name === name) || null; }
+function matCatByName(cat)       { return (CONFIG.materialCatalog || []).find(c => c.category === cat) || null; }
+
+// GET helper for materials reads (JSON, unlike the no-cors POST).
+async function matGet(params) {
+  try {
+    const qs = Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
+    const res = await fetch(`${CONFIG.scriptUrl}?${qs}`);
+    return await res.json();
+  } catch { return {}; }
+}
+// Client-side unique id — the no-cors POST can't read a server-assigned id.
+function matNewReceiptId() {
+  return `MAT-${new Date().getFullYear()}-${Date.now().toString(36).slice(-5).toUpperCase()}`;
+}
+
+// Compress a captured/selected image to a JPEG data-URL (max 1280px, q0.7) so
+// the base64 payload rides comfortably inside the no-cors POST body.
+function matCompressImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const max = 1280;
+        let { width: w, height: h } = img;
+        if (w > max || h > max) { const s = Math.min(max / w, max / h); w = Math.round(w * s); h = Math.round(h * s); }
+        const canvas = el("canvas"); canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", 0.7));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// ── Receiver PIN screen (validates against CONFIG.materialReceivers) ──
+function renderMaterialPINScreen(onSuccess) {
+  const main = renderShell("استلام المواد"); main.innerHTML = "";
+  const screen = el("div", "pin-screen");
+  const logo = el("div"); logo.innerHTML = `<svg width="48" height="48" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="${getComputedStyle(document.documentElement).getPropertyValue('--green') || '#00A651'}"/><path d="M6 22 L16 10 L26 22" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="4" y="22" width="24" height="3" rx="1.5" fill="white"/></svg>`;
+  screen.appendChild(logo);
+  const h = el("h2"); h.textContent = "تسجيل الدخول — استلام المواد"; screen.appendChild(h);
+  const p = el("p"); p.textContent = "اختر اسمك وأدخل الرمز السري للمتابعة"; screen.appendChild(p);
+
+  const { group: gName, input: nameInput } = fieldGroup("الاسم", select((CONFIG.materialReceivers || []).map(r => r.name), "اختر اسمك"), true);
+  screen.appendChild(gName);
+
+  const pinWrap = el("div", "field-group");
+  const pinLabel = el("label"); pinLabel.innerHTML = 'الرمز السري <span class="req">*</span>';
+  const pinInput = input("password", "••••", "numeric"); pinInput.className += " pin-input"; pinInput.maxLength = 4;
+  pinWrap.appendChild(pinLabel); pinWrap.appendChild(pinInput); screen.appendChild(pinWrap);
+
+  const errDiv = el("div", "error-msg"); errDiv.style.display = "none"; screen.appendChild(errDiv);
+  const btn = el("button", "btn-primary"); btn.type = "button"; btn.textContent = "دخول"; btn.style.width = "100%"; screen.appendChild(btn);
+  main.appendChild(screen);
+
+  btn.addEventListener("click", () => {
+    const name = nameInput.value, pin = pinInput.value.trim();
+    if (!name) { errDiv.textContent = "يرجى اختيار اسمك"; errDiv.style.display = "block"; return; }
+    if (!pin)  { errDiv.textContent = "يرجى إدخال الرمز السري"; errDiv.style.display = "block"; return; }
+    const r = matReceiverByName(name);
+    if (r && r.pin === pin) { setMatSession(name); onSuccess(name); }
+    else { errDiv.textContent = "رمز سري خاطئ"; errDiv.style.display = "block"; pinInput.value = ""; }
+  });
+  pinInput.addEventListener("keydown", e => { if (e.key === "Enter") btn.click(); });
+}
+
+// ── Receiver home — my receipts + new receipt ──
+async function renderMaterialReceiverHome(name) {
+  setMatSession(name);
+  const main = renderShell("استلام المواد — الموقع"); main.innerHTML = "";
+
+  const head = el("div", "card");
+  const hr = el("div"); hr.style.cssText = "display:flex;justify-content:space-between;align-items:center;";
+  const hi = el("div"); hi.innerHTML = `<div style="font-weight:700">${name}</div><div style="font-size:.75rem;color:var(--text-3)">بوابة استلام المواد</div>`;
+  const out = el("button", "btn-secondary"); out.type = "button"; out.textContent = "خروج"; out.style.width = "auto";
+  out.addEventListener("click", () => { clearMatSession(); location.href = location.href.split("?")[0] + "?matRole=receiver"; });
+  hr.appendChild(hi); hr.appendChild(out); head.appendChild(hr); main.appendChild(head);
+
+  const tabs = el("div", "history-tabs");
+  const tMine = el("button", "history-tab active"); tMine.type = "button"; tMine.textContent = "استلاماتي";
+  const tNew  = el("button", "history-tab");        tNew.type  = "button"; tNew.textContent  = "استلام جديد";
+  tabs.appendChild(tMine); tabs.appendChild(tNew); main.appendChild(tabs);
+
+  const body = el("div"); main.appendChild(body);
+  let activeTab = "mine";
+  async function showMine() {
+    activeTab = "mine"; tMine.classList.add("active"); tNew.classList.remove("active"); body.innerHTML = "";
+    const info = el("div", "info-box"); info.textContent = "جارٍ تحميل استلاماتك…"; body.appendChild(info);
+    const data = await matGet({ materialsByReceiver: name });
+    if (activeTab !== "mine") return;
+    body.innerHTML = "";
+    const recs = (data.receipts || []).sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)));
+    if (!recs.length) { const e = el("div", "info-box"); e.textContent = "لا توجد استلامات بعد — ابدأ باستلام جديد."; body.appendChild(e); return; }
+    recs.forEach(rec => body.appendChild(matReceiptCard(rec)));
+  }
+  function showNew() {
+    activeTab = "new"; tNew.classList.add("active"); tMine.classList.remove("active"); body.innerHTML = "";
+    body.appendChild(renderMaterialReceiptForm(name, () => renderMaterialReceiverHome(name)));
+  }
+  tMine.addEventListener("click", showMine); tNew.addEventListener("click", showNew);
+  showMine();
+}
+
+// A single receipt card in the receiver's list.
+function matReceiptCard(rec) {
+  const card = el("div", "card");
+  const top = el("div"); top.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;";
+  const id = el("div"); id.style.cssText = "font-weight:700;font-size:.9rem;"; id.textContent = rec.receiptId || "—";
+  const ts = el("div"); ts.style.cssText = "font-size:.7rem;color:var(--text-3);"; ts.textContent = String(rec.timestamp || "").replace("T", " ").slice(0, 16);
+  top.appendChild(id); top.appendChild(ts); card.appendChild(top);
+
+  card.appendChild(fieldRow("المادة", rec.material));
+  card.appendChild(fieldRow("الفئة", rec.category));
+  card.appendChild(fieldRow("الكمية", [rec.quantity, rec.unit].filter(Boolean).join(" ")));
+  if (rec.rate)   card.appendChild(fieldRow("السعر", rec.rate));
+  if (rec.amount) card.appendChild(fieldRow("القيمة", rec.amount));
+  card.appendChild(fieldRow("المورد", rec.supplier));
+  card.appendChild(fieldRow("المقاول من الباطن", rec.subcontractor));
+  card.appendChild(fieldRow("المشروع", rec.project));
+  if (rec.site) card.appendChild(fieldRow("الموقع", rec.site));
+  if (rec.remarks) card.appendChild(fieldRow("ملاحظات", rec.remarks));
+
+  if (rec.photoUrl) {
+    const a = el("a", "btn-secondary"); a.textContent = "عرض صورة الإيصال"; a.href = rec.photoUrl; a.target = "_blank";
+    a.style.cssText = "width:auto;text-decoration:none;text-align:center;margin-top:.6rem;display:inline-block;";
+    card.appendChild(a);
+  }
+  return card;
+}
+
+// ── New receipt form ──
+function renderMaterialReceiptForm(name, onDone) {
+  const card = el("div", "card");
+  card.appendChild(sectionTitle("استلام مواد جديد"));
+
+  // Project (Copri only) → drives the site list. Reuses the asphalt/milling projects.
+  const { group: gProj, input: projInput } = fieldGroup("المشروع", select(millingAllProjects().map(p => p.name), "اختر المشروع"), true);
+  card.appendChild(gProj);
+
+  // Site (rebuilt when project changes)
+  const siteWrap = el("div"); let siteInput = null;
+  function buildSite() {
+    siteWrap.innerHTML = "";
+    const proj = millingProjectByName(projInput.value);
+    const { group, input: s } = fieldGroup("الموقع", select((proj && proj.sites) || [], "اختر الموقع"), true);
+    siteInput = s; siteWrap.appendChild(group);
+  }
+  buildSite();
+  projInput.addEventListener("change", buildSite);
+  card.appendChild(siteWrap);
+
+  // Detailed location (free text — block / street or landmark)
+  const locRow = el("div", "field-row-2");
+  const { group: gBlock, input: blockInput }  = fieldGroup("القطعة", input("text", "رقم القطعة", "numeric"), false);
+  const { group: gStreet, input: streetInput } = fieldGroup("الشارع / الموقع التفصيلي", input("text", "اختياري"), false);
+  locRow.appendChild(gBlock); locRow.appendChild(gStreet); card.appendChild(locRow);
+
+  // General material (category) → drives the detailed material dropdown + unit.
+  const { group: gCat, input: catInput } = fieldGroup("المادة (فئة عامة)", select((CONFIG.materialCatalog || []).map(c => c.category), "اختر الفئة"), true);
+  card.appendChild(gCat);
+
+  // Detailed material (rebuilt when category changes)
+  const matWrap = el("div"); let matInput = null;
+  function buildMat() {
+    matWrap.innerHTML = "";
+    const cat = matCatByName(catInput.value);
+    const { group, input: m } = fieldGroup("المادة (تفصيلي)", select((cat && cat.items) || [], "اختر المادة"), true);
+    matInput = m; matWrap.appendChild(group);
+  }
+  buildMat();
+  card.appendChild(matWrap);
+
+  // Quantity + unit (unit auto-set from the category, read-only)
+  const qtyRow = el("div", "field-row-2");
+  const { group: gQty, input: qtyInput } = fieldGroup("الكمية", input("number", "0", "decimal"), true); qtyInput.step = "0.01"; qtyInput.min = "0";
+  const { group: gUnit, input: unitInput } = fieldGroup("الوحدة", input("text", "—"), false);
+  unitInput.readOnly = true; unitInput.style.background = "var(--surface-2)";
+  qtyRow.appendChild(gQty); qtyRow.appendChild(gUnit); card.appendChild(qtyRow);
+
+  // Rate + amount (amount = quantity × rate, read-only)
+  const rateRow = el("div", "field-row-2");
+  const { group: gRate, input: rateInput } = fieldGroup("السعر (د.ك)", input("number", "0.000", "decimal"), false); rateInput.step = "0.001"; rateInput.min = "0";
+  const { group: gAmt, input: amtInput } = fieldGroup("القيمة (د.ك)", input("text", "—"), false);
+  amtInput.readOnly = true; amtInput.style.background = "var(--surface-2)"; amtInput.style.fontWeight = "700";
+  rateRow.appendChild(gRate); rateRow.appendChild(gAmt); card.appendChild(rateRow);
+
+  function refreshUnit() { const cat = matCatByName(catInput.value); unitInput.value = cat ? cat.unit : ""; }
+  function refreshAmount() {
+    const q = parseFloat(qtyInput.value), r = parseFloat(rateInput.value);
+    amtInput.value = (isFinite(q) && isFinite(r)) ? (q * r).toFixed(3) : "";
+  }
+  catInput.addEventListener("change", () => { buildMat(); refreshUnit(); });
+  qtyInput.addEventListener("input", refreshAmount);
+  rateInput.addEventListener("input", refreshAmount);
+
+  // Supplier + subcontractor
+  const { group: gSup, input: supInput } = fieldGroup("المورد", select(CONFIG.materialSuppliers || [], "اختر المورد"), true);
+  card.appendChild(gSup);
+  const { group: gSub, input: subInput } = fieldGroup("المقاول من الباطن", select(CONFIG.materialSubcontractors || [], "اختر المقاول"), true);
+  card.appendChild(gSub);
+
+  // Photo of the paper receipt (required). capture=environment opens the camera on mobile.
+  const { group: gPhoto, input: photoInput } = fieldGroup("صورة الإيصال الورقي", input("file"), true, "التقط أو أرفق صورة سند الاستلام");
+  photoInput.accept = "image/*"; photoInput.setAttribute("capture", "environment");
+  card.appendChild(gPhoto);
+  const photoPreview = el("img"); photoPreview.style.cssText = "display:none;max-width:100%;border-radius:8px;margin-top:.4rem;";
+  card.appendChild(photoPreview);
+  let photoData = "";
+  photoInput.addEventListener("change", async () => {
+    const f = photoInput.files && photoInput.files[0];
+    if (!f) { photoData = ""; photoPreview.style.display = "none"; return; }
+    try { photoData = await matCompressImage(f); photoPreview.src = photoData; photoPreview.style.display = "block"; }
+    catch { photoData = ""; photoPreview.style.display = "none"; }
+  });
+
+  // Remarks
+  const { group: gRem, input: remInput } = fieldGroup("ملاحظات", textarea("اختياري..."), false);
+  card.appendChild(gRem);
+
+  // Receiver (locked)
+  const { group: gRec, input: recInput } = fieldGroup("اسم المستلم", input("text", ""), true);
+  recInput.value = name; recInput.readOnly = true; recInput.style.background = "var(--surface-2)";
+  card.appendChild(gRec);
+
+  refreshUnit();
+
+  const errDiv = el("div", "error-msg"); errDiv.style.display = "none"; card.appendChild(errDiv);
+  const btn = el("button", "btn-primary"); btn.type = "button"; btn.textContent = "تسجيل الاستلام"; card.appendChild(btn);
+
+  btn.addEventListener("click", async () => {
+    const data = {
+      project: projInput.value, site: siteInput ? siteInput.value : "",
+      block: blockInput.value.trim(), street: streetInput.value.trim(),
+      category: catInput.value, material: matInput ? matInput.value : "",
+      quantity: qtyInput.value.trim(), unit: unitInput.value,
+      rate: rateInput.value.trim(), amount: amtInput.value,
+      supplier: supInput.value, subcontractor: subInput.value,
+      receiverName: name, remarks: remInput.value.trim(),
+    };
+    const required = ["project", "site", "category", "material", "quantity", "supplier", "subcontractor"];
+    if (required.some(k => !data[k])) { errDiv.textContent = "يرجى تعبئة جميع الحقول المطلوبة"; errDiv.style.display = "block"; return; }
+    if (!photoData) { errDiv.textContent = "يرجى إرفاق صورة الإيصال"; errDiv.style.display = "block"; return; }
+    errDiv.style.display = "none"; btn.disabled = true; btn.textContent = "جارٍ الإرسال…";
+
+    const receiptId = matNewReceiptId();
+    try {
+      await postToScript({ type: "submitMaterialReceipt", receiptId, ...data, photoData, timestamp: timestamp() });
+      renderMaterialReceiptSuccess(receiptId, () => (onDone ? onDone() : renderMaterialReceiverHome(name)));
+    } catch {
+      btn.disabled = false; btn.textContent = "تسجيل الاستلام";
+      errDiv.textContent = "حدث خطأ، يرجى المحاولة مجدداً"; errDiv.style.display = "block";
+    }
+  });
+
+  return card;
+}
+
+function renderMaterialReceiptSuccess(receiptId, backFn) {
+  const main = document.getElementById("main-content"); if (!main) return;
+  main.innerHTML = "";
+  const s = el("div", "success-screen");
+  const icon = el("div", "success-icon ok"); icon.textContent = "✓"; s.appendChild(icon);
+  const h = el("h2"); h.textContent = "تم تسجيل الاستلام"; s.appendChild(h);
+  const p = el("p"); p.innerHTML = `رقم الاستلام: <strong>${receiptId}</strong>`; s.appendChild(p);
+  const back = el("button", "btn-primary"); back.type = "button"; back.textContent = "عودة"; back.style.width = "100%";
+  back.addEventListener("click", () => backFn && backFn()); s.appendChild(back);
+  main.appendChild(s);
+}
+
 // ── Router (milling-aware) ──
 const _mparams = new URLSearchParams(window.location.search);
 const millingReport = _mparams.get("millingReport");
 const millingRole   = _mparams.get("millingRole");
+const matRole       = _mparams.get("matRole");
 const note = getNoteFromURL();
 
 if (millingReport) {
@@ -2888,6 +3234,10 @@ if (millingReport) {
   const marcoSession = getMarcoSession();
   if (marcoSession) renderMillingMarcoHome(marcoSession.name);
   else renderMillingMarcoPINScreen(name => renderMillingMarcoHome(name));
+} else if (matRole === "receiver") {
+  const matSession = getMatSession();
+  if (matSession) renderMaterialReceiverHome(matSession.name);
+  else renderMaterialPINScreen(name => renderMaterialReceiverHome(name));
 } else if (note) {
   const session = getEngineerSession();
   if (session) renderReceipt(note, session.name);

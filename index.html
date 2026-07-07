@@ -1408,14 +1408,9 @@ function renderDispatch(ctx) {
   );
   card.appendChild(gPlant);
 
-  // Work order — Copri only: a dropdown of active orders (filtered by site) plus
-  // "*" for sites with no issued order yet. Non-Copri (plant-only, e.g. Green
-  // Line) has no work-order field at all.
-  let dispWO = null;
-  if (isCopri) {
-    dispWO = makeWorkOrderField("رقم أمر العمل");
-    card.appendChild(dispWO.wrap);
-  }
+  // Work-order field intentionally removed for now — WO must never be user-
+  // editable. It will return as a locked auto-fill once the site→WO paths are
+  // defined. (makeWorkOrderField / CONFIG.contractWorkOrders kept for that.)
 
   const { group: gNaqel, input: naqelInput } = fieldGroup(
     "الناقل", select(CONFIG.naqelOptions, "اختر الناقل"), true
@@ -1600,9 +1595,9 @@ function renderDispatch(ctx) {
       ? `رقم الحمولة لهذا الموقع: ${n}  ·  منذ ظهر اليوم`
       : "رقم الحمولة لهذا الموقع: —";
   }
-  // Work-order picker — depends on project + site (guarded against per-keystroke
-  // rebuilds inside makeWorkOrderField, so the location listeners are harmless).
-  function refreshWorkOrder() { if (dispWO) dispWO.refresh(projectName, siteInput.value); }
+  // WO field removed for now (returns later as a locked auto-fill). Kept as a
+  // no-op so the existing site/location listeners below stay valid.
+  function refreshWorkOrder() {}
   siteInput.addEventListener("change", refreshLoadNumber);
   siteInput.addEventListener("change", refreshWorkOrder);
   if (locContainer) {
@@ -1663,7 +1658,7 @@ function renderDispatch(ctx) {
       company:      companyName,
       project:      project.isOther ? (otherProjectInput ? otherProjectInput.value.trim() : projectName) : projectName,
       contract:     project.isOther ? (otherContractInput ? otherContractInput.value.trim() : "") : project.contract,
-      workOrder:    dispWO ? dispWO.getValue() : "",
+      workOrder:    "",
       noteNumber:   noteInput.value.trim(),
       plant:        plantInput.value,
       truckNumber:  driver.truck,
@@ -2631,9 +2626,7 @@ function renderMillingProgramForm(engName, existing, onDone) {
   card.appendChild(locWrap);
 
   // Work order — picker of active contract orders, filtered by the chosen site.
-  const millWO = makeWorkOrderField("رقم أمر العمل");
-  card.appendChild(millWO.wrap);
-  function refreshMillingWO() { millWO.refresh(projInput.value, siteInput ? siteInput.value : ""); }
+  function refreshMillingWO() {}   // no-op — WO field removed (returns as locked auto-fill later)
   siteWrap.addEventListener("change", () => { buildMillingLoc(); refreshMillingWO(); });
   buildMillingLoc();
   refreshMillingWO();
@@ -2678,7 +2671,6 @@ function renderMillingProgramForm(engName, existing, onDone) {
     areaInput.value = existing.area || ""; machInput.value = existing.machines || "";
     dateInput.value = existing.requestedDate || "";
     prioInput.value = existing.priority || ""; notesInput.value = existing.engNotes || "";
-    millWO.refresh(projInput.value, siteInput ? siteInput.value : "", existing.workOrder);
   }
 
   const errDiv = el("div", "error-msg"); errDiv.style.display = "none"; card.appendChild(errDiv);
@@ -2689,7 +2681,7 @@ function renderMillingProgramForm(engName, existing, onDone) {
     const loc = getMillingLoc();
     const data = {
       project: projInput.value,
-      workOrder: millWO.getValue(),
+      workOrder: "",
       site: siteInput ? siteInput.value : "",
       block: loc.block, street: loc.street,
       depth: depthInput.value, itemCode: depth ? depth.code : "",
@@ -3190,9 +3182,7 @@ function renderMaterialReceiptForm(name, onDone) {
   card.appendChild(locWrap);
 
   // Work order — picker of active contract orders, filtered by the chosen site.
-  const matWO = makeWorkOrderField("رقم أمر العمل");
-  card.appendChild(matWO.wrap);
-  function refreshMatWO() { matWO.refresh(projInput.value, siteInput ? siteInput.value : ""); }
+  function refreshMatWO() {}   // no-op — WO field removed (returns as locked auto-fill later)
   buildMatLoc();
   refreshMatWO();
 
@@ -3272,7 +3262,7 @@ function renderMaterialReceiptForm(name, onDone) {
     const loc = getMatLoc();
     const data = {
       project: projInput.value, site: siteInput ? siteInput.value : "",
-      workOrder: matWO.getValue(),
+      workOrder: "",
       block: loc.block, street: loc.street,
       category: catInput.value, material: matInput ? matInput.value : "",
       quantity: qtyInput.value.trim(), unit: unitInput.value,

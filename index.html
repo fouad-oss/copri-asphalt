@@ -1017,10 +1017,11 @@ function workOrdersFor(projectName, site) {
   return (CONFIG.contractWorkOrders || []).filter(w =>
     w.project === projectName && (!w.site || normSp(w.site) === s));
 }
-// A work-order field used by every form. When the project has a reference list
-// it renders a dropdown of active orders (filtered by site); otherwise it falls
-// back to a plain text input (highways / non-Copri projects have no list yet).
+// Work-order field for Copri forms: a dropdown of active orders (filtered by
+// site) plus a "*" option for sites where work is under way but no order has
+// been issued yet. Non-Copri (plant-only) forms don't render this field at all.
 // Returns { wrap, getValue(), setValue(wo), refresh(projectName, site, current) }.
+const WO_NONE = "* — لم يصدر أمر عمل بعد";   // value = "*"
 function makeWorkOrderField(labelText) {
   const wrap = el("div");
   let getV = () => "", setV = () => {}, lastKey = null;
@@ -1030,20 +1031,12 @@ function makeWorkOrderField(labelText) {
     const key = projectName + " " + (site || "");
     if (key === lastKey && current === undefined) return;
     lastKey = key;
-    const list = workOrdersFor(projectName, site);
+    const opts = workOrdersFor(projectName, site).map(w => `${w.wo} — ${w.label}`).concat(WO_NONE);
     wrap.innerHTML = "";
-    if (list.length) {
-      const opts = list.map(w => `${w.wo} — ${w.label}`);
-      const { input: s } = fieldGroup(labelText, select(opts, "اختر أمر العمل"), true, "أوامر العمل الجارية لهذا الموقع");
-      wrap.appendChild(s.parentElement);
-      getV = () => (s.value ? s.value.split(" — ")[0] : "");
-      setV = (wo) => { const o = opts.find(x => x.split(" — ")[0] === String(wo)); s.value = o || ""; };
-    } else {
-      const { input: i } = fieldGroup(labelText, input("text", "رقم أمر العمل"), false);
-      wrap.appendChild(i.parentElement);
-      getV = () => i.value.trim();
-      setV = (wo) => { i.value = wo || ""; };
-    }
+    const { input: s } = fieldGroup(labelText, select(opts, "اختر أمر العمل"), true, "اختر أمر العمل الجاري، أو * إذا لم يصدر بعد");
+    wrap.appendChild(s.parentElement);
+    getV = () => (s.value ? s.value.split(" — ")[0] : "");
+    setV = (wo) => { const o = opts.find(x => x.split(" — ")[0] === String(wo)); s.value = o || ""; };
     if (current) setV(current);
   }
   return { wrap, getValue: () => getV(), setValue: (v) => setV(v), refresh };
@@ -1415,10 +1408,14 @@ function renderDispatch(ctx) {
   );
   card.appendChild(gPlant);
 
-  // Work order — picker of active contract orders, filtered by the chosen site.
-  // Falls back to a free-text field for projects with no reference list.
-  const dispWO = makeWorkOrderField("رقم أمر العمل");
-  card.appendChild(dispWO.wrap);
+  // Work order — Copri only: a dropdown of active orders (filtered by site) plus
+  // "*" for sites with no issued order yet. Non-Copri (plant-only, e.g. Green
+  // Line) has no work-order field at all.
+  let dispWO = null;
+  if (isCopri) {
+    dispWO = makeWorkOrderField("رقم أمر العمل");
+    card.appendChild(dispWO.wrap);
+  }
 
   const { group: gNaqel, input: naqelInput } = fieldGroup(
     "الناقل", select(CONFIG.naqelOptions, "اختر الناقل"), true
@@ -1605,7 +1602,7 @@ function renderDispatch(ctx) {
   }
   // Work-order picker — depends on project + site (guarded against per-keystroke
   // rebuilds inside makeWorkOrderField, so the location listeners are harmless).
-  function refreshWorkOrder() { dispWO.refresh(projectName, siteInput.value); }
+  function refreshWorkOrder() { if (dispWO) dispWO.refresh(projectName, siteInput.value); }
   siteInput.addEventListener("change", refreshLoadNumber);
   siteInput.addEventListener("change", refreshWorkOrder);
   if (locContainer) {
@@ -1666,7 +1663,7 @@ function renderDispatch(ctx) {
       company:      companyName,
       project:      project.isOther ? (otherProjectInput ? otherProjectInput.value.trim() : projectName) : projectName,
       contract:     project.isOther ? (otherContractInput ? otherContractInput.value.trim() : "") : project.contract,
-      workOrder:    dispWO.getValue(),
+      workOrder:    dispWO ? dispWO.getValue() : "",
       noteNumber:   noteInput.value.trim(),
       plant:        plantInput.value,
       truckNumber:  driver.truck,

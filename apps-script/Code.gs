@@ -1355,6 +1355,7 @@ const MATCOL = {
   receiver:      "اسم المستلم",
   project:       "المشروع",
   site:          "الموقع",
+  workOrder:     "رقم أمر العمل",
   block:         "القطعة",
   street:        "الشارع / الموقع التفصيلي",
   category:      "فئة المادة",
@@ -1370,9 +1371,9 @@ const MATCOL = {
 };
 const MATERIALS_HEADERS = [
   MATCOL.receiptId, MATCOL.timestamp, MATCOL.receiver, MATCOL.project, MATCOL.site,
-  MATCOL.block, MATCOL.street, MATCOL.category, MATCOL.material, MATCOL.quantity,
-  MATCOL.unit, MATCOL.rate, MATCOL.amount, MATCOL.supplier, MATCOL.subcontractor,
-  MATCOL.photoUrl, MATCOL.remarks,
+  MATCOL.workOrder, MATCOL.block, MATCOL.street, MATCOL.category, MATCOL.material,
+  MATCOL.quantity, MATCOL.unit, MATCOL.rate, MATCOL.amount, MATCOL.supplier,
+  MATCOL.subcontractor, MATCOL.photoUrl, MATCOL.remarks,
 ];
 
 // Run once in the Apps Script editor to create the Milling Programs tab.
@@ -1629,7 +1630,7 @@ function materialsSubmit_(p) {
   const photoUrl = materialSavePhoto_(p.photoData, p.receiptId);
   const o = {
     receiptId: p.receiptId, timestamp: new Date(), receiver: p.receiverName || "",
-    project: p.project || "", site: p.site || "", block: p.block || "", street: p.street || "",
+    project: p.project || "", site: p.site || "", workOrder: p.workOrder || "", block: p.block || "", street: p.street || "",
     category: p.category || "", material: p.material || "", quantity: p.quantity || "",
     unit: p.unit || "", rate: p.rate || "", amount: p.amount || "",
     supplier: p.supplier || "", subcontractor: p.subcontractor || "",

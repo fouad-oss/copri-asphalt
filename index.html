@@ -3064,6 +3064,7 @@ function matReceiptCard(rec) {
   card.appendChild(fieldRow("المقاول من الباطن", rec.subcontractor));
   card.appendChild(fieldRow("المشروع", rec.project));
   if (rec.site) card.appendChild(fieldRow("الموقع", rec.site));
+  if (rec.workOrder) card.appendChild(fieldRow("رقم أمر العمل", rec.workOrder));
   if (rec.remarks) card.appendChild(fieldRow("ملاحظات", rec.remarks));
 
   if (rec.photoUrl) {
@@ -3090,16 +3091,75 @@ function renderMaterialReceiptForm(name, onDone) {
     const proj = millingProjectByName(projInput.value);
     const { group, input: s } = fieldGroup("الموقع", select((proj && proj.sites) || [], "اختر الموقع"), true);
     siteInput = s; siteWrap.appendChild(group);
+    siteInput.addEventListener("change", () => { buildMatLoc(); refreshMatWO(); });
   }
   buildSite();
-  projInput.addEventListener("change", buildSite);
+  projInput.addEventListener("change", () => { buildSite(); buildMatLoc(); refreshMatWO(); });
   card.appendChild(siteWrap);
 
-  // Detailed location (free text — block / street or landmark)
-  const locRow = el("div", "field-row-2");
-  const { group: gBlock, input: blockInput }  = fieldGroup("القطعة", input("text", "رقم القطعة", "numeric"), false);
-  const { group: gStreet, input: streetInput } = fieldGroup("الشارع / الموقع التفصيلي", input("text", "اختياري"), false);
-  locRow.appendChild(gBlock); locRow.appendChild(gStreet); card.appendChild(locRow);
+  // Location — block+street, a named street picked from the site's list, or a
+  // km range (highways). Same rules/toggle as the asphalt & milling modules.
+  const locWrap = el("div");
+  let locMode = "blocks";                 // "blocks" | "named"
+  let getMatLoc = () => ({ block: "", street: "" });
+  function matNamed() {
+    const proj = millingProjectByName(projInput.value);
+    return (proj && proj.namedStreets && siteInput && proj.namedStreets[siteInput.value]) || [];
+  }
+  function buildMatLoc() {
+    locWrap.innerHTML = "";
+    const projLt = millingProjectByName(projInput.value);
+    if (projLt && projLt.locationType === "km_range") {
+      const r = el("div", "field-row-2");
+      const { group: gF, input: kmFrom } = fieldGroup("من الكيلومتر", input("text", "مثال: 12.5", "decimal"), false);
+      const { group: gT, input: kmTo }   = fieldGroup("إلى الكيلومتر", input("text", "مثال: 14.0", "decimal"), false);
+      r.appendChild(gF); r.appendChild(gT); locWrap.appendChild(r);
+      kmFrom.addEventListener("input", refreshMatWO);
+      kmTo.addEventListener("input", refreshMatWO);
+      getMatLoc = () => ({ block: kmFrom.value.trim(), street: kmTo.value.trim() });
+      return;
+    }
+    const named = matNamed();
+    if (!named.length) locMode = "blocks";
+    if (named.length) {
+      const toggle = el("div", "history-tabs"); toggle.style.marginBottom = ".6rem";
+      const tB = el("button", "history-tab" + (locMode === "blocks" ? " active" : "")); tB.type = "button"; tB.textContent = "قطعة وشارع";
+      const tN = el("button", "history-tab" + (locMode === "named"  ? " active" : "")); tN.type = "button"; tN.textContent = "اسم الشارع";
+      toggle.appendChild(tB); toggle.appendChild(tN); locWrap.appendChild(toggle);
+      tB.addEventListener("click", () => { if (locMode === "blocks") return; locMode = "blocks"; buildMatLoc(); refreshMatWO(); });
+      tN.addEventListener("click", () => { if (locMode === "named")  return; locMode = "named";  buildMatLoc(); refreshMatWO(); });
+    }
+    if (locMode === "named") {
+      const { group, input: s } = fieldGroup("اسم الشارع / الجادة", select(named, "اختر الشارع"), false);
+      locWrap.appendChild(group);
+      s.addEventListener("change", refreshMatWO);
+      getMatLoc = () => ({ block: "", street: s.value.trim() });
+    } else {
+      const r = el("div", "field-row-2");
+      const { group: gB, input: b }  = fieldGroup("القطعة", input("text", "رقم القطعة", "numeric"), false);
+      const { group: gS, input: st } = fieldGroup("الشارع / الجادة", input("text", "اختياري"), false);
+      r.appendChild(gB); r.appendChild(gS); locWrap.appendChild(r);
+      b.addEventListener("input", refreshMatWO);
+      st.addEventListener("input", refreshMatWO);
+      getMatLoc = () => ({ block: b.value.trim(), street: st.value.trim() });
+    }
+  }
+  card.appendChild(locWrap);
+
+  // Work order — auto-derived from site + block/street (same rules as asphalt).
+  const { group: gWO, input: woInput } = fieldGroup(
+    "رقم أمر العمل", input("text", "—"), false, "يُحدَّد تلقائياً حسب الموقع والقطعة"
+  );
+  woInput.readOnly = true; woInput.style.background = "var(--surface-2)"; woInput.style.fontWeight = "700";
+  card.appendChild(gWO);
+  function refreshMatWO() {
+    const loc = getMatLoc();
+    const proj = millingProjectByName(projInput.value);
+    const ltype = (proj && proj.locationType === "km_range") ? "km_range" : "block_street";
+    woInput.value = lookupWorkOrder(siteInput ? siteInput.value : "", loc.block, loc.street, ltype);
+  }
+  buildMatLoc();
+  refreshMatWO();
 
   // General material (category) → drives the detailed material dropdown + unit.
   const { group: gCat, input: catInput } = fieldGroup("المادة (فئة عامة)", select((CONFIG.materialCatalog || []).map(c => c.category), "اختر الفئة"), true);
@@ -3174,9 +3234,13 @@ function renderMaterialReceiptForm(name, onDone) {
   const btn = el("button", "btn-primary"); btn.type = "button"; btn.textContent = "تسجيل الاستلام"; card.appendChild(btn);
 
   btn.addEventListener("click", async () => {
+    const loc = getMatLoc();
+    const projObj = millingProjectByName(projInput.value);
+    const ltype = (projObj && projObj.locationType === "km_range") ? "km_range" : "block_street";
     const data = {
       project: projInput.value, site: siteInput ? siteInput.value : "",
-      block: blockInput.value.trim(), street: streetInput.value.trim(),
+      workOrder: lookupWorkOrder(siteInput ? siteInput.value : "", loc.block, loc.street, ltype),
+      block: loc.block, street: loc.street,
       category: catInput.value, material: matInput ? matInput.value : "",
       quantity: qtyInput.value.trim(), unit: unitInput.value,
       rate: rateInput.value.trim(), amount: amtInput.value,

@@ -761,6 +761,36 @@ const CONFIG = {
     { site: "بيان", street: "خالد بن عبد العزيز", wo: "53" },
   ],
 
+  // Active (جاري) contract-9 work orders, from the MPW WO tracker (Jul 2026).
+  // Drives the work-order PICKER (filtered by project + site) across all forms.
+  // Completed orders are excluded. A site of "" = general (shown for any site).
+  // KEEP UPDATED as the ministry issues/closes orders.
+  contractWorkOrders: [
+    { wo: "41", project: "كوبري — صيانة حولي", site: "بيان", label: "بيان قطعة 9 أعمال مدنية" },
+    { wo: "42", project: "كوبري — صيانة حولي", site: "مشرف", label: "مشرف قطعة 4 أعمال الاسفلت" },
+    { wo: "43", project: "كوبري — صيانة حولي", site: "بيان", label: "صيانة بيان قطعة 15 (أعمال مدنية + أسفلت)" },
+    { wo: "45", project: "كوبري — صيانة حولي", site: "مشرف", label: "صيانة مشرف قطعة 2 أعمال مدنية + خطوط الامطار" },
+    { wo: "46", project: "كوبري — صيانة حولي", site: "بيان", label: "بيان قطعة 12 اعمال مدنية" },
+    { wo: "48", project: "كوبري — صيانة حولي", site: "مشرف", label: "مشرف قطعة 1 (أعمال مدنية + خطوط الامطار)" },
+    { wo: "49", project: "كوبري — صيانة حولي", site: "مشرف", label: "مشرف شارع 52 (أعمال اسفلت)" },
+    { wo: "50", project: "كوبري — صيانة حولي", site: "مشرف", label: "مشرف قطعة 6 (أعمال مدنية + خطوط الامطار)" },
+    { wo: "52", project: "كوبري — صيانة حولي", site: "",     label: "متفرقات وطوارئ" },
+    { wo: "53", project: "كوبري — صيانة حولي", site: "بيان", label: "شارع خالد بن عبدالعزيز - أعمال أسفلت" },
+    { wo: "54", project: "كوبري — صيانة حولي", site: "سلوى", label: "سلوى قطعة 5 - أعمال مدنية" },
+    { wo: "55", project: "كوبري — صيانة حولي", site: "سلوى", label: "سلوى قطعة 6 - أعمال مدنية" },
+    { wo: "58", project: "كوبري — صيانة حولي", site: "بيان", label: "شارع خالد بن عبدالعزيز - أعمال مدنية" },
+    { wo: "59", project: "كوبري — صيانة حولي", site: "بيان", label: "بيان قطعة 2 تنظيف وتصوير شبكة المجاري الصحية" },
+    { wo: "60", project: "كوبري — صيانة حولي", site: "بيان", label: "بيان قطعة 1 تنظيف وتصوير شبكة المجاري الصحية" },
+    { wo: "61", project: "كوبري — صيانة حولي", site: "سلوى", label: "سلوى شارع 104+105 اعمال مدنية" },
+    { wo: "62", project: "كوبري — صيانة حولي", site: "بيان", label: "بيان قطعة 1 - اعمال مدنية" },
+    { wo: "63", project: "كوبري — صيانة حولي", site: "بيان", label: "بيان قطعة 2 - اعمال مدنية" },
+    { wo: "64", project: "كوبري — صيانة حولي", site: "سلوى", label: "سلوى قطعة 9 - اعمال اسفلت" },
+    { wo: "65", project: "كوبري — صيانة حولي", site: "سلوى", label: "سلوى شارع المتنبي - اعمال مدنية" },
+    { wo: "66", project: "كوبري — صيانة حولي", site: "مشرف", label: "متفرقات وطوارئ - محطة مضخات مشرف" },
+    { wo: "67", project: "كوبري — صيانة حولي", site: "بيان", label: "بيان قطعة 11 - أعمال اسفلت" },
+    { wo: "68", project: "كوبري — صيانة حولي", site: "بيان", label: "بيان قطعة 10 - اعمال اسفلت" },
+  ],
+
   // Legacy — kept for receipt form site list fallback
   sites: ["بيان", "مشرف", "سلوى", "أخرى"],
   plants:   ["AP01", "AP02"],
@@ -979,6 +1009,44 @@ function lookupWorkOrder(site, block, street, locationType) {
     return String(r.wo);
   }
   return "*";
+}
+// Active contract work orders for a project + site, from CONFIG.contractWorkOrders.
+// Includes site-less "general" orders (متفرقات وطوارئ) for every site.
+function workOrdersFor(projectName, site) {
+  const s = normSp(site);
+  return (CONFIG.contractWorkOrders || []).filter(w =>
+    w.project === projectName && (!w.site || normSp(w.site) === s));
+}
+// A work-order field used by every form. When the project has a reference list
+// it renders a dropdown of active orders (filtered by site); otherwise it falls
+// back to a plain text input (highways / non-Copri projects have no list yet).
+// Returns { wrap, getValue(), setValue(wo), refresh(projectName, site, current) }.
+function makeWorkOrderField(labelText) {
+  const wrap = el("div");
+  let getV = () => "", setV = () => {}, lastKey = null;
+  function refresh(projectName, site, current) {
+    // Only depends on project + site; skip rebuild (and keep the selection)
+    // when neither changed, so per-keystroke location edits don't reset it.
+    const key = projectName + " " + (site || "");
+    if (key === lastKey && current === undefined) return;
+    lastKey = key;
+    const list = workOrdersFor(projectName, site);
+    wrap.innerHTML = "";
+    if (list.length) {
+      const opts = list.map(w => `${w.wo} — ${w.label}`);
+      const { input: s } = fieldGroup(labelText, select(opts, "اختر أمر العمل"), true, "أوامر العمل الجارية لهذا الموقع");
+      wrap.appendChild(s.parentElement);
+      getV = () => (s.value ? s.value.split(" — ")[0] : "");
+      setV = (wo) => { const o = opts.find(x => x.split(" — ")[0] === String(wo)); s.value = o || ""; };
+    } else {
+      const { input: i } = fieldGroup(labelText, input("text", "رقم أمر العمل"), false);
+      wrap.appendChild(i.parentElement);
+      getV = () => i.value.trim();
+      setV = (wo) => { i.value = wo || ""; };
+    }
+    if (current) setV(current);
+  }
+  return { wrap, getValue: () => getV(), setValue: (v) => setV(v), refresh };
 }
 // Digits-only phone for tel:/wa.me links (strips +, spaces, dashes).
 function cleanPhone(p) { return String(p || "").replace(/[^\d]/g, ""); }
@@ -1347,15 +1415,10 @@ function renderDispatch(ctx) {
   );
   card.appendChild(gPlant);
 
-  // Work order is fixed by site + block — read-only, computed live below.
-  const { group: gWO, input: woInput } = fieldGroup(
-    "رقم أمر العمل", input("text", "—"), false,
-    "يُحدَّد تلقائياً حسب الموقع والقطعة"
-  );
-  woInput.readOnly = true;
-  woInput.style.background = "var(--surface-2)";
-  woInput.style.fontWeight = "700";
-  card.appendChild(gWO);
+  // Work order — picker of active contract orders, filtered by the chosen site.
+  // Falls back to a free-text field for projects with no reference list.
+  const dispWO = makeWorkOrderField("رقم أمر العمل");
+  card.appendChild(dispWO.wrap);
 
   const { group: gNaqel, input: naqelInput } = fieldGroup(
     "الناقل", select(CONFIG.naqelOptions, "اختر الناقل"), true
@@ -1540,16 +1603,9 @@ function renderDispatch(ctx) {
       ? `رقم الحمولة لهذا الموقع: ${n}  ·  منذ ظهر اليوم`
       : "رقم الحمولة لهذا الموقع: —";
   }
-  // Live work-order preview — recomputes from site + block/street. For block+
-  // street, it only resolves once site, block, and street are all chosen.
-  function refreshWorkOrder() {
-    const loc = getLocation(), site = siteInput.value;
-    const ready =
-      loc.locationType === "block_street" ? (site && loc.block && loc.street) :
-      loc.locationType === "named"        ? (site && loc.block) :
-      true;
-    woInput.value = ready ? lookupWorkOrder(site, loc.block, loc.street, loc.locationType) : "—";
-  }
+  // Work-order picker — depends on project + site (guarded against per-keystroke
+  // rebuilds inside makeWorkOrderField, so the location listeners are harmless).
+  function refreshWorkOrder() { dispWO.refresh(projectName, siteInput.value); }
   siteInput.addEventListener("change", refreshLoadNumber);
   siteInput.addEventListener("change", refreshWorkOrder);
   if (locContainer) {
@@ -1610,7 +1666,7 @@ function renderDispatch(ctx) {
       company:      companyName,
       project:      project.isOther ? (otherProjectInput ? otherProjectInput.value.trim() : projectName) : projectName,
       contract:     project.isOther ? (otherContractInput ? otherContractInput.value.trim() : "") : project.contract,
-      workOrder:    lookupWorkOrder(siteInput.value, loc.block, loc.street, loc.locationType),
+      workOrder:    dispWO.getValue(),
       noteNumber:   noteInput.value.trim(),
       plant:        plantInput.value,
       truckNumber:  driver.truck,
@@ -2577,18 +2633,10 @@ function renderMillingProgramForm(engName, existing, onDone) {
   }
   card.appendChild(locWrap);
 
-  // Work order — derived from site + block/street (same rules as asphalt).
-  const { group: gWO, input: woInput } = fieldGroup(
-    "رقم أمر العمل", input("text", "—"), false, "يُحدَّد تلقائياً حسب الموقع والقطعة"
-  );
-  woInput.readOnly = true; woInput.style.background = "var(--surface-2)"; woInput.style.fontWeight = "700";
-  card.appendChild(gWO);
-  function refreshMillingWO() {
-    const loc = getMillingLoc();
-    const proj = millingProjectByName(projInput.value);
-    const ltype = (proj && proj.locationType === "km_range") ? "km_range" : "block_street";
-    woInput.value = lookupWorkOrder(siteInput ? siteInput.value : "", loc.block, loc.street, ltype);
-  }
+  // Work order — picker of active contract orders, filtered by the chosen site.
+  const millWO = makeWorkOrderField("رقم أمر العمل");
+  card.appendChild(millWO.wrap);
+  function refreshMillingWO() { millWO.refresh(projInput.value, siteInput ? siteInput.value : ""); }
   siteWrap.addEventListener("change", () => { buildMillingLoc(); refreshMillingWO(); });
   buildMillingLoc();
   refreshMillingWO();
@@ -2633,7 +2681,7 @@ function renderMillingProgramForm(engName, existing, onDone) {
     areaInput.value = existing.area || ""; machInput.value = existing.machines || "";
     dateInput.value = existing.requestedDate || "";
     prioInput.value = existing.priority || ""; notesInput.value = existing.engNotes || "";
-    refreshMillingWO();
+    millWO.refresh(projInput.value, siteInput ? siteInput.value : "", existing.workOrder);
   }
 
   const errDiv = el("div", "error-msg"); errDiv.style.display = "none"; card.appendChild(errDiv);
@@ -2642,11 +2690,9 @@ function renderMillingProgramForm(engName, existing, onDone) {
   btn.addEventListener("click", async () => {
     const depth = millingDepthByLabel(depthInput.value);
     const loc = getMillingLoc();
-    const projObj = millingProjectByName(projInput.value);
-    const ltype = (projObj && projObj.locationType === "km_range") ? "km_range" : "block_street";
     const data = {
       project: projInput.value,
-      workOrder: lookupWorkOrder(siteInput ? siteInput.value : "", loc.block, loc.street, ltype),
+      workOrder: millWO.getValue(),
       site: siteInput ? siteInput.value : "",
       block: loc.block, street: loc.street,
       depth: depthInput.value, itemCode: depth ? depth.code : "",
@@ -3146,18 +3192,10 @@ function renderMaterialReceiptForm(name, onDone) {
   }
   card.appendChild(locWrap);
 
-  // Work order — auto-derived from site + block/street (same rules as asphalt).
-  const { group: gWO, input: woInput } = fieldGroup(
-    "رقم أمر العمل", input("text", "—"), false, "يُحدَّد تلقائياً حسب الموقع والقطعة"
-  );
-  woInput.readOnly = true; woInput.style.background = "var(--surface-2)"; woInput.style.fontWeight = "700";
-  card.appendChild(gWO);
-  function refreshMatWO() {
-    const loc = getMatLoc();
-    const proj = millingProjectByName(projInput.value);
-    const ltype = (proj && proj.locationType === "km_range") ? "km_range" : "block_street";
-    woInput.value = lookupWorkOrder(siteInput ? siteInput.value : "", loc.block, loc.street, ltype);
-  }
+  // Work order — picker of active contract orders, filtered by the chosen site.
+  const matWO = makeWorkOrderField("رقم أمر العمل");
+  card.appendChild(matWO.wrap);
+  function refreshMatWO() { matWO.refresh(projInput.value, siteInput ? siteInput.value : ""); }
   buildMatLoc();
   refreshMatWO();
 
@@ -3235,11 +3273,9 @@ function renderMaterialReceiptForm(name, onDone) {
 
   btn.addEventListener("click", async () => {
     const loc = getMatLoc();
-    const projObj = millingProjectByName(projInput.value);
-    const ltype = (projObj && projObj.locationType === "km_range") ? "km_range" : "block_street";
     const data = {
       project: projInput.value, site: siteInput ? siteInput.value : "",
-      workOrder: lookupWorkOrder(siteInput ? siteInput.value : "", loc.block, loc.street, ltype),
+      workOrder: matWO.getValue(),
       block: loc.block, street: loc.street,
       category: catInput.value, material: matInput ? matInput.value : "",
       quantity: qtyInput.value.trim(), unit: unitInput.value,

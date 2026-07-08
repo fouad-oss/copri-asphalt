@@ -210,6 +210,10 @@ function doGet(e) {
   const _mat = materialsDoGet_(e);
   if (_mat) return _mat;
 
+  // Staff-editable reference data (streets / work orders / sites / drivers /
+  // settings / access) — the web app reads this at load and overlays defaults.
+  if (e.parameter.ref) return jsonResponse(readReference_());
+
   // 1. One-time receipt check
   if (e.parameter.checkReceipt) {
     const note    = e.parameter.checkReceipt;
@@ -1639,6 +1643,120 @@ function materialsSubmit_(p) {
   sh.appendRow(materialsObjToRow_(o));
   SpreadsheetApp.flush();
   return jsonResponse({ success: true, receiptId: p.receiptId });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// STAFF-EDITABLE REFERENCE DATA
+// ═══════════════════════════════════════════════════════════════════
+// Tabs that staff maintain in the Sheet; the web app fetches them at load
+// (?ref=1) and OVERLAYS them onto its built-in defaults (so empty tabs are
+// fine — the app keeps working). Column ORDER matters (rows read by position),
+// header TEXT is just for humans. Arabic lives only in the header constants.
+//   Run setupReferenceTabs() once to create the tabs.
+// ── Access tab holds PINs: restrict its access (right-click tab → Protect).
+const REF_STREETS    = "Ref — Streets";
+const REF_WORKORDERS = "Ref — Work Orders";
+const REF_SITES      = "Ref — Sites";
+const REF_DRIVERS    = "Ref — Drivers";
+const REF_SETTINGS   = "Ref — Settings";
+const REF_ACCESS     = "Ref — Access";
+
+const REF_H_STREETS = [
+  "المشروع  /  Project",
+  "الموقع  /  Site",
+  "اسم الشارع  /  Street",
+];
+const REF_H_WORKORDERS = [
+  "المشروع  /  Project",
+  "الموقع  /  Site",
+  "القطعة  /  Block",
+  "الشارع  /  Street",
+  "التخصص  /  Discipline",
+  "رقم أمر العمل  /  WO#",
+  "الحالة (جاري = active)  /  Status",
+  "الوصف  /  Description",
+];
+const REF_H_SITES = [
+  "الشركة  /  Company",
+  "المشروع  /  Project",
+  "رقم العقد  /  Contract",
+  "الموقع  /  Site",
+  "نوع الموقع (block_street / km_range)  /  LocationType",
+  "شوارع مسماة؟ (نعم/لا)  /  AllowNamedStreet",
+];
+const REF_H_DRIVERS = [
+  "اسم السائق  /  Driver",
+  "الهاتف  /  Phone",
+  "رقم الشاحنة  /  Truck",
+];
+const REF_H_SETTINGS = [
+  "المفتاح  /  Key",
+  "القيمة  /  Value",
+];
+const REF_H_ACCESS = [
+  "الدور (clerk/engineer/receiver/pm/marco)  /  Role",
+  "الاسم  /  Name",
+  "الرمز السري  /  PIN",
+  "الهاتف (للمهندس)  /  Phone",
+  "المشاريع (مفصولة بفاصلة)  /  Projects",
+];
+
+// Run once in the Apps Script editor to create the six reference tabs.
+function setupReferenceTabs() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const defs = [
+    [REF_STREETS, REF_H_STREETS], [REF_WORKORDERS, REF_H_WORKORDERS],
+    [REF_SITES, REF_H_SITES], [REF_DRIVERS, REF_H_DRIVERS],
+    [REF_SETTINGS, REF_H_SETTINGS], [REF_ACCESS, REF_H_ACCESS],
+  ];
+  defs.forEach(function (d) {
+    const sh = ss.getSheetByName(d[0]) || ss.insertSheet(d[0]);
+    const range = sh.getRange(1, 1, 1, d[1].length);
+    range.setValues([d[1]]);
+    range.setFontWeight("bold").setBackground("#1a1a2e").setFontColor("#00A651").setFontSize(10);
+    sh.setFrozenRows(1);
+    sh.setColumnWidths(1, d[1].length, 180);
+  });
+  const st = ss.getSheetByName(REF_SETTINGS);
+  if (st.getLastRow() < 2) {
+    st.getRange(2, 1, 3, 2).setValues([["tempDropWarning", 30], ["weightShortage", 0.5], ["dataVersion", 1]]);
+  }
+  SpreadsheetApp.flush();
+  Logger.log("Reference tabs ready. Remember to Protect the '" + REF_ACCESS + "' tab (PINs).");
+}
+
+// Read a reference tab into an array of objects keyed by `keys` (by column order).
+function refSheetRows_(name, keys) {
+  const sh = SpreadsheetApp.openById(SHEET_ID).getSheetByName(name);
+  if (!sh) return [];
+  const data = sh.getDataRange().getValues();
+  const out = [];
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i], blank = true;
+    for (var j = 0; j < keys.length; j++) { if (row[j] !== "" && row[j] != null) { blank = false; break; } }
+    if (blank) continue;
+    var o = {};
+    for (var k = 0; k < keys.length; k++) { o[keys[k]] = (row[k] == null) ? "" : String(row[k]).trim(); }
+    out.push(o);
+  }
+  return out;
+}
+function refSettings_() {
+  const o = {};
+  refSheetRows_(REF_SETTINGS, ["key", "value"]).forEach(function (r) { if (r.key) o[r.key] = r.value; });
+  return o;
+}
+function readReference_() {
+  const settings = refSettings_();
+  return {
+    version: settings.dataVersion || "",
+    settings: settings,
+    streets:    refSheetRows_(REF_STREETS,    ["project", "site", "street"]),
+    workOrders: refSheetRows_(REF_WORKORDERS, ["project", "site", "block", "street", "discipline", "wo", "status", "description"]),
+    sites:      refSheetRows_(REF_SITES,      ["company", "project", "contract", "site", "locationType", "allowNamedStreet"]),
+    drivers:    refSheetRows_(REF_DRIVERS,    ["name", "phone", "truck"]),
+    access:     refSheetRows_(REF_ACCESS,     ["role", "name", "pin", "phone", "projects"]),
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════

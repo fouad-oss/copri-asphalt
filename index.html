@@ -3300,7 +3300,115 @@ function renderMaterialReceiptSuccess(receiptId, backFn) {
   main.appendChild(s);
 }
 
-// ── Router (milling-aware) ──
+// ════════════════════════════════════════════════════════
+// REFERENCE DATA — live-read, staff-editable (Ref — * Sheet tabs)
+// Overlays the Sheet onto the built-in CONFIG defaults. Cached in localStorage
+// and applied synchronously for an instant load; a background fetch refreshes
+// the cache for the next open. Any failure falls back to cache, then defaults —
+// so the app never breaks. Backend: setupReferenceTabs() / ?ref=1 in Code.gs.
+// ════════════════════════════════════════════════════════
+const REF_CACHE_KEY = "copri_ref_cache_v1";
+
+function _refProjectCtx(projectName) {
+  for (const cn in (CONFIG.companies || {})) {
+    const c = CONFIG.companies[cn];
+    if (c.projects && c.projects[projectName]) return { companyName: cn, company: c, project: c.projects[projectName] };
+  }
+  return null;
+}
+function _refUpsertPin(list, name, pin) {
+  const f = (list || []).find(x => x.name === name);
+  if (f) f.pin = pin; else list.push({ name, pin });
+}
+function _refBool(v) { return /^(1|true|نعم|yes|y)$/i.test(String(v || "").trim()); }
+function _refCopriProjectNames() {
+  const out = [];
+  for (const cn in (CONFIG.companies || {})) {
+    const c = CONFIG.companies[cn]; if (!c.isCopri) continue;
+    for (const pn in (c.projects || {})) out.push(pn);
+  }
+  return out;
+}
+
+// Overlay one reference payload onto CONFIG (idempotent per load).
+function applyReferenceData(ref) {
+  if (!ref) return;
+  // 1) Sites & projects (additive).
+  (ref.sites || []).forEach(r => {
+    if (!r.project) return;
+    const cn = r.company || "كوبري";
+    CONFIG.companies[cn] = CONFIG.companies[cn] || { isCopri: cn === "كوبري", projects: {} };
+    const comp = CONFIG.companies[cn]; comp.projects = comp.projects || {};
+    const p = comp.projects[r.project] = comp.projects[r.project] || { sites: [], namedStreets: {} };
+    if (r.contract) p.contract = r.contract;
+    if (r.locationType) p.locationType = r.locationType;
+    if (r.allowNamedStreet) p.allowNamedStreet = _refBool(r.allowNamedStreet);
+    if (r.site) { p.sites = p.sites || []; if (!p.sites.includes(r.site)) p.sites.push(r.site); }
+  });
+  // 2) Named streets (additive).
+  (ref.streets || []).forEach(r => {
+    if (!r.project || !r.site || !r.street) return;
+    const ctx = _refProjectCtx(r.project); if (!ctx) return;
+    const p = ctx.project; p.namedStreets = p.namedStreets || {};
+    p.namedStreets[r.site] = p.namedStreets[r.site] || [];
+    if (!p.namedStreets[r.site].includes(r.street)) p.namedStreets[r.site].push(r.street);
+    p.allowNamedStreet = true;
+  });
+  // 3) Work orders (override when the tab has active rows).
+  const wos = (ref.workOrders || []).filter(r => r.wo && (!r.status || /جاري|active/i.test(r.status)));
+  if (wos.length) {
+    CONFIG.contractWorkOrders = wos.map(r => ({
+      wo: String(r.wo), project: r.project || "", site: r.site || "",
+      block: r.block || "", street: r.street || "", discipline: r.discipline || "",
+      label: r.description || [r.site, r.block ? `قطعة ${r.block}` : "", r.discipline].filter(Boolean).join(" "),
+    }));
+  }
+  // 4) Drivers (override when the tab has rows).
+  const drv = (ref.drivers || []).filter(r => r.name);
+  if (drv.length) CONFIG.copriDrivers = drv.map(r => ({ name: r.name, phone: cleanPhone(r.phone), truck: r.truck || "" }));
+  // 5) Settings / thresholds.
+  const s = ref.settings || {};
+  if (s.tempDropWarning !== undefined && s.tempDropWarning !== "") CONFIG.tempDropWarning = Number(s.tempDropWarning);
+  if (s.weightShortage  !== undefined && s.weightShortage  !== "") CONFIG.weightShortage  = Number(s.weightShortage);
+  // 6) Access / PINs (override + extend).
+  (ref.access || []).forEach(r => {
+    if (!r.name || !r.pin) return;
+    const role = String(r.role || "").toLowerCase(), pin = String(r.pin);
+    if (/clerk|كاتب/.test(role))          _refUpsertPin(CONFIG.clerks = CONFIG.clerks || [], r.name, pin);
+    else if (/receiver|مستلم/.test(role)) _refUpsertPin(CONFIG.materialReceivers = CONFIG.materialReceivers || [], r.name, pin);
+    else if (/marco|ماركو/.test(role))    CONFIG.marco = { name: r.name, pin };
+    else if (/pm|مدير/.test(role)) {
+      const projs = (r.projects || "").split(",").map(x => x.trim()).filter(Boolean);
+      const pm = (CONFIG.projectManagers = CONFIG.projectManagers || []).find(x => x.name === r.name);
+      if (pm) { pm.pin = pin; if (projs.length) pm.projects = projs; }
+      else CONFIG.projectManagers.push({ name: r.name, pin, projects: projs });
+    } else if (/engineer|مهندس/.test(role)) {
+      const projs = (r.projects || "").split(",").map(x => x.trim()).filter(Boolean);
+      (projs.length ? projs : _refCopriProjectNames()).forEach(pn => {
+        const ctx = _refProjectCtx(pn); if (!ctx) return;
+        const engs = ctx.project.engineers = ctx.project.engineers || [];
+        const e = engs.find(x => x.name === r.name);
+        if (e) { e.pin = pin; if (r.phone) e.phone = cleanPhone(r.phone); }
+        else engs.push({ name: r.name, pin, phone: cleanPhone(r.phone) });
+      });
+    }
+  });
+}
+
+// Fetch the reference JSON with a timeout; cache on success.
+async function fetchReference(timeoutMs) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs || 5000);
+  try {
+    const res = await fetch(`${CONFIG.scriptUrl}?ref=1`, { signal: ctrl.signal });
+    const data = await res.json();
+    if (data && (data.streets || data.workOrders || data.settings)) localStorage.setItem(REF_CACHE_KEY, JSON.stringify(data));
+    return data;
+  } finally { clearTimeout(t); }
+}
+
+// ── Router — runs after the cached reference overlay ──
+function runRouter() {
 const _mparams = new URLSearchParams(window.location.search);
 const millingReport = _mparams.get("millingReport");
 const millingRole   = _mparams.get("millingRole");
@@ -3341,6 +3449,16 @@ if (millingReport) {
     else renderClerkPINScreen(renderCompanySelect);
   }
 }
+}
+
+// ── Boot: apply cached reference instantly, route, then refresh in background ──
+try {
+  const _cachedRef = JSON.parse(localStorage.getItem(REF_CACHE_KEY) || "null");
+  if (_cachedRef) applyReferenceData(_cachedRef);
+} catch (e) { /* keep baked defaults */ }
+runRouter();
+// Refresh the reference cache for the next open (never blocks the UI).
+fetchReference(5000).catch(function () {});
 
 </script>
 </body>

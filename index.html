@@ -76,6 +76,15 @@
       position: sticky; top: 0; z-index: 10;
       box-shadow: var(--shadow-sm);
     }
+    .header-right { display: flex; align-items: center; gap: .6rem; }
+    .header-refresh {
+      background: var(--surface-2, #eaeae6); border: none; border-radius: 50%;
+      width: 36px; height: 36px; font-size: 1rem; line-height: 1; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center; flex: none;
+    }
+    .header-refresh:disabled { opacity: .5; cursor: default; }
+    .header-refresh.spin { animation: hr-spin .8s linear infinite; }
+    @keyframes hr-spin { to { transform: rotate(360deg); } }
     .logo { display: flex; align-items: center; gap: .7rem; }
     .logo-img { height: 38px; width: auto; display: block; }
     .logo-mark {
@@ -1302,8 +1311,13 @@ function renderShell(subtitleText) {
     <div class="logo">
       <img class="logo-img" src="${COPRI_LOGO}" alt="COPRI"/>
     </div>
-    <div class="header-badge">${subtitleText}</div>
+    <div class="header-right">
+      <div class="header-badge">${subtitleText}</div>
+      <button type="button" class="header-refresh" title="تحديث البيانات" aria-label="تحديث البيانات">🔄</button>
+    </div>
   `;
+  const _refBtn = header.querySelector(".header-refresh");
+  if (_refBtn) _refBtn.addEventListener("click", () => refreshReferenceData(_refBtn));
 
   const main = el("main", "app-main");
   main.id = "main-content";
@@ -3455,15 +3469,25 @@ function applyReferenceData(ref) {
 }
 
 // Fetch the reference JSON with a timeout; cache on success.
-async function fetchReference(timeoutMs) {
+async function fetchReference(timeoutMs, fresh) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), timeoutMs || 5000);
+  const t = setTimeout(() => ctrl.abort(), timeoutMs || 20000);
   try {
-    const res = await fetch(`${CONFIG.scriptUrl}?ref=1`, { signal: ctrl.signal });
+    const res = await fetch(`${CONFIG.scriptUrl}?ref=1${fresh ? "&nocache=1" : ""}`, { signal: ctrl.signal });
     const data = await res.json();
     if (data && (data.streets || data.workOrders || data.settings)) localStorage.setItem(REF_CACHE_KEY, JSON.stringify(data));
     return data;
   } finally { clearTimeout(t); }
+}
+
+// Manual refresh (🔄 in the header, on every portal): pull the latest reference
+// data now, apply it, and re-render the current screen — so staff see edits
+// without the double-reopen. Spins the icon while it fetches.
+async function refreshReferenceData(btn) {
+  if (btn) { btn.disabled = true; btn.classList.add("spin"); }
+  try { const r = await fetchReference(25000, true); if (r) applyReferenceData(r); } catch (e) { /* keep current data */ }
+  if (btn) { btn.disabled = false; btn.classList.remove("spin"); }
+  runRouter();   // re-render the active screen with the fresh data
 }
 
 // ── Router — runs after the cached reference overlay ──
@@ -3517,7 +3541,7 @@ try {
 } catch (e) { /* keep baked defaults */ }
 runRouter();
 // Refresh the reference cache for the next open (never blocks the UI).
-fetchReference(5000).catch(function () {});
+fetchReference(20000).catch(function () {});
 
 </script>
 </body>

@@ -212,7 +212,8 @@ function doGet(e) {
 
   // Staff-editable reference data (streets / work orders / sites / drivers /
   // settings / access) — the web app reads this at load and overlays defaults.
-  if (e.parameter.ref) return jsonResponse(readReference_());
+  if (e.parameter.ref) return ContentService.createTextOutput(readReferenceCached_(e.parameter.nocache))
+    .setMimeType(ContentService.MimeType.JSON);
 
   // 1. One-time receipt check
   if (e.parameter.checkReceipt) {
@@ -1777,6 +1778,17 @@ function readReference_() {
     }
   });
   return a;
+}
+
+// Cached reference JSON. Reading the per-unit files takes ~15s, so cache the
+// built JSON (ScriptCache, 2 min) — normal loads are then instant. The refresh
+// button passes nocache=1 to force a fresh rebuild (staff see edits immediately).
+function readReferenceCached_(nocache) {
+  var cache = CacheService.getScriptCache();
+  if (!nocache) { var hit = cache.get("copri_ref"); if (hit) return hit; }
+  var json = JSON.stringify(readReference_());
+  try { if (json.length < 100000) cache.put("copri_ref", json, 120); } catch (e) {}
+  return json;
 }
 
 // ═══════════════════════════════════════════════════════════════════

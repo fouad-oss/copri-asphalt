@@ -1646,98 +1646,86 @@ function materialsSubmit_(p) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// STAFF-EDITABLE REFERENCE DATA
+// STAFF-EDITABLE REFERENCE DATA (one Google Sheet FILE per unit)
 // ═══════════════════════════════════════════════════════════════════
-// Tabs that staff maintain in the Sheet; the web app fetches them at load
-// (?ref=1) and OVERLAYS them onto its built-in defaults (so empty tabs are
-// fine — the app keeps working). Column ORDER matters (rows read by position),
-// header TEXT is just for humans. Arabic lives only in the header constants.
-//   Run setupReferenceTabs() once to create the tabs.
-// ── Access tab holds PINs: restrict its access (right-click tab → Protect).
-const REF_STREETS    = "Ref — Streets";
-const REF_WORKORDERS = "Ref — Work Orders";
-const REF_SITES      = "Ref — Sites";
-const REF_DRIVERS    = "Ref — Drivers";
-const REF_SETTINGS   = "Ref — Settings";
-const REF_ACCESS     = "Ref — Access";
-
-// Optional: keep the Ref — * tabs in a SEPARATE spreadsheet (its own sharing, so
-// staff can edit reference data without access to the Dispatch/Receipt logs).
-// Paste that spreadsheet's ID here; leave "" to use the main SHEET_ID.
-// NOTE: the script runs as you, so that spreadsheet must be shared with your account.
-const REF_SHEET_ID = "";
-function refSS_() { return SpreadsheetApp.openById(REF_SHEET_ID || SHEET_ID); }
-
-const REF_H_STREETS = [
-  "المشروع  /  Project",
-  "الموقع  /  Site",
-  "اسم الشارع  /  Street",
-];
-const REF_H_WORKORDERS = [
-  "المشروع  /  Project",
-  "الموقع  /  Site",
-  "القطعة  /  Block",
-  "الشارع  /  Street",
-  "التخصص  /  Discipline",
-  "رقم أمر العمل  /  WO#",
-  "الحالة (جاري = active)  /  Status",
-  "الوصف  /  Description",
-];
-const REF_H_SITES = [
-  "الشركة  /  Company",
-  "المشروع  /  Project",
-  "رقم العقد  /  Contract",
-  "الموقع  /  Site",
-  "نوع الموقع (block_street / km_range)  /  LocationType",
-  "شوارع مسماة؟ (نعم/لا)  /  AllowNamedStreet",
-];
-const REF_H_DRIVERS = [
-  "اسم السائق  /  Driver",
-  "الهاتف  /  Phone",
-  "رقم الشاحنة  /  Truck",
-];
-const REF_H_SETTINGS = [
-  "المفتاح  /  Key",
-  "القيمة  /  Value",
-];
-const REF_H_ACCESS = [
-  "الدور (clerk/engineer/receiver/pm/marco)  /  Role",
-  "الاسم  /  Name",
-  "الرمز السري  /  PIN",
-  "الهاتف (للمهندس)  /  Phone",
-  "المشاريع (مفصولة بفاصلة)  /  Projects",
+// The web app fetches these at load (?ref=1) and rebuilds/overlays its config.
+// Each unit is a separate spreadsheet (own sharing). Paste the file IDs into
+// REF_SOURCES. Column ORDER matters (rows read by position); header text is for
+// humans. Arabic lives only in the header constants. See blueprint in the repo.
+//   Run setupReferenceFiles() once to create every file's tabs.
+const REF_SOURCES = [
+  { unit: "plant",     id: "" },   // Settings + Clients + Client Projects + plant lists
+  { unit: "materials", id: "" },
+  { unit: "milling",   id: "" },
+  { unit: "project",   id: "", project: "كوبري — صيانة حولي" },
+  { unit: "project",   id: "", project: "كوبري — الطرق السريعة" },
 ];
 
-// Run once in the Apps Script editor to create the six reference tabs.
-function setupReferenceTabs() {
-  const ss = refSS_();
-  const defs = [
-    [REF_STREETS, REF_H_STREETS], [REF_WORKORDERS, REF_H_WORKORDERS],
-    [REF_SITES, REF_H_SITES], [REF_DRIVERS, REF_H_DRIVERS],
-    [REF_SETTINGS, REF_H_SETTINGS], [REF_ACCESS, REF_H_ACCESS],
-  ];
-  defs.forEach(function (d) {
-    const sh = ss.getSheetByName(d[0]) || ss.insertSheet(d[0]);
-    const range = sh.getRange(1, 1, 1, d[1].length);
-    range.setValues([d[1]]);
-    range.setFontWeight("bold").setBackground("#1a1a2e").setFontColor("#00A651").setFontSize(10);
-    sh.setFrozenRows(1);
-    sh.setColumnWidths(1, d[1].length, 180);
+// Header rows (bilingual). Keep in sync with the key arrays used when reading.
+const RH_KV        = ["المفتاح  /  Key", "القيمة  /  Value"];
+const RH_CLIENTS   = ["الشركة المستلمة  /  Company", "كوبري؟ (نعم/لا)  /  isCopri"];
+const RH_CLIENTPRJ = ["الشركة  /  Company", "المشروع  /  Project", "رقم العقد  /  Contract",
+                      "نوع الموقع (block_street/km_range)  /  LocationType", "شوارع مسماة؟ (نعم/لا)  /  AllowNamedStreet"];
+const RH_CLERKS    = ["الاسم  /  Name", "الرمز السري  /  PIN"];
+const RH_DRIVERS   = ["اسم السائق  /  Driver", "الهاتف  /  Phone", "رقم اللوحة  /  Plate",
+                      "الشركة/المقاول  /  Company", "كوبري؟ (نعم/لا)  /  Copri"];
+const RH_ONE_MIX   = ["نوع الخلطة  /  Mix Type"];
+const RH_ONE_PLANT = ["رقم المصنع  /  Plant"];
+const RH_ONE_TRANS = ["الناقل  /  Transporter"];
+const RH_ONE_REJ   = ["سبب الرفض  /  Rejection Reason"];
+const RH_STAFF     = ["الاسم  /  Name", "الرمز السري  /  PIN", "الهاتف  /  Phone",
+                      "المهمة (asphalt/civil/both)  /  Function", "قشط؟ (نعم/لا)  /  Milling"];
+const RH_ONE_SITE  = ["الموقع  /  Site"];
+const RH_STREETS   = ["الموقع  /  Site", "اسم الشارع  /  Street"];
+const RH_WO        = ["الموقع  /  Site", "القطعة  /  Block", "الشارع  /  Street", "التخصص  /  Discipline",
+                      "رقم أمر العمل  /  WO#", "الحالة (جاري=active)  /  Status", "الوصف  /  Description"];
+const RH_ONE_SUP   = ["المورد  /  Supplier"];
+const RH_ONE_SUB   = ["المقاول من الباطن  /  Subcontractor"];
+const RH_CAT       = ["الفئة  /  Category", "المادة  /  Item", "الوحدة  /  Unit"];
+const RH_MGR       = ["الاسم  /  Name", "الرمز السري  /  PIN", "الدور (pm/marco)  /  Role", "المشاريع  /  Projects"];
+const RH_MACH      = ["الرمز  /  ID", "الاسم  /  Name", "العرض  /  Width"];
+const RH_ONE_PRIO  = ["الأولوية  /  Priority"];
+
+// Which tabs each unit file has: [tabName, headerRow].
+const REF_SPEC = {
+  plant: [
+    ["Settings", RH_KV], ["Clients", RH_CLIENTS], ["Client Projects", RH_CLIENTPRJ],
+    ["Clerks", RH_CLERKS], ["Drivers", RH_DRIVERS], ["Mix Types", RH_ONE_MIX],
+    ["Plants", RH_ONE_PLANT], ["Transporters", RH_ONE_TRANS], ["Rejection Reasons", RH_ONE_REJ],
+  ],
+  project: [
+    ["Project Info", RH_KV], ["Staff", RH_STAFF], ["Sites", RH_ONE_SITE],
+    ["Streets", RH_STREETS], ["Work Orders", RH_WO],
+  ],
+  materials: [
+    ["Suppliers", RH_ONE_SUP], ["Subcontractors", RH_ONE_SUB], ["Catalog", RH_CAT],
+  ],
+  milling: [
+    ["Managers", RH_MGR], ["Machines", RH_MACH], ["Priorities", RH_ONE_PRIO],
+  ],
+};
+
+// Run once in the Apps Script editor: creates each configured file's tabs.
+function setupReferenceFiles() {
+  REF_SOURCES.forEach(function (src) {
+    if (!src.id) { Logger.log("skip " + src.unit + " (no id set)"); return; }
+    var ss;
+    try { ss = SpreadsheetApp.openById(src.id); } catch (e) { Logger.log("cannot open " + src.unit + ": " + e); return; }
+    (REF_SPEC[src.unit] || []).forEach(function (spec) {
+      var sh = ss.getSheetByName(spec[0]) || ss.insertSheet(spec[0]);
+      var r = sh.getRange(1, 1, 1, spec[1].length);
+      r.setValues([spec[1]]);
+      r.setFontWeight("bold").setBackground("#1a1a2e").setFontColor("#00A651").setFontSize(10);
+      sh.setFrozenRows(1); sh.setColumnWidths(1, spec[1].length, 190);
+    });
+    Logger.log("Reference tabs ready in the " + src.unit + " file" + (src.project ? " (" + src.project + ")" : ""));
   });
-  const st = ss.getSheetByName(REF_SETTINGS);
-  if (st.getLastRow() < 2) {
-    st.getRange(2, 1, 3, 2).setValues([["tempDropWarning", 30], ["weightShortage", 0.5], ["dataVersion", 1]]);
-  }
-  SpreadsheetApp.flush();
-  Logger.log("Reference tabs ready. Remember to Protect the '" + REF_ACCESS + "' tab (PINs).");
 }
 
-// Read a reference tab into an array of objects keyed by `keys` (by column order).
-function refSheetRows_(name, keys) {
-  const sh = refSS_().getSheetByName(name);
-  if (!sh) return [];
-  const data = sh.getDataRange().getValues();
-  const out = [];
+// ── Read helpers ──
+function refRows_(ss, name, keys) {
+  var sh = ss.getSheetByName(name); if (!sh) return [];
+  var data = sh.getDataRange().getValues(); var out = [];
   for (var i = 1; i < data.length; i++) {
     var row = data[i], blank = true;
     for (var j = 0; j < keys.length; j++) { if (row[j] !== "" && row[j] != null) { blank = false; break; } }
@@ -1748,22 +1736,47 @@ function refSheetRows_(name, keys) {
   }
   return out;
 }
-function refSettings_() {
-  const o = {};
-  refSheetRows_(REF_SETTINGS, ["key", "value"]).forEach(function (r) { if (r.key) o[r.key] = r.value; });
-  return o;
-}
+function refCol_(ss, name) { return refRows_(ss, name, ["value"]).map(function (r) { return r.value; }).filter(function (x) { return x; }); }
+function refKV_(ss, name) { var o = {}; refRows_(ss, name, ["key", "value"]).forEach(function (r) { if (r.key) o[r.key] = r.value; }); return o; }
+
+// Aggregate every configured file into one payload for the app.
 function readReference_() {
-  const settings = refSettings_();
-  return {
-    version: settings.dataVersion || "",
-    settings: settings,
-    streets:    refSheetRows_(REF_STREETS,    ["project", "site", "street"]),
-    workOrders: refSheetRows_(REF_WORKORDERS, ["project", "site", "block", "street", "discipline", "wo", "status", "description"]),
-    sites:      refSheetRows_(REF_SITES,      ["company", "project", "contract", "site", "locationType", "allowNamedStreet"]),
-    drivers:    refSheetRows_(REF_DRIVERS,    ["name", "phone", "truck"]),
-    access:     refSheetRows_(REF_ACCESS,     ["role", "name", "pin", "phone", "projects"]),
+  var a = {
+    version: "", settings: {}, clients: [], clientProjects: [], clerks: [], drivers: [],
+    mixTypes: [], plants: [], transporters: [], rejectionReasons: [],
+    projectInfo: [], staff: [], sites: [], streets: [], workOrders: [],
+    suppliers: [], subcontractors: [], catalog: [], managers: [], machines: [], priorities: [],
   };
+  REF_SOURCES.forEach(function (src) {
+    if (!src.id) return;
+    var ss; try { ss = SpreadsheetApp.openById(src.id); } catch (e) { return; }
+    if (src.unit === "plant") {
+      a.settings = refKV_(ss, "Settings"); a.version = a.settings.dataVersion || a.version;
+      a.clients = refRows_(ss, "Clients", ["company", "isCopri"]);
+      a.clientProjects = refRows_(ss, "Client Projects", ["company", "project", "contract", "locationType", "allowNamedStreet"]);
+      a.clerks = refRows_(ss, "Clerks", ["name", "pin"]);
+      a.drivers = refRows_(ss, "Drivers", ["name", "phone", "plate", "company", "copri"]);
+      a.mixTypes = refCol_(ss, "Mix Types"); a.plants = refCol_(ss, "Plants");
+      a.transporters = refCol_(ss, "Transporters"); a.rejectionReasons = refCol_(ss, "Rejection Reasons");
+    } else if (src.unit === "project") {
+      var info = refKV_(ss, "Project Info");
+      a.projectInfo.push({ project: src.project, company: info.Company || "", contract: info.Contract || "",
+        locationType: info.LocationType || "", allowNamedStreet: info.AllowNamedStreet || "" });
+      refRows_(ss, "Staff", ["name", "pin", "phone", "function", "milling"]).forEach(function (r) { r.project = src.project; a.staff.push(r); });
+      refRows_(ss, "Sites", ["site"]).forEach(function (r) { a.sites.push({ project: src.project, site: r.site }); });
+      refRows_(ss, "Streets", ["site", "street"]).forEach(function (r) { a.streets.push({ project: src.project, site: r.site, street: r.street }); });
+      refRows_(ss, "Work Orders", ["site", "block", "street", "discipline", "wo", "status", "description"]).forEach(function (r) { r.project = src.project; a.workOrders.push(r); });
+    } else if (src.unit === "materials") {
+      a.suppliers = refRows_(ss, "Suppliers", ["supplier"]).map(function (r) { return r.supplier; }).filter(Boolean);
+      a.subcontractors = refRows_(ss, "Subcontractors", ["subcontractor"]).map(function (r) { return r.subcontractor; }).filter(Boolean);
+      a.catalog = refRows_(ss, "Catalog", ["category", "item", "unit"]);
+    } else if (src.unit === "milling") {
+      a.managers = refRows_(ss, "Managers", ["name", "pin", "role", "projects"]);
+      a.machines = refRows_(ss, "Machines", ["id", "name", "width"]);
+      a.priorities = refCol_(ss, "Priorities");
+    }
+  });
+  return a;
 }
 
 // ═══════════════════════════════════════════════════════════════════

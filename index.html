@@ -3330,69 +3330,110 @@ function _refCopriProjectNames() {
   return out;
 }
 
-// Overlay one reference payload onto CONFIG (idempotent per load).
+// Rebuild/overlay CONFIG from the aggregated reference payload (per-unit files).
+// Datasets present in the sheet replace their baked default; absent → default kept.
 function applyReferenceData(ref) {
   if (!ref) return;
-  // 1) Sites & projects (additive).
-  (ref.sites || []).forEach(r => {
-    if (!r.project) return;
-    const cn = r.company || "كوبري";
-    CONFIG.companies[cn] = CONFIG.companies[cn] || { isCopri: cn === "كوبري", projects: {} };
-    const comp = CONFIG.companies[cn]; comp.projects = comp.projects || {};
-    const p = comp.projects[r.project] = comp.projects[r.project] || { sites: [], namedStreets: {} };
-    if (r.contract) p.contract = r.contract;
-    if (r.locationType) p.locationType = r.locationType;
-    if (r.allowNamedStreet) p.allowNamedStreet = _refBool(r.allowNamedStreet);
-    if (r.site) { p.sites = p.sites || []; if (!p.sites.includes(r.site)) p.sites.push(r.site); }
-  });
-  // 2) Named streets (additive).
+
+  // Settings / thresholds / branding.
+  const s = ref.settings || {};
+  if (s.tempDropWarning !== undefined && s.tempDropWarning !== "") CONFIG.tempDropWarning = Number(s.tempDropWarning);
+  if (s.weightShortage  !== undefined && s.weightShortage  !== "") CONFIG.weightShortage  = Number(s.weightShortage);
+  if (s.projectName)   CONFIG.projectName   = s.projectName;
+  if (s.projectNameEn) CONFIG.projectNameEn = s.projectNameEn;
+  if (s.footerText)    CONFIG.footerText    = s.footerText;
+
+  // Companies/projects — rebuilt from Clients + Client Projects + Project Info.
+  if ((ref.clients || []).length) {
+    const companies = {};
+    (ref.clients || []).forEach(c => { if (c.company) companies[c.company] = { isCopri: _refBool(c.isCopri), projects: {} }; });
+    (ref.clientProjects || []).forEach(r => {
+      if (!r.company || !r.project) return;
+      companies[r.company] = companies[r.company] || { isCopri: false, projects: {} };
+      companies[r.company].projects[r.project] = { contract: r.contract || "", locationType: r.locationType || "block_street", allowNamedStreet: _refBool(r.allowNamedStreet), sites: [], namedStreets: {} };
+    });
+    (ref.projectInfo || []).forEach(pi => {
+      if (!pi.company || !pi.project) return;
+      companies[pi.company] = companies[pi.company] || { isCopri: true, projects: {} };
+      const p = companies[pi.company].projects[pi.project] = companies[pi.company].projects[pi.project] || { sites: [], namedStreets: {} };
+      if (pi.contract) p.contract = pi.contract;
+      p.locationType = pi.locationType || p.locationType || "block_street";
+      p.allowNamedStreet = _refBool(pi.allowNamedStreet);
+    });
+    CONFIG.companies = companies;
+  }
+  // Sites & named streets into their projects.
+  (ref.sites || []).forEach(r => { const ctx = _refProjectCtx(r.project); if (ctx && r.site) { ctx.project.sites = ctx.project.sites || []; if (!ctx.project.sites.includes(r.site)) ctx.project.sites.push(r.site); } });
   (ref.streets || []).forEach(r => {
-    if (!r.project || !r.site || !r.street) return;
-    const ctx = _refProjectCtx(r.project); if (!ctx) return;
+    const ctx = _refProjectCtx(r.project); if (!ctx || !r.site || !r.street) return;
     const p = ctx.project; p.namedStreets = p.namedStreets || {};
     p.namedStreets[r.site] = p.namedStreets[r.site] || [];
     if (!p.namedStreets[r.site].includes(r.street)) p.namedStreets[r.site].push(r.street);
     p.allowNamedStreet = true;
   });
-  // 3) Work orders (override when the tab has active rows).
-  const wos = (ref.workOrders || []).filter(r => r.wo && (!r.status || /جاري|active/i.test(r.status)));
-  if (wos.length) {
-    CONFIG.contractWorkOrders = wos.map(r => ({
-      wo: String(r.wo), project: r.project || "", site: r.site || "",
-      block: r.block || "", street: r.street || "", discipline: r.discipline || "",
-      label: r.description || [r.site, r.block ? `قطعة ${r.block}` : "", r.discipline].filter(Boolean).join(" "),
-    }));
+
+  // Staff → asphalt engineers (per project) + material receivers + milling staff.
+  if ((ref.staff || []).length) {
+    const receivers = [], milling = [];
+    (ref.staff || []).forEach(r => {
+      if (!r.name) return;
+      const fn = String(r.function || "").toLowerCase(), pin = String(r.pin || "");
+      const asph = /asphalt|أسفلت/.test(fn) || /both|كلا/.test(fn);
+      const civ  = /civil|مدني/.test(fn)   || /both|كلا/.test(fn);
+      if (asph) {
+        const ctx = _refProjectCtx(r.project);
+        if (ctx) { const e = ctx.project.engineers = ctx.project.engineers || []; const f = e.find(x => x.name === r.name);
+          if (f) { f.pin = pin; if (r.phone) f.phone = cleanPhone(r.phone); } else e.push({ name: r.name, pin, phone: cleanPhone(r.phone) }); }
+      }
+      if (civ) _refUpsertPin(receivers, r.name, pin);
+      if (_refBool(r.milling)) _refUpsertPin(milling, r.name, pin);
+    });
+    if (receivers.length) CONFIG.materialReceivers = receivers;
+    CONFIG.millingStaff = milling;   // reserved for milling-login wiring
   }
-  // 4) Drivers (override when the tab has rows).
+
+  // Clerks (Plant file).
+  if ((ref.clerks || []).length) CONFIG.clerks = ref.clerks.filter(r => r.name).map(r => ({ name: r.name, pin: String(r.pin || "") }));
+
+  // Work orders (active only) → contractWorkOrders.
+  const wos = (ref.workOrders || []).filter(r => r.wo && (!r.status || /جاري|active/i.test(r.status)));
+  if (wos.length) CONFIG.contractWorkOrders = wos.map(r => ({
+    wo: String(r.wo), project: r.project || "", site: r.site || "", block: r.block || "", street: r.street || "",
+    discipline: r.discipline || "", label: r.description || [r.site, r.block ? `قطعة ${r.block}` : "", r.discipline].filter(Boolean).join(" "),
+  }));
+
+  // Drivers (Copri + contractor; still editable at dispatch).
   const drv = (ref.drivers || []).filter(r => r.name);
-  if (drv.length) CONFIG.copriDrivers = drv.map(r => ({ name: r.name, phone: cleanPhone(r.phone), truck: r.truck || "" }));
-  // 5) Settings / thresholds.
-  const s = ref.settings || {};
-  if (s.tempDropWarning !== undefined && s.tempDropWarning !== "") CONFIG.tempDropWarning = Number(s.tempDropWarning);
-  if (s.weightShortage  !== undefined && s.weightShortage  !== "") CONFIG.weightShortage  = Number(s.weightShortage);
-  // 6) Access / PINs (override + extend).
-  (ref.access || []).forEach(r => {
-    if (!r.name || !r.pin) return;
-    const role = String(r.role || "").toLowerCase(), pin = String(r.pin);
-    if (/clerk|كاتب/.test(role))          _refUpsertPin(CONFIG.clerks = CONFIG.clerks || [], r.name, pin);
-    else if (/receiver|مستلم/.test(role)) _refUpsertPin(CONFIG.materialReceivers = CONFIG.materialReceivers || [], r.name, pin);
-    else if (/marco|ماركو/.test(role))    CONFIG.marco = { name: r.name, pin };
-    else if (/pm|مدير/.test(role)) {
+  if (drv.length) CONFIG.copriDrivers = drv.map(r => ({ name: r.name, phone: cleanPhone(r.phone), truck: r.plate || "", company: r.company || "", copri: _refBool(r.copri) }));
+
+  // Simple pick-lists.
+  if ((ref.mixTypes || []).length)         CONFIG.mixTypes = ref.mixTypes;
+  if ((ref.plants || []).length)           CONFIG.plants = ref.plants;
+  if ((ref.transporters || []).length)     CONFIG.naqelOptions = ref.transporters;
+  if ((ref.rejectionReasons || []).length) CONFIG.rejectionReasons = ref.rejectionReasons;
+  if ((ref.suppliers || []).length)        CONFIG.materialSuppliers = ref.suppliers;
+  if ((ref.subcontractors || []).length)   CONFIG.materialSubcontractors = ref.subcontractors;
+
+  // Materials catalog (Category → items + unit).
+  if ((ref.catalog || []).length) {
+    const cats = {};
+    ref.catalog.forEach(r => { if (!r.category || !r.item) return; const c = cats[r.category] = cats[r.category] || { category: r.category, unit: r.unit || "", items: [] }; c.items.push(r.item); if (r.unit && !c.unit) c.unit = r.unit; });
+    const list = Object.keys(cats).map(k => cats[k]); if (list.length) CONFIG.materialCatalog = list;
+  }
+
+  // Milling machines / priorities / managers.
+  if ((ref.machines || []).length)   CONFIG.millingMachines = ref.machines.map(r => ({ id: r.id, name: r.name, width: Number(r.width) || 1 }));
+  if ((ref.priorities || []).length) CONFIG.millingPriorities = ref.priorities;
+  if ((ref.managers || []).length) {
+    CONFIG.projectManagers = [];
+    ref.managers.forEach(r => {
+      if (!r.name || !r.pin) return;
+      const role = String(r.role || "").toLowerCase(), pin = String(r.pin);
       const projs = (r.projects || "").split(",").map(x => x.trim()).filter(Boolean);
-      const pm = (CONFIG.projectManagers = CONFIG.projectManagers || []).find(x => x.name === r.name);
-      if (pm) { pm.pin = pin; if (projs.length) pm.projects = projs; }
+      if (/marco|ماركو/.test(role)) CONFIG.marco = { name: r.name, pin };
       else CONFIG.projectManagers.push({ name: r.name, pin, projects: projs });
-    } else if (/engineer|مهندس/.test(role)) {
-      const projs = (r.projects || "").split(",").map(x => x.trim()).filter(Boolean);
-      (projs.length ? projs : _refCopriProjectNames()).forEach(pn => {
-        const ctx = _refProjectCtx(pn); if (!ctx) return;
-        const engs = ctx.project.engineers = ctx.project.engineers || [];
-        const e = engs.find(x => x.name === r.name);
-        if (e) { e.pin = pin; if (r.phone) e.phone = cleanPhone(r.phone); }
-        else engs.push({ name: r.name, pin, phone: cleanPhone(r.phone) });
-      });
-    }
-  });
+    });
+  }
 }
 
 // Fetch the reference JSON with a timeout; cache on success.

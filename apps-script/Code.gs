@@ -1650,17 +1650,41 @@ function materialsSubmit_(p) {
 // STAFF-EDITABLE REFERENCE DATA (one Google Sheet FILE per unit)
 // ═══════════════════════════════════════════════════════════════════
 // The web app fetches these at load (?ref=1) and rebuilds/overlays its config.
-// Each unit is a separate spreadsheet (own sharing). Paste the file IDs into
-// REF_SOURCES. Column ORDER matters (rows read by position); header text is for
-// humans. Arabic lives only in the header constants. See blueprint in the repo.
-//   Run setupReferenceFiles() once to create every file's tabs.
+// Each unit is a separate spreadsheet (own sharing). File IDs live in SCRIPT
+// PROPERTIES so re-pasting Code.gs NEVER wipes them — set them once with
+// setRefIds() below. Column ORDER matters (rows read by position).
+//   1) fill setRefIds() with your file IDs and Run it once
+//   2) run setupReferenceFiles() to create each file's tabs
 const REF_SOURCES = [
-  { unit: "plant",     id: "" },   // Settings + Clients + Client Projects + plant lists
-  { unit: "materials", id: "" },
-  { unit: "milling",   id: "" },
-  { unit: "project",   id: "", project: "كوبري — صيانة حولي" },
-  { unit: "project",   id: "", project: "كوبري — الطرق السريعة" },
+  { unit: "plant",     prop: "REF_PLANT_ID" },   // Settings + Clients + Client Projects + plant lists
+  { unit: "materials", prop: "REF_MATERIALS_ID" },
+  { unit: "milling",   prop: "REF_MILLING_ID" },
+  { unit: "project",   prop: "REF_HAWALLI_ID",  project: "كوبري — صيانة حولي" },
+  { unit: "project",   prop: "REF_HIGHWAYS_ID", project: "كوبري — الطرق السريعة" },
 ];
+// Accept a bare spreadsheet ID or a full Sheet URL.
+function refId_(v) { var m = String(v || "").match(/\/d\/([a-zA-Z0-9_-]+)/); return m ? m[1] : String(v || "").trim(); }
+// Resolve a source's spreadsheet ID (inline id wins, else its Script Property).
+function refSourceId_(src) {
+  if (src.id) return refId_(src.id);
+  var v = src.prop ? PropertiesService.getScriptProperties().getProperty(src.prop) : "";
+  return v ? refId_(v) : "";
+}
+// Set your file IDs ONCE: fill these in and Run this function. Saved to Script
+// Properties, which survives Code.gs pastes. Blank values are skipped (so a fresh
+// paste with these blank won't erase what you saved). IDs may be a URL or bare id.
+function setRefIds() {
+  var ids = {
+    REF_PLANT_ID:     "",
+    REF_HAWALLI_ID:   "",
+    REF_HIGHWAYS_ID:  "",
+    REF_MATERIALS_ID: "",
+    REF_MILLING_ID:   "",
+  };
+  var props = PropertiesService.getScriptProperties(), saved = [];
+  Object.keys(ids).forEach(function (k) { if (ids[k]) { props.setProperty(k, refId_(ids[k])); saved.push(k); } });
+  Logger.log("Saved: " + (saved.join(", ") || "(nothing — all blank)"));
+}
 
 // Header rows (bilingual). Keep in sync with the key arrays used when reading.
 const RH_KV        = ["المفتاح  /  Key", "القيمة  /  Value"];
@@ -1709,9 +1733,10 @@ const REF_SPEC = {
 // Run once in the Apps Script editor: creates each configured file's tabs.
 function setupReferenceFiles() {
   REF_SOURCES.forEach(function (src) {
-    if (!src.id) { Logger.log("skip " + src.unit + " (no id set)"); return; }
+    var id = refSourceId_(src);
+    if (!id) { Logger.log("skip " + src.unit + " (no id set)"); return; }
     var ss;
-    try { ss = SpreadsheetApp.openById(src.id); } catch (e) { Logger.log("cannot open " + src.unit + ": " + e); return; }
+    try { ss = SpreadsheetApp.openById(id); } catch (e) { Logger.log("cannot open " + src.unit + ": " + e); return; }
     (REF_SPEC[src.unit] || []).forEach(function (spec) {
       var sh = ss.getSheetByName(spec[0]) || ss.insertSheet(spec[0]);
       var r = sh.getRange(1, 1, 1, spec[1].length);
@@ -1749,8 +1774,9 @@ function readReference_() {
     suppliers: [], subcontractors: [], catalog: [], managers: [], machines: [], priorities: [],
   };
   REF_SOURCES.forEach(function (src) {
-    if (!src.id) return;
-    var ss; try { ss = SpreadsheetApp.openById(src.id); } catch (e) { return; }
+    var id = refSourceId_(src);
+    if (!id) return;
+    var ss; try { ss = SpreadsheetApp.openById(id); } catch (e) { return; }
     if (src.unit === "plant") {
       a.settings = refKV_(ss, "Settings"); a.version = a.settings.dataVersion || a.version;
       a.clients = refRows_(ss, "Clients", ["company", "isCopri"]);

@@ -861,42 +861,60 @@ const CONFIG = {
     "شركة خليل يمن وشركاه",
   ],
   // Subcontractors (المقاول من الباطن) — dropdown on the receipt form.
+  // Civil-works subcontractors (deduped from the COPRI Data.xlsx SubCon groups).
   materialSubcontractors: [
-    "شركة وايت بروجكت",
-    "شركة بويان المتحدة",
-    "شركة الإبداع للمقاولات العامة للمباني",
-    "شركة اليمامة الخليجية",
-    "شركة وفرة الوطنية لتشييد المباني",
-    "شركة المثنى بلس للتجارة العامة والمقاولات",
-    "شركة الجارحي المتحدة للمقاولات",
-    "الشركة الكندية الإقليمية للمقاولات العامة",
+    "White Project Co.",
+    "United Boubyan Co.",
+    "Bahr AlEbdaa",
+    "Al Jarhi United Contracting Co.",
+    "Al Mothanna Plus Co.",
+    "Wafra National Building Construction Co.",
+    "The Regional Canadian Co.",
+    "Al-Khat Al-Akhdar (Green Line)",
+    "Al-Joud Al-Mutamaiyza",
+    "United Investors General Contracting Co.",
+    "Square General Trading & Cont. Co.",
+    "Dana Al-Retaj Est.",
+    "Eiamn Almostaqbal",
+    "DALCO Co.",
+    "A N A Gen. Trad. & Cont.",
+    "RECAFCO",
   ],
   // Material catalog: general category → detailed items, with a default unit.
-  // Picking a category filters the detailed-material dropdown and sets the unit.
+  // Detailed items from COPRI Data.xlsx (site-construction Item Groups).
   materialCatalog: [
     { category: "أنابيب", unit: "متر طولي", items: [
-      "أنبوب بولي إثيلين Ø300", "أنبوب بولي إثيلين Ø400", "أنبوب بولي إثيلين Ø500",
-      "أنبوب بولي إثيلين Ø600", "أنبوب بولي إثيلين Ø700", "أنبوب بولي إثيلين Ø800",
-      "أنبوب بولي إثيلين Ø900", "أنبوب بولي إثيلين Ø1000", "أنبوب بولي إثيلين Ø1200",
-      "أنبوب خرساني مسلح K150SRC", "أنبوب خرساني مسلح K300SRC",
+      "HDPE Ø400", "HDPE Ø500", "HDPE Ø600", "HDPE Ø700", "HDPE Ø800",
+      "HDPE Ø900", "HDPE Ø1000", "HDPE Ø1200", "HDPE gasket Ø500",
+      "UPVC 110mm", "Steel Ø1200 (th.9mm)",
     ] },
     { category: "حجر رصف", unit: "حبة", items: [
-      "كرستون A4", "كرستون A6", "حجر رصف قياسي", "كرستون 75",
+      "Kerbstone 2A (90cm)", "Kerbstone 4A (75×25×15/18)", "Kerbstone 5A (75×30×15/18)",
+      "Kerbstone 6A (entrance L/R)", "Kerbstone 7A (90cm)", "Kerbstone Agric. 50×25",
     ] },
     { category: "بلاط وإنترلوك", unit: "م²", items: [
-      "إنترلوك i-shape", "بلاط X-shape", "رصف بلاط",
-    ] },
-    { category: "مصارف", unit: "عدد", items: [
-      "شبكة مصرف بإطار", "مصرف مسبق الصنع", "مصرف أمطار مسبق الصنع",
-    ] },
-    { category: "مناهل", unit: "عدد", items: [
-      "غطاء منهل + جهاز مجس إلكتروني", "تعلية / تصليح غطاء منهل",
+      "Cement tile 40×40×6", "Cement tile 50×50×6", "Interlock X-shape 6cm",
+      "Interlock X-shape 8cm", "Interlock Hexagon 6cm", "Interlock Star", "Interlock Uni",
     ] },
     { category: "خرسانة", unit: "م³", items: [
-      "خرسانة جاهزة C150", "خرسانة جاهزة C300", "خرسانة جاهزة C500",
+      "Concrete K150 Ord", "Concrete K150 SR", "Concrete K250 SR", "Concrete K300 SR",
+      "Concrete K350 SR", "Concrete K400 SR", "Concrete K450 SR", "Concrete K500 SR",
     ] },
-    { category: "حديد", unit: "طن", items: ["كمر حديد I-beam"] },
-    { category: "رمل ومواد ردم", unit: "م³", items: ["رمل"] },
+    { category: "مصارف ومناهل", unit: "عدد", items: [
+      "Manhole cover HD", "Manhole cover MD", "Manhole frame+cover HD",
+      "Manhole frame+cover MD", "Manhole frame HD",
+    ] },
+    { category: "ركام", unit: "م³", items: [
+      "Gabro 3/8\"", "Gabro 1/2\"", "Gabro 3/4\"", "Gabro 1½\"", "Limestone 3/4\"",
+    ] },
+    { category: "رمل", unit: "م³", items: [
+      "Crushed sand", "Normal sand", "Screened sand", "Sand-gravel",
+    ] },
+    { category: "إسمنت", unit: "طن", items: [
+      "Cement ordinary black (bulk)", "Cement SRC black (bags)",
+    ] },
+    { category: "بلوك", unit: "عدد", items: ["Cement block 40×20×10"] },
+    { category: "حديد", unit: "عدد", items: ["Steel plate 4×8ft × 8mm"] },
   ],
 };
 

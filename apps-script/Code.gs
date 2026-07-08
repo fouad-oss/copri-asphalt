@@ -1661,6 +1661,13 @@ const REF_DRIVERS    = "Ref — Drivers";
 const REF_SETTINGS   = "Ref — Settings";
 const REF_ACCESS     = "Ref — Access";
 
+// Optional: keep the Ref — * tabs in a SEPARATE spreadsheet (its own sharing, so
+// staff can edit reference data without access to the Dispatch/Receipt logs).
+// Paste that spreadsheet's ID here; leave "" to use the main SHEET_ID.
+// NOTE: the script runs as you, so that spreadsheet must be shared with your account.
+const REF_SHEET_ID = "";
+function refSS_() { return SpreadsheetApp.openById(REF_SHEET_ID || SHEET_ID); }
+
 const REF_H_STREETS = [
   "المشروع  /  Project",
   "الموقع  /  Site",
@@ -1703,7 +1710,7 @@ const REF_H_ACCESS = [
 
 // Run once in the Apps Script editor to create the six reference tabs.
 function setupReferenceTabs() {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const ss = refSS_();
   const defs = [
     [REF_STREETS, REF_H_STREETS], [REF_WORKORDERS, REF_H_WORKORDERS],
     [REF_SITES, REF_H_SITES], [REF_DRIVERS, REF_H_DRIVERS],
@@ -1727,7 +1734,7 @@ function setupReferenceTabs() {
 
 // Read a reference tab into an array of objects keyed by `keys` (by column order).
 function refSheetRows_(name, keys) {
-  const sh = SpreadsheetApp.openById(SHEET_ID).getSheetByName(name);
+  const sh = refSS_().getSheetByName(name);
   if (!sh) return [];
   const data = sh.getDataRange().getValues();
   const out = [];

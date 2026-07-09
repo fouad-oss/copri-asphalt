@@ -816,6 +816,7 @@ const CONFIG = {
   // Thresholds for automatic warnings
   tempDropWarning:   30,   // °C — flag if arrival temp drops more than this
   weightShortage:    0.5,  // tons — flag if weight difference exceeds this
+  maxWeight:         50,   // tons — reject a dispatch weight above this (typo guard)
 
   // ══════════════════════════════════════════════════════
   // MILLING MODULE — config (separable; see milling-module branch)
@@ -1516,7 +1517,7 @@ function renderDispatch(ctx) {
 
   const row3 = el("div", "field-row-2");
   const { group: g5, input: weightInput } = fieldGroup("الوزن (طن)", input("number", "33.00", "decimal"), true);
-  weightInput.step = "0.01";
+  weightInput.step = "0.01"; weightInput.min = "0.01"; weightInput.max = String(CONFIG.maxWeight);
   const { group: g6, input: tempInput } = fieldGroup("الحرارة عند الإرسال °م", input("number", "150", "numeric"), true);
   row3.appendChild(g5); row3.appendChild(g6);
   card.appendChild(row3);
@@ -1719,6 +1720,15 @@ function renderDispatch(ctx) {
       errDiv.textContent = "يرجى تعبئة جميع الحقول المطلوبة";
       errDiv.style.display = "block"; return;
     }
+    // Weight sanity — a real asphalt load is a few tens of tons. Reject an
+    // out-of-range value so a typo (e.g. 33,3809) can't be recorded, and store
+    // the clean parsed number rather than whatever raw text was typed.
+    const wNum = parseFloat(String(data.weight).replace(",", "."));
+    if (!isFinite(wNum) || wNum <= 0 || wNum > CONFIG.maxWeight) {
+      errDiv.textContent = `الوزن يجب أن يكون بين 0 و ${CONFIG.maxWeight} طن — تأكد من الرقم`;
+      errDiv.style.display = "block"; return;
+    }
+    data.weight = String(wNum);
     errDiv.style.display = "none";
     btn.disabled = true; btn.textContent = "جارٍ التحقق...";
 
@@ -3382,6 +3392,7 @@ function applyReferenceData(ref) {
   const s = ref.settings || {};
   if (s.tempDropWarning !== undefined && s.tempDropWarning !== "") CONFIG.tempDropWarning = Number(s.tempDropWarning);
   if (s.weightShortage  !== undefined && s.weightShortage  !== "") CONFIG.weightShortage  = Number(s.weightShortage);
+  if (s.maxWeight       !== undefined && s.maxWeight       !== "") CONFIG.maxWeight       = Number(s.maxWeight);
   if (s.projectName)   CONFIG.projectName   = s.projectName;
   if (s.projectNameEn) CONFIG.projectNameEn = s.projectNameEn;
   if (s.footerText)    CONFIG.footerText    = s.footerText;

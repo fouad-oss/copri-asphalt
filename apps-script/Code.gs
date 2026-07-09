@@ -210,6 +210,12 @@ function doGet(e) {
   const _mat = materialsDoGet_(e);
   if (_mat) return _mat;
 
+  // Cheap "did reference change?" probe — reads only the max file-modified time
+  // across the ref files (cached 20s). The client polls this and only pulls the
+  // full ?ref=1 payload when this value changes.
+  if (e.parameter.refver) return ContentService.createTextOutput(JSON.stringify({ version: readRefVersion_() }))
+    .setMimeType(ContentService.MimeType.JSON);
+
   // Staff-editable reference data (streets / work orders / sites / drivers /
   // settings / access) — the web app reads this at load and overlays defaults.
   if (e.parameter.ref) return ContentService.createTextOutput(readReferenceCached_(e.parameter.nocache))
@@ -1804,6 +1810,28 @@ function readReference_() {
     }
   });
   return a;
+}
+
+// Cheap change-detection token: the newest Drive modification time across all
+// ref files. Changes the instant anyone edits a ref file, and getLastUpdated()
+// is far cheaper than openById()+read, so the client can poll it. Cached 20s so
+// concurrent users stay quota-safe. This is the string the client compares.
+function readRefVersion_() {
+  var cache = CacheService.getScriptCache();
+  var hit = cache.get("copri_ref_ver");
+  if (hit) return hit;
+  var maxT = 0;
+  try {
+    REF_SOURCES.forEach(function (src) {
+      var id = refSourceId_(src);
+      if (!id) return;
+      var t = DriveApp.getFileById(id).getLastUpdated().getTime();
+      if (t > maxT) maxT = t;
+    });
+  } catch (e) {}
+  var ver = String(maxT);
+  try { cache.put("copri_ref_ver", ver, 20); } catch (e) {}
+  return ver;
 }
 
 // Cached reference JSON. Reading the per-unit files takes ~15s, so cache the

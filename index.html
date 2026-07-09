@@ -3340,6 +3340,17 @@ function renderMaterialReceiptSuccess(receiptId, backFn) {
 // so the app never breaks. Backend: setupReferenceTabs() / ?ref=1 in Code.gs.
 // ════════════════════════════════════════════════════════
 const REF_CACHE_KEY = "copri_ref_cache_v1";
+const REF_VER_KEY   = "copri_ref_ver_v1";
+let _lastRefVer = localStorage.getItem(REF_VER_KEY) || "";
+
+// True when it's safe to swap the screen out from under the user. Never
+// re-render while they're typing into a form field (would wipe half-typed input).
+function _refSafeToRerender() {
+  const el = document.activeElement;
+  if (!el) return true;
+  const tag = (el.tagName || "").toLowerCase();
+  return !(tag === "input" || tag === "select" || tag === "textarea");
+}
 
 function _refProjectCtx(projectName) {
   for (const cn in (CONFIG.companies || {})) {
@@ -3480,12 +3491,46 @@ async function fetchReference(timeoutMs, fresh) {
   } finally { clearTimeout(t); }
 }
 
+// Cheap probe: has any reference file changed since we last applied? Returns the
+// server version string, or null on failure. Does NOT pull the full payload.
+async function fetchRefVersion(timeoutMs) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs || 8000);
+  try {
+    const res = await fetch(`${CONFIG.scriptUrl}?refver=1`, { signal: ctrl.signal });
+    const d = await res.json();
+    return d && d.version != null ? String(d.version) : null;
+  } catch (e) { return null; } finally { clearTimeout(t); }
+}
+
+// Seamless auto-update: probe the server version; only on a real change pull the
+// full reference, apply it, and re-render the current screen — but only when it's
+// safe (not mid-form). Silent no-op on any failure. `force` skips the version check.
+async function syncReferenceIfChanged(opts) {
+  opts = opts || {};
+  const ver = await fetchRefVersion(8000);
+  if (ver == null) return;                        // network failure — keep current
+  if (!opts.force && ver === _lastRefVer) return; // nothing changed — cheap exit
+  const fresh = await fetchReference(20000, true); // full pull, bypass backend cache
+  if (!fresh) return;
+  applyReferenceData(fresh);
+  _lastRefVer = ver;
+  try { localStorage.setItem(REF_VER_KEY, ver); } catch (e) {}
+  if (_refSafeToRerender()) runRouter();          // re-render only if not mid-typing
+}
+
 // Manual refresh (🔄 in the header, on every portal): pull the latest reference
 // data now, apply it, and re-render the current screen — so staff see edits
 // without the double-reopen. Spins the icon while it fetches.
 async function refreshReferenceData(btn) {
   if (btn) { btn.disabled = true; btn.classList.add("spin"); }
-  try { const r = await fetchReference(25000, true); if (r) applyReferenceData(r); } catch (e) { /* keep current data */ }
+  try {
+    const r = await fetchReference(25000, true);
+    if (r) applyReferenceData(r);
+    // Record the version we just applied so the background poll doesn't re-pull.
+    const v = await fetchRefVersion(8000);
+    if (v != null) { _lastRefVer = v; try { localStorage.setItem(REF_VER_KEY, v); } catch (e) {} }
+  } catch (e) { /* keep current data */ }
   if (btn) { btn.disabled = false; btn.classList.remove("spin"); }
   runRouter();   // re-render the active screen with the fresh data
 }
@@ -3540,8 +3585,22 @@ try {
   if (_cachedRef) applyReferenceData(_cachedRef);
 } catch (e) { /* keep baked defaults */ }
 runRouter();
-// Refresh the reference cache for the next open (never blocks the UI).
-fetchReference(20000).catch(function () {});
+
+// Seamless reference updates — no 🔄 button needed.
+// 1) On boot, check for changes and apply (covers "opened once, still stale").
+syncReferenceIfChanged();
+
+// 2) When the user returns to the tab (common — PWA left open all day), re-check.
+document.addEventListener("visibilitychange", function () {
+  if (document.visibilityState === "visible") syncReferenceIfChanged();
+});
+
+// 3) Gentle background poll while open + visible. Each tick runs only the cheap
+//    version probe; the full pull fires solely on a real change. Skips while
+//    hidden to save quota/battery.
+setInterval(function () {
+  if (document.visibilityState === "visible") syncReferenceIfChanged();
+}, 60000);
 
 </script>
 </body>

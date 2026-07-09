@@ -1979,6 +1979,12 @@ function auditCleanup() {
     out.push(["STREET_TALLY", "", "", "", "", "", "", "", "", k, "", "", "", "count=" + streetT[k]]);
   });
 
+  // Tab inventory — so the non-raw tabs to delete can be picked safely.
+  ss.getSheets().forEach(function (t) {
+    out.push(["TABS", "", "", "", "", "", "", "", "", "", "", "", Math.max(t.getLastRow() - 1, 0),
+      "tab='" + t.getName() + "'  cols=" + t.getLastColumn()]);
+  });
+
   // Summary line at the top
   out.splice(1, 0, ["SUMMARY", "", "", "", "", "", "", "", "", "", "", "", "",
     "dispatchRows=" + (data.length - 1) + "  nonCopriTransit=" + ncCount + "  woStar=" + woStar]);

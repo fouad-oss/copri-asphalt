@@ -2040,7 +2040,9 @@ const RAW_TABS_KEEP = ["Dispatch Log", "Receipt Log", "Materials Log", "Milling 
   "حولي — Hawalli", "طرق سريعة — Expressway"];
 
 function cln_(x) { return String(x == null ? "" : x).trim().replace(/\s+/g, " "); }
-function cleanTruck_(t) {
+// NOTE: distinct from the Looker-layer cleanTruck_() below (which only trims);
+// this one normalizes Arabic-Indic digits + decimal-coerced plates.
+function fixTruck_(t) {
   var s = String(t == null ? "" : t);
   // Arabic-Indic digits U+0660..U+0669 -> ASCII (escapes only — never paste Arabic mid-expression).
   s = s.replace(/[\u0660-\u0669]/g, function (d) { return String(d.charCodeAt(0) - 0x0660); });
@@ -2100,7 +2102,7 @@ function applyCleanup() {
     var r = data[i]; if (!r[iNote] && r[iNote] !== 0) continue;
     var note = cln_(r[iNote]), row = i + 1;
 
-    var t0 = String(r[iTruck] == null ? "" : r[iTruck]), t1 = cleanTruck_(t0);
+    var t0 = String(r[iTruck] == null ? "" : r[iTruck]), t1 = fixTruck_(t0);
     if (t1 && t1 !== t0) { cTruck[i][0] = t1; c.truck++; log.push(["TRUCK", row, note, "Truck", t0, t1]); }
 
     if (note === WEIGHT_FIX_NOTE && String(r[iWt]) !== "33") { cWt[i][0] = 33; c.weight++; log.push(["WEIGHT", row, note, "Weight", String(r[iWt]), "33"]); }

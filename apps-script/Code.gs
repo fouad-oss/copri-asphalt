@@ -2026,16 +2026,14 @@ const SITE_CANON = {
   "جابر الاحمد + الصليبخات": "جابر الاحمد",
   "شركه مبارك العنزي منطقه السره": "السره",
 };
+// Named-street canon, applied AFTER a leading STREET_PREFIX ("شارع ") is stripped.
 const NAMED_STREET_CANON = {
   "خالد بن عبد العزيز": "خالد بن عبدالعزيز",
-  "شارع خالد بن عبد العزيز": "خالد بن عبدالعزيز",
-  "شارع خالد بن عبدالعزيز": "خالد بن عبدالعزيز",
-  "شارع خالد عبدالعزيز": "خالد بن عبدالعزيز",
-  "شارع عبدالله دشت": "عبدالله دشت",
-  "شارع المتنبي": "المتنبي",
-  "شارع الرشيد": "الرشيد",
-  "شارع عمان": "عمان",
+  "خالد عبدالعزيز": "خالد بن عبدالعزيز",
+  "قصربيان": "قصر بيان",
+  "المثني": "المثنى",
 };
+const STREET_PREFIX = "شارع ";      // stripped from the start of named streets
 const WEIGHT_FIX_NOTE = "126043";   // yesterday's typo 33163 -> 33
 // Raw tabs to KEEP; deleteDerivedTabs() removes everything else.
 const RAW_TABS_KEEP = ["Dispatch Log", "Receipt Log", "Materials Log", "Milling Programs",
@@ -2115,12 +2113,15 @@ function applyCleanup() {
     if (SITE_CANON[siteV]) { cSite[i][0] = SITE_CANON[siteV]; c.site++; log.push(["SITE", row, note, "Site", siteV, SITE_CANON[siteV]]); }
     var siteKey = SITE_CANON[siteV] || siteV;
 
-    var isNamed = cln_(r[iLoc]) === LABEL.named, blockV = cln_(r[iBlock]);
+    var isNamed = cln_(r[iLoc]) === LABEL.named, blockV = cln_(r[iBlock]), nameKey = "";
     if (isNamed) {
-      if (NAMED_STREET_CANON[blockV]) { cBlock[i][0] = NAMED_STREET_CANON[blockV]; c.street++; log.push(["STREET", row, note, "Street", blockV, NAMED_STREET_CANON[blockV]]); }
+      var st = blockV;
+      if (st.indexOf(STREET_PREFIX) === 0) st = cln_(st.slice(STREET_PREFIX.length));   // drop "شارع "
+      if (NAMED_STREET_CANON[st]) st = NAMED_STREET_CANON[st];
+      nameKey = st;
+      if (st !== blockV) { cBlock[i][0] = st; c.street++; log.push(["STREET", row, note, "Street", blockV, st]); }
       else if (blockV && !/^\d+$/.test(blockV)) unmapped[blockV] = (unmapped[blockV] || 0) + 1;
     }
-    var nameKey = isNamed ? (NAMED_STREET_CANON[blockV] || blockV) : "";
 
     if (cln_(r[iComp]) === COPRI_COMPANY && cln_(r[iWO]) === "*") {
       var hit = isNamed ? (wo.byStreet[siteKey + "|" + cln_(nameKey)] || wo.byBlock[siteKey + "|" + cln_(nameKey)])

@@ -63,6 +63,7 @@ const LABEL = {
 const STATUS_TRANSIT = "في الطريق";
 const AR_LEGACY_NOTE = "نموذج";
 const AR_LEGACY_WO   = "مهندس";
+const STATUS_NA      = "لا ينطبق";
 
 // ── Daily work-day report config + labels (Arabic isolated here) ─────
 const REPORT_FOLDER  = "Copri Asphalt Daily Reports";
@@ -1880,6 +1881,114 @@ function backupRegister() {
   const copy = file.makeCopy(name);
   Logger.log("Backup created: " + name + "\n" + copy.getUrl());
   return copy.getUrl();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DISPATCH CLEANUP — read-only audit (writes a report tab, changes NO data)
+// ═══════════════════════════════════════════════════════════════════
+// Run backupRegister() first, then auditCleanup(). It scans Dispatch Log and
+// writes a "Cleanup Audit" tab enumerating every affected row so the fixes can
+// be reviewed before applyCleanup() touches anything.
+const CLEAN_AUDIT_SHEET = "Cleanup Audit";
+const AUDIT_MAX_WEIGHT  = 50;   // tons — flag a dispatch weight above this
+
+function auditCleanup() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(DISPATCH_SHEET);
+  var data = sheet.getDataRange().getValues();
+  var h = data[0];
+  var iNote = h.indexOf(COL.note), iTs = h.indexOf(COL.ts), iDrv = h.indexOf(COL.driver),
+      iTruck = h.indexOf(COL.truck), iWt = h.indexOf(COL.weight), iSite = h.indexOf(COL.site),
+      iBlock = h.indexOf(COL.block), iStreet = h.indexOf(COL.street), iStatus = h.indexOf(COL.status),
+      iComp = h.indexOf(COL.company), iLoad = h.indexOf(COL.loadNumber), iWO = h.indexOf(COL.workOrder);
+
+  function s(x) { return (x == null) ? "" : String(x); }
+  var out = [["Section", "SheetRow", "Note", "Date", "Driver", "Truck", "Weight",
+              "Site", "Block", "Street", "Status", "Company", "Load", "Detail"]];
+  function rowVals(i, section, detail) {
+    var r = data[i];
+    return [section, i + 1, s(r[iNote]), s(r[iTs]), s(r[iDrv]), s(r[iTruck]), s(r[iWt]),
+            s(r[iSite]), s(r[iBlock]), s(r[iStreet]), s(r[iStatus]), s(r[iComp]), s(r[iLoad]), detail || ""];
+  }
+
+  // Index notes -> row indices
+  var noteRows = {};
+  for (var i = 1; i < data.length; i++) {
+    if (!data[i][iNote] && data[i][iNote] !== 0) continue;
+    var n = s(data[i][iNote]).trim();
+    (noteRows[n] = noteRows[n] || []).push(i);
+  }
+
+  // A) exact-duplicate notes + "00"-suffix pairs
+  var seenPair = {};
+  for (var n in noteRows) {
+    if (noteRows[n].length > 1) {
+      noteRows[n].forEach(function (i) { out.push(rowVals(i, "DUP_EXACT", "note " + n + " x" + noteRows[n].length)); });
+    }
+    if (n.length > 2 && n.slice(-2) === "00") {
+      var base = n.slice(0, -2);
+      if (noteRows[base]) {
+        var pid = base + "/" + n;
+        if (!seenPair[pid]) {
+          seenPair[pid] = 1;
+          noteRows[base].forEach(function (i) { out.push(rowVals(i, "DUP_SUFFIX", "pair " + pid + " — BASE")); });
+          noteRows[n].forEach(function (i) { out.push(rowVals(i, "DUP_SUFFIX", "pair " + pid + " — 00-suffix")); });
+        }
+      }
+    }
+  }
+
+  // B) weights out of (0, MAX]
+  for (var i = 1; i < data.length; i++) {
+    if (!data[i][iNote]) continue;
+    var w = parseFloat(s(data[i][iWt]).replace(",", "."));
+    if (!isFinite(w) || w <= 0 || w > AUDIT_MAX_WEIGHT) out.push(rowVals(i, "WEIGHT", "weight=" + s(data[i][iWt])));
+  }
+
+  // C) non-Copri deliveries stuck in transit
+  var ncCount = 0;
+  for (var i = 1; i < data.length; i++) {
+    if (!data[i][iNote]) continue;
+    if (s(data[i][iComp]).trim() !== COPRI_COMPANY && s(data[i][iStatus]).trim() === STATUS_TRANSIT) {
+      ncCount++; out.push(rowVals(i, "NONCOPRI_TRANSIT", ""));
+    }
+  }
+
+  // D) truck numbers that are not plain English integers
+  for (var i = 1; i < data.length; i++) {
+    if (!data[i][iNote]) continue;
+    var t = s(data[i][iTruck]).trim();
+    if (t && (/[٠-٩]/.test(t) || /\./.test(t) || !/^\d+$/.test(t))) out.push(rowVals(i, "TRUCK", "truck=" + t));
+  }
+
+  // E) WO backfill candidates (still "*")
+  var woStar = 0;
+  for (var i = 1; i < data.length; i++) { if (data[i][iNote] && s(data[i][iWO]).trim() === "*") woStar++; }
+
+  // F) site & street spelling tallies (spot variants)
+  var siteT = {}, streetT = {};
+  for (var i = 1; i < data.length; i++) {
+    if (!data[i][iNote]) continue;
+    var si = s(data[i][iSite]).trim(); if (si) siteT[si] = (siteT[si] || 0) + 1;
+    var st = s(data[i][iStreet]).trim(); if (st) streetT[st] = (streetT[st] || 0) + 1;
+  }
+  Object.keys(siteT).sort().forEach(function (k) {
+    out.push(["SITE_TALLY", "", "", "", "", "", "", k, "", "", "", "", "", "count=" + siteT[k]]);
+  });
+  Object.keys(streetT).sort().forEach(function (k) {
+    out.push(["STREET_TALLY", "", "", "", "", "", "", "", "", k, "", "", "", "count=" + streetT[k]]);
+  });
+
+  // Summary line at the top
+  out.splice(1, 0, ["SUMMARY", "", "", "", "", "", "", "", "", "", "", "", "",
+    "dispatchRows=" + (data.length - 1) + "  nonCopriTransit=" + ncCount + "  woStar=" + woStar]);
+
+  var sh = ss.getSheetByName(CLEAN_AUDIT_SHEET);
+  if (sh) ss.deleteSheet(sh);
+  sh = ss.insertSheet(CLEAN_AUDIT_SHEET);
+  sh.getRange(1, 1, out.length, out[0].length).setValues(out);
+  sh.setFrozenRows(1);
+  Logger.log("Audit done — " + (out.length - 1) + " report rows in '" + CLEAN_AUDIT_SHEET + "'. No data changed.");
 }
 
 function listTabs() {

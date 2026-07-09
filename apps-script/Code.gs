@@ -1989,12 +1989,22 @@ function auditCleanup() {
   out.splice(1, 0, ["SUMMARY", "", "", "", "", "", "", "", "", "", "", "", "",
     "dispatchRows=" + (data.length - 1) + "  nonCopriTransit=" + ncCount + "  woStar=" + woStar]);
 
+  // In-DB tab (for the user to eyeball).
   var sh = ss.getSheetByName(CLEAN_AUDIT_SHEET);
   if (sh) ss.deleteSheet(sh);
   sh = ss.insertSheet(CLEAN_AUDIT_SHEET);
   sh.getRange(1, 1, out.length, out[0].length).setValues(out);
   sh.setFrozenRows(1);
-  Logger.log("Audit done — " + (out.length - 1) + " report rows in '" + CLEAN_AUDIT_SHEET + "'. No data changed.");
+
+  // Standalone copy, shared with REPORT_EMAIL — small enough to read externally
+  // (the in-DB tab is unreachable once the workbook is large).
+  var auditSS = SpreadsheetApp.create("Copri Cleanup Audit " + Utilities.formatDate(new Date(), TZ, "MM-dd HH-mm"));
+  var ash = auditSS.getSheets()[0];
+  ash.getRange(1, 1, out.length, out[0].length).setValues(out);
+  ash.setFrozenRows(1);
+  try { if (REPORT_EMAIL) auditSS.addViewer(REPORT_EMAIL); } catch (e) {}
+  Logger.log("Audit done — " + (out.length - 1) + " rows. No data changed.\nStandalone: " + auditSS.getUrl() + "\nid=" + auditSS.getId());
+  return auditSS.getId();
 }
 
 function listTabs() {

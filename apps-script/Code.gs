@@ -1945,20 +1945,23 @@ function auditCleanup() {
     if (!isFinite(w) || w <= 0 || w > AUDIT_MAX_WEIGHT) out.push(rowVals(i, "WEIGHT", "weight=" + s(data[i][iWt])));
   }
 
-  // C) non-Copri deliveries stuck in transit
+  // C) non-Copri deliveries stuck in transit — count only (rule-based fix; the
+  // full 190-row list would truncate the tallies below).
   var ncCount = 0;
   for (var i = 1; i < data.length; i++) {
     if (!data[i][iNote]) continue;
-    if (s(data[i][iComp]).trim() !== COPRI_COMPANY && s(data[i][iStatus]).trim() === STATUS_TRANSIT) {
-      ncCount++; out.push(rowVals(i, "NONCOPRI_TRANSIT", ""));
-    }
+    if (s(data[i][iComp]).trim() !== COPRI_COMPANY && s(data[i][iStatus]).trim() === STATUS_TRANSIT) ncCount++;
   }
 
-  // D) truck numbers that are not plain English integers
+  // D) truck numbers that are not plain English integers — count + a sample.
+  var truckBad = 0;
   for (var i = 1; i < data.length; i++) {
     if (!data[i][iNote]) continue;
     var t = s(data[i][iTruck]).trim();
-    if (t && (/[٠-٩]/.test(t) || /\./.test(t) || !/^\d+$/.test(t))) out.push(rowVals(i, "TRUCK", "truck=" + t));
+    if (t && (/[٠-٩]/.test(t) || /\./.test(t) || !/^\d+$/.test(t))) {
+      truckBad++;
+      if (truckBad <= 12) out.push(rowVals(i, "TRUCK", "truck=" + t));
+    }
   }
 
   // E) WO backfill candidates (still "*")
@@ -1987,7 +1990,7 @@ function auditCleanup() {
 
   // Summary line at the top
   out.splice(1, 0, ["SUMMARY", "", "", "", "", "", "", "", "", "", "", "", "",
-    "dispatchRows=" + (data.length - 1) + "  nonCopriTransit=" + ncCount + "  woStar=" + woStar]);
+    "dispatchRows=" + (data.length - 1) + "  nonCopriTransit=" + ncCount + "  woStar=" + woStar + "  trucksBad=" + truckBad]);
 
   // In-DB tab (for the user to eyeball).
   var sh = ss.getSheetByName(CLEAN_AUDIT_SHEET);

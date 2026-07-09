@@ -3683,72 +3683,224 @@ function _dashTrend(days, key, fmt) {
   const div = el("div"); div.innerHTML = svg; return div.firstElementChild;
 }
 
-function renderDashboard() {
+// ── Dashboard state, filters, aggregation ──
+let _dashCache = null;                       // fetched slim-row payload
+let _dashRange = "month";                    // today | week | month | all
+const DASH_RANGES = [["today", "اليوم"], ["week", "٧ أيام"], ["month", "٣٠ يوماً"], ["all", "الكل"]];
+const _kdFmt = (n) => new Intl.NumberFormat("en", { maximumFractionDigits: 0 }).format(n) + " د.ك";
+
+function _dashDayStr(dt) { const p = (n) => String(n).padStart(2, "0"); return dt.getFullYear() + "-" + p(dt.getMonth() + 1) + "-" + p(dt.getDate()); }
+function _dashCutoff() {
+  const days = { today: 1, week: 7, month: 30 }[_dashRange];
+  return days ? _dashDayStr(new Date(Date.now() - (days - 1) * 86400000)) : null;
+}
+function _dashWindow(rows) { const cut = _dashCutoff(); return cut ? (rows || []).filter((r) => r.d >= cut) : (rows || []); }
+function _aggBy(rows, keyFn, valFn) {
+  const map = {};
+  rows.forEach((r) => { const k = keyFn(r); if (!k || k === "—") return; map[k] = (map[k] || 0) + (valFn ? valFn(r) : 1); });
+  return Object.keys(map).map((k) => ({ name: k, value: Math.round(map[k] * 10) / 10 })).sort((a, b) => b.value - a.value);
+}
+function _aggDays(rows, valFn) {
+  const map = {};
+  rows.forEach((r) => { map[r.d] = (map[r.d] || 0) + (valFn ? valFn(r) : 1); });
+  return Object.keys(map).sort().map((d) => ({ date: d, tons: Math.round(map[d] * 10) / 10 }));
+}
+const _sum = (rows, f) => rows.reduce((a, r) => a + (f(r) || 0), 0);
+
+// ── Shared page pieces ──
+function _dashKpis(main, items) {
+  const k = el("div", "dash-kpis");
+  items.forEach((x) => { const c = el("div", "kpi"); c.innerHTML = `<div class="kpi-val">${x[1]}</div><div class="kpi-lbl">${x[0]}</div><div class="kpi-sub">${x[2] || ""}</div>`; k.appendChild(c); });
+  main.appendChild(k);
+}
+function _dashCard(main, title, body) {
+  const c = el("div", "card dash-card"); const h = el("h3"); h.textContent = title;
+  c.appendChild(h); c.appendChild(body); main.appendChild(c); return c;
+}
+// Back link + title + time-filter tabs; onChange re-renders the page.
+function _dashPageHead(main, title, onChange) {
+  const head = el("div");
+  const back = el("button", "history-tab"); back.type = "button"; back.textContent = "◂ كل اللوحات";
+  back.style.marginBottom = ".6rem";
+  back.addEventListener("click", () => renderDashboard());
+  head.appendChild(back);
+  const h = el("h2"); h.textContent = title; h.style.cssText = "font-size:1.05rem;font-weight:800;margin:0 0 .6rem;color:var(--text-1)";
+  head.appendChild(h);
+  const bar = el("div", "history-tabs"); bar.style.marginBottom = "1rem";
+  DASH_RANGES.forEach(([key, label]) => {
+    const b = el("button", "history-tab" + (key === _dashRange ? " active" : "")); b.type = "button"; b.textContent = label;
+    b.addEventListener("click", () => { if (_dashRange === key) return; _dashRange = key; onChange(); });
+    bar.appendChild(b);
+  });
+  head.appendChild(bar);
+  main.appendChild(head);
+}
+function _dashFooter(main, D) {
+  const note = el("div", "dash-note");
+  let when = ""; try { when = new Date(D.generatedAt).toLocaleString("ar"); } catch (e) {}
+  note.textContent = when ? "حُدّثت " + when : "";
+  main.appendChild(note);
+}
+const _stLegend = `<span><i style="background:var(--green)"></i> مقبولة</span><span><i style="background:var(--amber)"></i> قيد الانتظار</span><span><i style="background:var(--red)"></i> مرفوضة</span>`;
+function _dashStatusBars(rows) {
+  const acc = rows.filter((r) => r.st === 1).length, rej = rows.filter((r) => r.st === 2).length;
+  const pend = rows.length - acc - rej;
+  const body = el("div");
+  body.appendChild(_dashBars([
+    { name: "مقبولة", value: acc, cls: "st-ok" },
+    { name: "قيد الانتظار", value: pend, cls: "st-warn" },
+    { name: "مرفوضة", value: rej, cls: "st-err" },
+  ], _numFmt));
+  const legend = el("div", "dash-legend"); legend.innerHTML = _stLegend; body.appendChild(legend);
+  return body;
+}
+
+// ── Entry: fetch once, then route to a page ──
+function renderDashboard(page, projName) {
   const main = renderShell("لوحة المعلومات");
+  if (_dashCache) { _dashRoute(main, _dashCache, page, projName); return; }
   const loading = el("div", "card");
   loading.innerHTML = `<div class="info-box">جارٍ تحميل البيانات…</div>`;
   main.appendChild(loading);
   fetch(`${CONFIG.scriptUrl}?dash`)
     .then((r) => r.json())
-    .then((data) => { main.innerHTML = ""; _buildDashboard(main, data); })
+    .then((d) => { _dashCache = d; main.innerHTML = ""; _dashRoute(main, d, page, projName); })
     .catch(() => { loading.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل البيانات — تحقق من الاتصال وحاول مجدداً</div>`; });
 }
+function _dashRoute(main, data, page, projName) {
+  if (page === "plant") return _dashPlant(main, data);
+  if (page === "exec") return _dashExec(main, data);
+  if (page === "project" && projName) return _dashProject(main, data, projName);
+  return _dashHome(main);
+}
 
-function _buildDashboard(main, D) {
-  const t = D.totals || {}, q = D.quality || {};
-  const acceptPct = t.loads ? Math.round((t.received / t.loads) * 100) : 0;
+// ── Home: pick a board (per company unit) ──
+function _dashHome(main) {
+  const card = el("div", "card");
+  card.appendChild(sectionTitle("لوحات المعلومات"));
+  const info = el("div", "info-box"); info.textContent = "اختر اللوحة — لكل وحدة لوحتها الخاصة";
+  card.appendChild(info);
+  const mk = (name, desc, fn) => {
+    const b = el("button", "project-btn");
+    b.innerHTML = `<div class="project-btn-name">${name}</div><div class="project-btn-contract">${desc}</div>`;
+    b.addEventListener("click", fn); card.appendChild(b);
+  };
+  mk("الإدارة العامة", "نظرة شاملة — كل الوحدات والمشاريع", () => renderDashboard("exec"));
+  mk("المصنع", "الإرساليات حسب الشركة والموقع والخلطة", () => renderDashboard("plant"));
+  _refCopriProjectNames().forEach((pn) => mk(pn, "استلامات الأسفلت والمواد للمشروع", () => renderDashboard("project", pn)));
+  const soon = el("div", "field-hint"); soon.style.textAlign = "center"; soon.style.marginTop = ".6rem";
+  soon.textContent = "لوحة القشط — قريباً";
+  card.appendChild(soon);
+  main.appendChild(card);
+}
 
-  const kpis = el("div", "dash-kpis");
-  [
-    ["إجمالي الحمولات", _numFmt(t.loads || 0), "شحنة"],
-    ["الأطنان المرسلة", _numFmt(Math.round(t.tons || 0)), "طن"],
-    ["أطنان مستلمة", _numFmt(Math.round(t.tonsReceived || 0)), "مؤكدة بالموقع"],
-    ["نسبة الاستلام", acceptPct + "٪", (t.received || 0) + " من " + (t.loads || 0)],
-  ].forEach((k) => {
-    const c = el("div", "kpi");
-    c.innerHTML = `<div class="kpi-val">${k[1]}</div><div class="kpi-lbl">${k[0]}</div><div class="kpi-sub">${k[2]}</div>`;
-    kpis.appendChild(c);
-  });
-  main.appendChild(kpis);
+// ── Plant board: everything dispatched from the plant, any client ──
+function _dashPlant(main, data) {
+  const rerender = () => { main.innerHTML = ""; _dashPlant(main, data); };
+  _dashPageHead(main, "لوحة المصنع", rerender);
+  const rows = _dashWindow(data.dispatch);
+  const tons = _sum(rows, (r) => r.t);
+  const clients = new Set(rows.map((r) => r.c).filter(Boolean)).size;
+  _dashKpis(main, [
+    ["الحمولات", _numFmt(rows.length), "شحنة"],
+    ["الأطنان المرسلة", _numFmt(Math.round(tons)), "طن"],
+    ["شركات مخدومة", _numFmt(clients), "عميل"],
+    ["متوسط الحمولة", rows.length ? (tons / rows.length).toFixed(1) : "0", "طن / شحنة"],
+  ]);
+  _dashCard(main, "الأطنان حسب الشركة", _dashBars(_aggBy(rows, (r) => r.c, (r) => r.t).slice(0, 8).map((x) => ({ name: x.name, value: x.value })), _tonsFmt));
+  const tw = el("div"); tw.appendChild(_dashTrend(_aggDays(rows, (r) => r.t), "tons", _tonsFmt));
+  _dashCard(main, "الأطنان المرسلة يومياً", tw);
+  _dashCard(main, "الأطنان حسب الموقع", _dashBars(_aggBy(rows, (r) => r.s, (r) => r.t).slice(0, 10), _tonsFmt));
+  _dashCard(main, "الأطنان حسب المصنع", _dashBars(_aggBy(rows, (r) => r.pl, (r) => r.t), _tonsFmt));
+  _dashCard(main, "النقل — كوبري / مقاول خارجي", _dashBars(_aggBy(rows, (r) => r.n, (r) => r.t), _tonsFmt));
+  _dashCard(main, "الأطنان حسب نوع الخلطة", _dashBars(_aggBy(rows, (r) => r.m, (r) => r.t).slice(0, 8), _tonsFmt));
+  _dashFooter(main, data);
+}
 
-  function card(title, body) {
-    const c = el("div", "card dash-card"); const h = el("h3"); h.textContent = title;
-    c.appendChild(h); c.appendChild(body); main.appendChild(c);
+// ── Project board: asphalt receivals + materials, one Copri project ──
+function _dashProject(main, data, projName) {
+  const rerender = () => { main.innerHTML = ""; _dashProject(main, data, projName); };
+  _dashPageHead(main, projName, rerender);
+  const rows = _dashWindow((data.dispatch || []).filter((r) => r.c === data.copri && r.p === projName));
+  const mats = _dashWindow((data.materials || []).filter((r) => r.p === projName));
+  const tons = _sum(rows, (r) => r.t), tonsRecv = _sum(rows, (r) => r.tr);
+  const acc = rows.filter((r) => r.st === 1).length;
+  // Acceptance = accepted shipments / TOTAL dispatched to this project (Copri only by construction).
+  const accPct = rows.length ? Math.round((acc / rows.length) * 100) : 0;
+  _dashKpis(main, [
+    ["حمولات الأسفلت", _numFmt(rows.length), "شحنة مرسلة"],
+    ["الأطنان المرسلة", _numFmt(Math.round(tons)), "طن"],
+    ["أطنان مستلمة", _numFmt(Math.round(tonsRecv)), "مؤكدة بالموقع"],
+    ["نسبة القبول", accPct + "٪", acc + " مقبولة من " + rows.length],
+  ]);
+  _dashCard(main, "حالة الاستلام", _dashStatusBars(rows));
+  const tw = el("div"); tw.appendChild(_dashTrend(_aggDays(rows, (r) => r.t), "tons", _tonsFmt));
+  _dashCard(main, "الأطنان المرسلة يومياً", tw);
+  _dashCard(main, "الأطنان حسب الموقع", _dashBars(_aggBy(rows, (r) => r.s, (r) => r.t).slice(0, 10), _tonsFmt));
+  _dashCard(main, "الأطنان حسب أمر العمل", _dashBars(
+    _aggBy(rows.filter((r) => r.w && r.w !== "*"), (r) => "أمر " + r.w, (r) => r.t).slice(0, 8), _tonsFmt));
+
+  // Materials section.
+  if (mats.length) {
+    const useAmt = _sum(mats, (m) => m.amt) > 0;
+    const val = (m) => (useAmt ? m.amt : 1);
+    const fmt = useAmt ? _kdFmt : _numFmt;
+    _dashKpis(main, [
+      ["استلامات المواد", _numFmt(mats.length), "إيصال"],
+      ["قيمة المواد", useAmt ? _kdFmt(_sum(mats, (m) => m.amt)) : "—", useAmt ? "" : "لا أسعار مسجلة"],
+    ]);
+    _dashCard(main, "المواد حسب الفئة" + (useAmt ? " (بالقيمة)" : " (بالعدد)"), _dashBars(_aggBy(mats, (m) => m.cat, val).slice(0, 8), fmt));
+    _dashCard(main, "المواد حسب المقاول من الباطن", _dashBars(_aggBy(mats, (m) => m.sub, val).slice(0, 8), fmt));
+    _dashCard(main, "المواد حسب المستلم", _dashBars(_aggBy(mats, (m) => m.rec, val).slice(0, 8), fmt));
+    _dashCard(main, "المواد حسب الموقع", _dashBars(_aggBy(mats, (m) => m.s, val).slice(0, 8), fmt));
+  } else {
+    const c = el("div", "card"); const ib = el("div", "info-box");
+    ib.textContent = "لا توجد استلامات مواد في هذه الفترة";
+    c.appendChild(ib); main.appendChild(c);
   }
-  const clean = (list) => (list || []).filter((x) => x.name && x.name !== "—");
+  _dashFooter(main, data);
+}
 
-  card("الأطنان حسب المشروع", _dashBars(clean(D.byProject).slice(0, 8).map((x) => ({ name: x.name, value: x.tons })), _tonsFmt));
-
-  const trendWrap = el("div"); trendWrap.appendChild(_dashTrend(D.byDay || [], "tons", _tonsFmt));
-  card("الأطنان المرسلة يومياً", trendWrap);
-
-  card("الحمولات حسب الموقع", _dashBars(clean(D.bySite).slice(0, 10).map((x) => ({ name: x.name, value: x.loads })), _numFmt));
-  card("الأطنان حسب نوع الخلطة", _dashBars(clean(D.byMix).slice(0, 8).map((x) => ({ name: x.name, value: x.tons })), _tonsFmt));
-  card("أوامر العمل الأعلى", _dashBars(clean(D.byWO).filter((x) => x.name !== "*").slice(0, 8).map((x) => ({ name: "أمر " + x.name, value: x.tons })), _tonsFmt));
-
-  const qBody = el("div");
-  qBody.appendChild(_dashBars([
-    { name: "مستلمة", value: q.received || 0, cls: "st-ok" },
-    { name: "قيد الانتظار", value: q.pending || 0, cls: "st-warn" },
-    { name: "مرفوضة", value: q.rejected || 0, cls: "st-err" },
-  ], _numFmt));
-  const sr = el("div", "dash-stat-row");
+// ── Exec board: top-level management view across all units ──
+function _dashExec(main, data) {
+  const rerender = () => { main.innerHTML = ""; _dashExec(main, data); };
+  _dashPageHead(main, "لوحة الإدارة العامة", rerender);
+  const rows = _dashWindow(data.dispatch);
+  const copriRows = rows.filter((r) => r.c === data.copri);
+  const mats = _dashWindow(data.materials);
+  const tons = _sum(rows, (r) => r.t), copriTons = _sum(copriRows, (r) => r.t);
+  const acc = copriRows.filter((r) => r.st === 1).length;
+  // Acceptance excludes non-Copri clients: accepted / total dispatched to Copri projects.
+  const accPct = copriRows.length ? Math.round((acc / copriRows.length) * 100) : 0;
+  _dashKpis(main, [
+    ["إجمالي الأطنان", _numFmt(Math.round(tons)), _numFmt(rows.length) + " شحنة"],
+    ["أطنان كوبري", _numFmt(Math.round(copriTons)), "مشاريعنا"],
+    ["أطنان العملاء", _numFmt(Math.round(tons - copriTons)), "عملاء المصنع"],
+    ["نسبة القبول — كوبري", accPct + "٪", acc + " مقبولة من " + copriRows.length],
+  ]);
+  _dashCard(main, "الأطنان حسب المشروع", _dashBars(_aggBy(rows, (r) => r.p, (r) => r.t).slice(0, 8), _tonsFmt));
+  const tw = el("div"); tw.appendChild(_dashTrend(_aggDays(rows, (r) => r.t), "tons", _tonsFmt));
+  _dashCard(main, "الأطنان المرسلة يومياً", tw);
+  _dashCard(main, "حالة استلام الأسفلت — مشاريع كوبري", _dashStatusBars(copriRows));
+  // Quality flags (confirmed receipts only).
+  const wShort = copriRows.filter((r) => r.dw != null && r.dw <= -CONFIG.weightShortage).length;
+  const tDrop = copriRows.filter((r) => r.dt != null && r.dt <= -CONFIG.tempDropWarning).length;
+  const dwArr = copriRows.filter((r) => r.dw != null), dtArr = copriRows.filter((r) => r.dt != null);
+  const avgDw = dwArr.length ? (_sum(dwArr, (r) => r.dw) / dwArr.length).toFixed(2) : "0";
+  const avgDt = dtArr.length ? (_sum(dtArr, (r) => r.dt) / dtArr.length).toFixed(1) : "0";
+  const qBody = el("div"); const sr = el("div", "dash-stat-row");
   [
-    [(q.weightShortLoads || 0) + " شحنة", "نقص وزن (≤ -" + CONFIG.weightShortage + " ط)"],
-    [(q.avgWeightDelta || 0) + " ط", "متوسط فرق الوزن (مستلم − مرسل)"],
-    [(q.tempDropLoads || 0) + " شحنة", "انخفاض حرارة (≤ -" + CONFIG.tempDropWarning + "°)"],
-    [(q.avgTempDelta || 0) + "°", "متوسط فرق الحرارة (وصول − إرسال)"],
-  ].forEach((s) => { const d = el("div", "dash-stat"); d.innerHTML = `<div class="v">${s[0]}</div><div class="l">${s[1]}</div>`; sr.appendChild(d); });
+    [wShort + " شحنة", "نقص وزن (≤ -" + CONFIG.weightShortage + " ط)"],
+    [avgDw + " ط", "متوسط فرق الوزن"],
+    [tDrop + " شحنة", "انخفاض حرارة (≤ -" + CONFIG.tempDropWarning + "°)"],
+    [avgDt + "°", "متوسط فرق الحرارة"],
+  ].forEach((s) => { const d2 = el("div", "dash-stat"); d2.innerHTML = `<div class="v">${s[0]}</div><div class="l">${s[1]}</div>`; sr.appendChild(d2); });
   qBody.appendChild(sr);
-  const legend = el("div", "dash-legend");
-  legend.innerHTML = `<span><i style="background:var(--green)"></i> مستلمة</span><span><i style="background:var(--amber)"></i> قيد الانتظار</span><span><i style="background:var(--red)"></i> مرفوضة</span>`;
-  qBody.appendChild(legend);
-  card("الجودة والاستلام", qBody);
-
-  const note = el("div", "dash-note");
-  let when = ""; try { when = new Date(D.generatedAt).toLocaleString("ar"); } catch (e) {}
-  note.textContent = "كل الفترة" + (when ? " · حُدّثت " + when : "");
-  main.appendChild(note);
+  _dashCard(main, "جودة التسليم (الاستلامات المؤكدة)", qBody);
+  if (mats.length && _sum(mats, (m) => m.amt) > 0) {
+    _dashCard(main, "قيمة المواد حسب المشروع", _dashBars(_aggBy(mats, (m) => m.p, (m) => m.amt).slice(0, 8), _kdFmt));
+  }
+  _dashFooter(main, data);
 }
 
 // ── Router — runs after the cached reference overlay ──
@@ -3762,9 +3914,11 @@ const note = getNoteFromURL();
 if (millingReport) {
   renderMillingReportView(millingReport);                 // public, no PIN
 } else if (_mparams.has("dash")) {
+  const dv = _mparams.get("dash"), dp = _mparams.get("dp");
+  const openDash = () => renderDashboard(["plant", "exec", "project"].includes(dv) ? dv : null, dp || null);
   const s = getClerkSession();
-  if (s) renderDashboard();
-  else renderClerkPINScreen(renderDashboard);             // gated by clerk PIN
+  if (s) openDash();
+  else renderClerkPINScreen(openDash);                    // gated by clerk PIN
 } else if (millingRole === "engineer") {
   const session = getEngineerSession();
   if (session) renderMillingEngineerHome(session.name);

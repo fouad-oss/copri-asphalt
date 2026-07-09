@@ -3914,11 +3914,10 @@ const note = getNoteFromURL();
 if (millingReport) {
   renderMillingReportView(millingReport);                 // public, no PIN
 } else if (_mparams.has("dash")) {
+  // Standalone (no PIN) for now — a dedicated management PIN gate comes later,
+  // driven by a new top-management reference file the user will create.
   const dv = _mparams.get("dash"), dp = _mparams.get("dp");
-  const openDash = () => renderDashboard(["plant", "exec", "project"].includes(dv) ? dv : null, dp || null);
-  const s = getClerkSession();
-  if (s) openDash();
-  else renderClerkPINScreen(openDash);                    // gated by clerk PIN
+  renderDashboard(["plant", "exec", "project"].includes(dv) ? dv : null, dp || null);
 } else if (millingRole === "engineer") {
   const session = getEngineerSession();
   if (session) renderMillingEngineerHome(session.name);

@@ -1958,7 +1958,7 @@ function auditCleanup() {
   for (var i = 1; i < data.length; i++) {
     if (!data[i][iNote]) continue;
     var t = s(data[i][iTruck]).trim();
-    if (t && (/[٠-٩]/.test(t) || /\./.test(t) || !/^\d+$/.test(t))) {
+    if (t && (/[\u0660-\u0669]/.test(t) || /\./.test(t) || !/^\d+$/.test(t))) {
       truckBad++;
       if (truckBad <= 12) out.push(rowVals(i, "TRUCK", "truck=" + t));
     }
@@ -2044,7 +2044,8 @@ const RAW_TABS_KEEP = ["Dispatch Log", "Receipt Log", "Materials Log", "Milling 
 function cln_(x) { return String(x == null ? "" : x).trim().replace(/\s+/g, " "); }
 function cleanTruck_(t) {
   var s = String(t == null ? "" : t);
-  s = s.replace(/[٠-٩]/g, function (d) { return String("٠١٢٣٤٥٦٧٨٩".indexOf(d)); });
+  // Arabic-Indic digits U+0660..U+0669 -> ASCII (escapes only — never paste Arabic mid-expression).
+  s = s.replace(/[\u0660-\u0669]/g, function (d) { return String(d.charCodeAt(0) - 0x0660); });
   s = s.replace(/[^0-9]/g, "").replace(/^0+/, "");
   return s;
 }
@@ -2064,7 +2065,7 @@ function buildWoResolver_() {
     ((ref && ref.workOrders) || []).forEach(function (w) {
       if (!w.wo) return;
       var disc = String(w.discipline || "").toLowerCase();
-      if (disc && !/both|كلا|asphalt|أسفلت/.test(disc)) return;
+      if (disc && !/both|asphalt/.test(disc)) return;
       var site = cln_(w.site);
       if (w.block)  { byBlock[site + "|" + cln_(w.block)]   = String(w.wo); n++; }
       if (w.street) { byStreet[site + "|" + cln_(w.street)] = String(w.wo); n++; }

@@ -1045,6 +1045,34 @@ function workOrdersFor(projectName, site) {
   return (CONFIG.contractWorkOrders || []).filter(w =>
     w.project === projectName && (!w.site || normSp(w.site) === s));
 }
+// Locked auto-fill: the single active work order that covers a location for a
+// discipline, from the reference Work Orders tab (CONFIG.contractWorkOrders).
+// Callers normalise a named street into `street` and leave `block` empty.
+// discipline ∈ "asphalt" | "civil"; a WO tagged "both" matches either. Returns
+// the WO string, "*" when a location is set but no order covers it, or "" when
+// there is nothing to match on yet.
+function autoWorkOrder(projectName, site, block, street, discipline) {
+  const b = normSp(block), st = normSp(street);
+  if (!b && !st) return "";
+  const siteKey = normSp(site), disc = String(discipline || "").toLowerCase();
+  const discOK = (d) => {
+    d = String(d || "").toLowerCase();
+    if (!d || /both|كلا/.test(d)) return true;
+    if (disc === "asphalt") return /asphalt|أسفلت/.test(d);
+    if (disc === "civil")   return /civil|مدني/.test(d);
+    return false;
+  };
+  const hit = (CONFIG.contractWorkOrders || []).find(w => {
+    if (w.project && w.project !== projectName) return false;
+    if (w.site && normSp(w.site) !== siteKey) return false;
+    if (!discOK(w.discipline)) return false;
+    const wb = normSp(w.block), ws = normSp(w.street);
+    if (b && wb) return wb === b && (!st || !ws || ws === st);
+    if (st && ws) return ws === st;
+    return false;
+  });
+  return hit ? String(hit.wo) : "*";
+}
 // Work-order field for Copri forms: a dropdown of active orders (filtered by
 // site) plus a "*" option for sites where work is under way but no order has
 // been issued yet. Non-Copri (plant-only) forms don't render this field at all.
@@ -1628,9 +1656,24 @@ function renderDispatch(ctx) {
       ? `رقم الحمولة لهذا الموقع: ${n}  ·  منذ ظهر اليوم`
       : "رقم الحمولة لهذا الموقع: —";
   }
-  // WO field removed for now (returns later as a locked auto-fill). Kept as a
-  // no-op so the existing site/location listeners below stay valid.
-  function refreshWorkOrder() {}
+  // Locked auto-fill work order — derived read-only from site + location for the
+  // asphalt discipline; the clerk cannot edit it. Shows a "no order yet" note
+  // when no active order in the reference Work Orders tab covers this spot.
+  const woBox = el("div", "info-box"); woBox.style.fontWeight = "700";
+  woBox.textContent = "أمر العمل: —";
+  if (isCopri) card.appendChild(woBox);
+  let liveWO = "";
+  function refreshWorkOrder() {
+    if (!isCopri) { liveWO = ""; return; }
+    const loc = getLocation();
+    if (loc.locationType === "km_range") { liveWO = ""; woBox.textContent = "أمر العمل: لا ينطبق"; return; }
+    const street = loc.locationType === "named" ? loc.block : loc.street;  // named name lives in block
+    const block  = loc.locationType === "named" ? "" : loc.block;
+    if (!block && !street) { liveWO = ""; woBox.textContent = "أمر العمل: —"; return; }
+    const wo = autoWorkOrder(projectName, siteInput.value, block, street, "asphalt");
+    liveWO = wo;
+    woBox.textContent = (wo && wo !== "*") ? `أمر العمل: ${wo}` : "أمر العمل: لم يصدر أمر عمل بعد";
+  }
   siteInput.addEventListener("change", refreshLoadNumber);
   siteInput.addEventListener("change", refreshWorkOrder);
   if (locContainer) {
@@ -1691,7 +1734,7 @@ function renderDispatch(ctx) {
       company:      companyName,
       project:      project.isOther ? (otherProjectInput ? otherProjectInput.value.trim() : projectName) : projectName,
       contract:     project.isOther ? (otherContractInput ? otherContractInput.value.trim() : "") : project.contract,
-      workOrder:    "",
+      workOrder:    liveWO,
       noteNumber:   noteInput.value.trim(),
       plant:        plantInput.value,
       truckNumber:  driver.truck,
@@ -3223,8 +3266,21 @@ function renderMaterialReceiptForm(name, onDone) {
   }
   card.appendChild(locWrap);
 
-  // Work order — picker of active contract orders, filtered by the chosen site.
-  function refreshMatWO() {}   // no-op — WO field removed (returns as locked auto-fill later)
+  // Locked auto-fill work order — derived read-only from site + location for the
+  // civil discipline; the receiver cannot edit it.
+  const matWoBox = el("div", "info-box"); matWoBox.style.fontWeight = "700";
+  matWoBox.textContent = "أمر العمل: —";
+  card.appendChild(matWoBox);
+  let liveMatWO = "";
+  function refreshMatWO() {
+    const proj = millingProjectByName(projInput.value);
+    if (proj && proj.locationType === "km_range") { liveMatWO = ""; matWoBox.textContent = "أمر العمل: لا ينطبق"; return; }
+    const loc = getMatLoc();   // materials keeps a named street in loc.street already
+    if (!loc.block && !loc.street) { liveMatWO = ""; matWoBox.textContent = "أمر العمل: —"; return; }
+    const wo = autoWorkOrder(projInput.value, siteInput ? siteInput.value : "", loc.block, loc.street, "civil");
+    liveMatWO = wo;
+    matWoBox.textContent = (wo && wo !== "*") ? `أمر العمل: ${wo}` : "أمر العمل: لم يصدر أمر عمل بعد";
+  }
   buildMatLoc();
   refreshMatWO();
 
@@ -3304,7 +3360,7 @@ function renderMaterialReceiptForm(name, onDone) {
     const loc = getMatLoc();
     const data = {
       project: projInput.value, site: siteInput ? siteInput.value : "",
-      workOrder: "",
+      workOrder: liveMatWO,
       block: loc.block, street: loc.street,
       category: catInput.value, material: matInput ? matInput.value : "",
       quantity: qtyInput.value.trim(), unit: unitInput.value,

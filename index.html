@@ -3762,9 +3762,12 @@ function renderDashboard(page, projName) {
   const loading = el("div", "card");
   loading.innerHTML = `<div class="info-box">جارٍ تحميل البيانات…</div>`;
   main.appendChild(loading);
-  fetch(`${CONFIG.scriptUrl}?dash`)
+  fetch(`${CONFIG.scriptUrl}?dash=1`)   // =1 required: Apps Script treats a bare valueless param as falsy
     .then((r) => r.json())
-    .then((d) => { _dashCache = d; main.innerHTML = ""; _dashRoute(main, d, page, projName); })
+    .then((d) => {
+      if (!d || !d.dispatch) throw new Error("bad payload");
+      _dashCache = d; main.innerHTML = ""; _dashRoute(main, d, page, projName);
+    })
     .catch(() => { loading.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل البيانات — تحقق من الاتصال وحاول مجدداً</div>`; });
 }
 function _dashRoute(main, data, page, projName) {

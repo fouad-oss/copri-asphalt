@@ -2010,6 +2010,165 @@ function auditCleanup() {
   return auditSS.getId();
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// DISPATCH CLEANUP — apply the fixes. Run backupRegister() first, then
+// applyCleanup() with DRY_RUN=true, review the plan file, then set
+// DRY_RUN=false and run again to write. deleteDerivedTabs() is separate.
+// ═══════════════════════════════════════════════════════════════════
+// Canonical maps (variant -> canonical), one pair per line (Arabic isolated).
+const SITE_CANON = {
+  "الجا بريه": "الجابريه",
+  "منطقه الدسمه": "الدسمه",
+  "منطقه السالميه": "السالميه",
+  "السالميه متفرقات": "السالميه",
+  "قصربيان": "قصر بيان",
+  "جابر الاحمد +الصلبيخات": "جابر الاحمد",
+  "جابر الاحمد + الصليبخات": "جابر الاحمد",
+  "شركه مبارك العنزي منطقه السره": "السره",
+};
+const NAMED_STREET_CANON = {
+  "خالد بن عبد العزيز": "خالد بن عبدالعزيز",
+  "شارع خالد بن عبد العزيز": "خالد بن عبدالعزيز",
+  "شارع خالد بن عبدالعزيز": "خالد بن عبدالعزيز",
+  "شارع خالد عبدالعزيز": "خالد بن عبدالعزيز",
+  "شارع عبدالله دشت": "عبدالله دشت",
+  "شارع المتنبي": "المتنبي",
+  "شارع الرشيد": "الرشيد",
+  "شارع عمان": "عمان",
+};
+const WEIGHT_FIX_NOTE = "126043";   // yesterday's typo 33163 -> 33
+// Raw tabs to KEEP; deleteDerivedTabs() removes everything else.
+const RAW_TABS_KEEP = ["Dispatch Log", "Receipt Log", "Materials Log", "Milling Programs",
+  "حولي — Hawalli", "طرق سريعة — Expressway"];
+
+function cln_(x) { return String(x == null ? "" : x).trim().replace(/\s+/g, " "); }
+function cleanTruck_(t) {
+  var s = String(t == null ? "" : t);
+  s = s.replace(/[٠-٩]/g, function (d) { return String("٠١٢٣٤٥٦٧٨٩".indexOf(d)); });
+  s = s.replace(/[^0-9]/g, "").replace(/^0+/, "");
+  return s;
+}
+function writePlanFile_(title, rows) {
+  var f = SpreadsheetApp.create(title + " " + Utilities.formatDate(new Date(), TZ, "MM-dd HH-mm"));
+  var sh = f.getSheets()[0];
+  sh.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
+  sh.setFrozenRows(1);
+  try { if (REPORT_EMAIL) f.addViewer(REPORT_EMAIL); } catch (e) {}
+  return f.getId();
+}
+// Asphalt/both work-order lookup from the reference files (site+block / site+street).
+function buildWoResolver_() {
+  var byBlock = {}, byStreet = {}, n = 0;
+  try {
+    var ref = readReference_();
+    ((ref && ref.workOrders) || []).forEach(function (w) {
+      if (!w.wo) return;
+      var disc = String(w.discipline || "").toLowerCase();
+      if (disc && !/both|كلا|asphalt|أسفلت/.test(disc)) return;
+      var site = cln_(w.site);
+      if (w.block)  { byBlock[site + "|" + cln_(w.block)]   = String(w.wo); n++; }
+      if (w.street) { byStreet[site + "|" + cln_(w.street)] = String(w.wo); n++; }
+    });
+  } catch (e) {}
+  return { byBlock: byBlock, byStreet: byStreet, count: n };
+}
+
+function applyCleanup() {
+  var DRY_RUN = true;   // ← set to false to actually write changes
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(DISPATCH_SHEET);
+  var data = sheet.getDataRange().getValues(), nR = data.length, h = data[0];
+  var iNote = h.indexOf(COL.note), iTruck = h.indexOf(COL.truck), iWt = h.indexOf(COL.weight),
+      iSite = h.indexOf(COL.site), iBlock = h.indexOf(COL.block), iLoc = h.indexOf(COL.locType),
+      iStatus = h.indexOf(COL.status), iComp = h.indexOf(COL.company), iWO = h.indexOf(COL.workOrder);
+
+  var wo = buildWoResolver_();
+  var log = [["Change", "SheetRow", "Note", "Field", "Old", "New"]];
+  var c = { truck: 0, weight: 0, status: 0, site: 0, street: 0, woFill: 0, woMiss: 0, del: 0, renum: 0 };
+  var unmapped = {};
+  var DEL_BASES = { "125889": "12588900", "125983": "12598300", "126116": "12611600" };
+
+  // Column snapshots we may rewrite.
+  var cTruck = [], cWt = [], cSite = [], cBlock = [], cStatus = [], cWO = [], cNote = [];
+  for (var i = 0; i < nR; i++) {
+    cTruck.push([data[i][iTruck]]); cWt.push([data[i][iWt]]); cSite.push([data[i][iSite]]);
+    cBlock.push([data[i][iBlock]]); cStatus.push([data[i][iStatus]]); cWO.push([data[i][iWO]]); cNote.push([data[i][iNote]]);
+  }
+  var delRows = [];
+
+  for (var i = 1; i < nR; i++) {
+    var r = data[i]; if (!r[iNote] && r[iNote] !== 0) continue;
+    var note = cln_(r[iNote]), row = i + 1;
+
+    var t0 = String(r[iTruck] == null ? "" : r[iTruck]), t1 = cleanTruck_(t0);
+    if (t1 && t1 !== t0) { cTruck[i][0] = t1; c.truck++; log.push(["TRUCK", row, note, "Truck", t0, t1]); }
+
+    if (note === WEIGHT_FIX_NOTE && String(r[iWt]) !== "33") { cWt[i][0] = 33; c.weight++; log.push(["WEIGHT", row, note, "Weight", String(r[iWt]), "33"]); }
+
+    if (cln_(r[iComp]) !== COPRI_COMPANY && cln_(r[iStatus]) === STATUS_TRANSIT) {
+      cStatus[i][0] = STATUS_NA; c.status++; log.push(["STATUS", row, note, "Status", STATUS_TRANSIT, STATUS_NA]);
+    }
+
+    var siteV = cln_(r[iSite]);
+    if (SITE_CANON[siteV]) { cSite[i][0] = SITE_CANON[siteV]; c.site++; log.push(["SITE", row, note, "Site", siteV, SITE_CANON[siteV]]); }
+    var siteKey = SITE_CANON[siteV] || siteV;
+
+    var isNamed = cln_(r[iLoc]) === LABEL.named, blockV = cln_(r[iBlock]);
+    if (isNamed) {
+      if (NAMED_STREET_CANON[blockV]) { cBlock[i][0] = NAMED_STREET_CANON[blockV]; c.street++; log.push(["STREET", row, note, "Street", blockV, NAMED_STREET_CANON[blockV]]); }
+      else if (blockV && !/^\d+$/.test(blockV)) unmapped[blockV] = (unmapped[blockV] || 0) + 1;
+    }
+    var nameKey = isNamed ? (NAMED_STREET_CANON[blockV] || blockV) : "";
+
+    if (cln_(r[iComp]) === COPRI_COMPANY && cln_(r[iWO]) === "*") {
+      var hit = isNamed ? (wo.byStreet[siteKey + "|" + cln_(nameKey)] || wo.byBlock[siteKey + "|" + cln_(nameKey)])
+                        : wo.byBlock[siteKey + "|" + blockV];
+      if (hit) { cWO[i][0] = hit; c.woFill++; log.push(["WO", row, note, "WorkOrder", "*", hit]); }
+      else c.woMiss++;
+    }
+
+    if (DEL_BASES[note]) { delRows.push(row); c.del++; log.push(["DELETE", row, note, "(dup base)", "", "row removed"]); }
+    for (var b in DEL_BASES) if (note === DEL_BASES[b]) { cNote[i][0] = Number(b); c.renum++; log.push(["RENUM", row, note, "Note", note, b]); }
+  }
+
+  Object.keys(unmapped).sort().forEach(function (k) { log.push(["UNMAPPED_STREET", "", "", "Street(name)", k, "count=" + unmapped[k]]); });
+  var summary = "truck=" + c.truck + " weight=" + c.weight + " status=" + c.status + " site=" + c.site +
+    " street=" + c.street + " woFill=" + c.woFill + " woMiss=" + c.woMiss + " del=" + c.del + " renum=" + c.renum +
+    " | woRefKeys=" + wo.count + " | DRY_RUN=" + DRY_RUN;
+  log.splice(1, 0, ["SUMMARY", "", "", "", "", summary]);
+
+  if (DRY_RUN) {
+    var planId = writePlanFile_("Copri Cleanup Plan", log);
+    Logger.log("DRY RUN — nothing written.\n" + summary + "\nplan id=" + planId);
+    return planId;
+  }
+
+  sheet.getRange(1, iTruck + 1, nR, 1).setValues(cTruck);
+  sheet.getRange(1, iWt + 1, nR, 1).setValues(cWt);
+  sheet.getRange(1, iSite + 1, nR, 1).setValues(cSite);
+  sheet.getRange(1, iBlock + 1, nR, 1).setValues(cBlock);
+  sheet.getRange(1, iStatus + 1, nR, 1).setValues(cStatus);
+  sheet.getRange(1, iWO + 1, nR, 1).setValues(cWO);
+  sheet.getRange(1, iNote + 1, nR, 1).setValues(cNote);
+  delRows.sort(function (a, b) { return b - a; }).forEach(function (rn) { sheet.deleteRow(rn); });
+  Logger.log("APPLIED.\n" + summary);
+}
+
+function deleteDerivedTabs() {
+  var DRY_RUN = true;   // ← set to false to actually delete
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var keep = {}; RAW_TABS_KEEP.forEach(function (n) { keep[n] = 1; });
+  var plan = [];
+  ss.getSheets().forEach(function (s) {
+    var nm = s.getName();
+    if (!keep[nm]) plan.push(nm + " (" + Math.max(s.getLastRow() - 1, 0) + " rows)");
+  });
+  if (DRY_RUN) { Logger.log("DRY RUN — would delete " + plan.length + " tabs:\n" + plan.join("\n")); return; }
+  ss.getSheets().forEach(function (s) { if (!keep[s.getName()]) ss.deleteSheet(s); });
+  Logger.log("Deleted " + plan.length + " derived tabs:\n" + plan.join("\n"));
+}
+
 function listTabs() {
   SpreadsheetApp.openById(SHEET_ID).getSheets().forEach(function (s) {
     Logger.log(s.getName() + "  —  " + Math.max(s.getLastRow() - 1, 0) + " rows, " + s.getLastColumn() + " cols");

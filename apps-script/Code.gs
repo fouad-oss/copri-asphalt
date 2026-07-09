@@ -64,6 +64,7 @@ const STATUS_TRANSIT = "في الطريق";
 const AR_LEGACY_NOTE = "نموذج";
 const AR_LEGACY_WO   = "مهندس";
 const STATUS_NA      = "لا ينطبق";
+const AR_REJECT      = "رفض";
 
 // ── Daily work-day report config + labels (Arabic isolated here) ─────
 const REPORT_FOLDER  = "Copri Asphalt Daily Reports";
@@ -216,6 +217,15 @@ function doGet(e) {
   // full ?ref=1 payload when this value changes.
   if (e.parameter.refver) return ContentService.createTextOutput(JSON.stringify({ version: readRefVersion_() }))
     .setMimeType(ContentService.MimeType.JSON);
+
+  // In-app dashboard analytics (aggregated server-side; cached 60s).
+  if (e.parameter.dash) {
+    var dcache = CacheService.getScriptCache();
+    if (!e.parameter.nocache) { var dhit = dcache.get("copri_dash"); if (dhit) return ContentService.createTextOutput(dhit).setMimeType(ContentService.MimeType.JSON); }
+    var djson = JSON.stringify(dashData_());
+    try { if (djson.length < 100000) dcache.put("copri_dash", djson, 60); } catch (e2) {}
+    return ContentService.createTextOutput(djson).setMimeType(ContentService.MimeType.JSON);
+  }
 
   // Staff-editable reference data (streets / work orders / sites / drivers /
   // settings / access) — the web app reads this at load and overlays defaults.
@@ -2171,6 +2181,72 @@ function deleteDerivedTabs() {
   if (DRY_RUN) { Logger.log("DRY RUN — would delete " + plan.length + " tabs:\n" + plan.join("\n")); return; }
   ss.getSheets().forEach(function (s) { if (!keep[s.getName()]) ss.deleteSheet(s); });
   Logger.log("Deleted " + plan.length + " derived tabs:\n" + plan.join("\n"));
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DASHBOARD DATA — aggregated Dispatch+Receipt stats for the in-app board.
+// Buckets are summed server-side so the payload stays tiny. Category names
+// are raw sheet data (no Arabic literals here); the client supplies labels.
+// ═══════════════════════════════════════════════════════════════════
+function dashData_() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var d = ss.getSheetByName(DISPATCH_SHEET).getDataRange().getValues();
+  var r = ss.getSheetByName(RECEIPT_SHEET).getDataRange().getValues();
+  var dh = d[0], rh = r[0], ix = {};
+  ["ts", "note", "company", "project", "mix", "weight", "tempDisp", "site", "plant", "workOrder"]
+    .forEach(function (k) { ix[k] = dh.indexOf(COL[k]); });
+  var rN = rh.indexOf(COL.note), rDec = rh.indexOf(COL.decision),
+      rWArr = rh.indexOf(COL.weightArr), rTArr = rh.indexOf(COL.tempArr), rTs = rh.indexOf(COL.ts);
+  var rec = {};
+  for (var i = 1; i < r.length; i++) {
+    var n = String(r[i][rN] || ""); if (n) rec[n] = { dec: r[i][rDec] || "", w: r[i][rWArr], t: r[i][rTArr], ts: r[i][rTs] };
+  }
+
+  function add(map, key, tons) { if (!key) key = "—"; var b = map[key] || (map[key] = { loads: 0, tons: 0 }); b.loads++; b.tons += tons; }
+  function arr(map) {
+    return Object.keys(map).map(function (k) { return { name: k, loads: map[k].loads, tons: Math.round(map[k].tons * 10) / 10 }; })
+      .sort(function (a, b) { return b.tons - a.tons; });
+  }
+  var byProject = {}, byCompany = {}, byMix = {}, byPlant = {}, bySite = {}, byWO = {}, byDay = {};
+  var T = { loads: 0, tons: 0, tonsRecv: 0, copriTons: 0, received: 0, rejected: 0, pending: 0, weightShort: 0, tempDrop: 0, tempSum: 0, tempN: 0 };
+  var wDeltaSum = 0, wDeltaN = 0, tDeltaSum = 0, tDeltaN = 0;
+
+  for (var j = 1; j < d.length; j++) {
+    var row = d[j], t = row[ix.ts]; if (!(t instanceof Date)) continue;
+    var tons = Number(row[ix.weight]) || 0, note = String(row[ix.note] || ""), comp = String(row[ix.company] || "").trim();
+    T.loads++; T.tons += tons; if (comp === COPRI_COMPANY) T.copriTons += tons;
+    var td = Number(row[ix.tempDisp]); if (!isNaN(td) && td > 0) { T.tempSum += td; T.tempN++; }
+    add(byProject, String(row[ix.project] || ""), tons);
+    add(byCompany, comp, tons);
+    add(byMix, String(row[ix.mix] || ""), tons);
+    add(byPlant, String(row[ix.plant] || ""), tons);
+    add(bySite, String(row[ix.site] || ""), tons);
+    add(byWO, String(row[ix.workOrder] || ""), tons);
+    var day = Utilities.formatDate(t, TZ, "yyyy-MM-dd"), b = byDay[day] || (byDay[day] = { loads: 0, tons: 0 }); b.loads++; b.tons += tons;
+    var rc = rec[note];
+    if (rc && rc.ts instanceof Date) {
+      T.received++;
+      if (String(rc.dec).indexOf(AR_REJECT) >= 0) T.rejected++;
+      var wr = Number(rc.w); if (wr > 0) { T.tonsRecv += wr; var dw = wr - tons; wDeltaSum += dw; wDeltaN++; if (dw <= -WEIGHT_SHORT) T.weightShort++; }
+      var ta = Number(rc.t); if (ta > 0 && !isNaN(td)) { var dt = ta - td; tDeltaSum += dt; tDeltaN++; if (dt <= -TEMP_DROP_WARN) T.tempDrop++; }
+    } else T.pending++;
+  }
+  var days = Object.keys(byDay).sort().map(function (k) { return { date: k, loads: byDay[k].loads, tons: Math.round(byDay[k].tons * 10) / 10 }; });
+  return {
+    generatedAt: new Date().toISOString(),
+    totals: {
+      loads: T.loads, tons: Math.round(T.tons * 10) / 10, tonsReceived: Math.round(T.tonsRecv * 10) / 10,
+      copriTons: Math.round(T.copriTons * 10) / 10, avgTempDisp: T.tempN ? Math.round(T.tempSum / T.tempN) : 0,
+      received: T.received, rejected: T.rejected, pending: T.pending, weightShort: T.weightShort, tempDrop: T.tempDrop,
+    },
+    byProject: arr(byProject), byCompany: arr(byCompany), byMix: arr(byMix), byPlant: arr(byPlant),
+    bySite: arr(bySite).slice(0, 12), byWO: arr(byWO).slice(0, 12), byDay: days,
+    quality: {
+      received: T.received, pending: T.pending, rejected: T.rejected,
+      weightShortLoads: T.weightShort, avgWeightDelta: wDeltaN ? Math.round(wDeltaSum / wDeltaN * 100) / 100 : 0,
+      tempDropLoads: T.tempDrop, avgTempDelta: tDeltaN ? Math.round(tDeltaSum / tDeltaN * 10) / 10 : 0,
+    },
+  };
 }
 
 function listTabs() {

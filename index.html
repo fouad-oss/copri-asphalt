@@ -630,6 +630,35 @@
       padding: 2rem 1rem;
     }
 
+    /* ── DASHBOARD ─────────────────────────────────────── */
+    .dash-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .7rem; margin-bottom: 1rem; }
+    .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: .85rem .95rem; }
+    .kpi-val { font-size: 1.55rem; font-weight: 800; color: var(--green-dark); line-height: 1.1; }
+    .kpi-lbl { font-size: .78rem; color: var(--text-2); font-weight: 600; margin-top: .25rem; }
+    .kpi-sub { font-size: .7rem; color: var(--text-3); margin-top: .1rem; }
+    .dash-card h3 { font-size: .95rem; font-weight: 700; color: var(--text-1); margin: 0 0 .85rem; }
+    .hbars { display: flex; flex-direction: column; gap: .55rem; }
+    .hbar { display: flex; align-items: center; gap: .5rem; }
+    .hbar-name { flex: 0 0 34%; font-size: .78rem; color: var(--text-2); font-weight: 600; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hbar-track { flex: 1; background: var(--surface-2); border-radius: 5px; height: 20px; overflow: hidden; }
+    .hbar-fill { height: 100%; background: var(--green); border-radius: 5px; min-width: 3px; transition: width .5s ease; }
+    .hbar-fill.st-ok { background: var(--green); } .hbar-fill.st-warn { background: var(--amber); } .hbar-fill.st-err { background: var(--red); }
+    .hbar-val { flex: 0 0 auto; font-size: .76rem; font-weight: 700; color: var(--text-1); min-width: 52px; text-align: left; }
+    .dash-trend { width: 100%; height: auto; display: block; direction: ltr; }
+    .dash-trend .tr-line { fill: none; stroke: var(--green); stroke-width: 2; }
+    .dash-trend .tr-area { fill: var(--green-light); stroke: none; }
+    .dash-trend .tr-dot { fill: var(--green); stroke: var(--surface); stroke-width: 1.5; }
+    .dash-trend .tr-axis { stroke: var(--border); stroke-width: 1; }
+    .dash-trend .tr-tick { fill: var(--text-3); font-size: 9px; }
+    .dash-stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; margin-top: .3rem; }
+    .dash-stat { background: var(--surface-2); border-radius: var(--radius-sm); padding: .6rem .7rem; }
+    .dash-stat .v { font-size: 1.1rem; font-weight: 800; color: var(--text-1); }
+    .dash-stat .l { font-size: .72rem; color: var(--text-2); margin-top: .15rem; }
+    .dash-legend { display: flex; flex-wrap: wrap; gap: .8rem; font-size: .74rem; color: var(--text-2); margin-top: .6rem; }
+    .dash-legend span { display: inline-flex; align-items: center; gap: .3rem; }
+    .dash-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+    .dash-note { font-size: .72rem; color: var(--text-3); text-align: center; margin-top: .5rem; }
+
     /* ── MOBILE ────────────────────────────────────────── */
     @media (hover: none) { input, select, textarea { font-size: 16px; } }
     @supports (padding: max(0px)) {
@@ -3602,6 +3631,126 @@ async function refreshReferenceData(btn) {
   runRouter();   // re-render the active screen with the fresh data
 }
 
+// ════════════════════════════════════════════════════════
+// DASHBOARD (in-app analytics) — ?dash. Fed by Code.gs dashData_().
+// ════════════════════════════════════════════════════════
+const _numFmt = (n) => new Intl.NumberFormat("en").format(n);
+const _tonsFmt = (n) => _numFmt(Math.round(n)) + " ط";
+
+// Horizontal bars scaled to the max value. items: [{name, value, cls?}].
+function _dashBars(items, fmt) {
+  const wrap = el("div", "hbars");
+  const max = Math.max(1, ...items.map((x) => x.value));
+  if (!items.length) { const e = el("div", "field-hint"); e.textContent = "لا توجد بيانات"; wrap.appendChild(e); return wrap; }
+  items.forEach((x) => {
+    const row = el("div", "hbar");
+    const name = el("div", "hbar-name"); name.textContent = x.name; name.title = x.name;
+    const track = el("div", "hbar-track");
+    const fill = el("div", "hbar-fill" + (x.cls ? " " + x.cls : ""));
+    fill.style.width = Math.max(3, Math.round((x.value / max) * 100)) + "%";
+    fill.title = x.name + ": " + (fmt ? fmt(x.value) : x.value);
+    track.appendChild(fill);
+    const val = el("div", "hbar-val"); val.textContent = fmt ? fmt(x.value) : x.value;
+    row.appendChild(name); row.appendChild(track); row.appendChild(val);
+    wrap.appendChild(row);
+  });
+  return wrap;
+}
+
+// Line + area trend over days. days: [{date, loads, tons}].
+function _dashTrend(days, key, fmt) {
+  const W = 320, H = 120, pl = 8, pr = 8, pt = 10, pb = 18, n = days.length;
+  const max = Math.max(1, ...days.map((d) => d[key]));
+  const iw = W - pl - pr, ih = H - pt - pb;
+  const X = (i) => (n <= 1 ? pl + iw / 2 : pl + (i / (n - 1)) * iw);
+  const Y = (v) => pt + ih - (v / max) * ih;
+  const pts = days.map((d, i) => [X(i), Y(d[key])]);
+  const poly = pts.map((p) => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
+  let area = "";
+  if (pts.length) area = "M" + pts[0][0].toFixed(1) + "," + (pt + ih) + " " + pts.map((p) => "L" + p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ") + " L" + pts[pts.length - 1][0].toFixed(1) + "," + (pt + ih) + " Z";
+  const dots = days.map((d, i) => `<circle class="tr-dot" cx="${X(i).toFixed(1)}" cy="${Y(d[key]).toFixed(1)}" r="2.6"><title>${d.date}: ${fmt ? fmt(d[key]) : d[key]}</title></circle>`).join("");
+  const tickIdx = n <= 1 ? [0] : [0, Math.floor((n - 1) / 2), n - 1];
+  const ticks = tickIdx.map((i) => {
+    if (!days[i]) return "";
+    const anchor = i === 0 ? "start" : (i === n - 1 ? "end" : "middle");
+    const x = i === 0 ? pl : (i === n - 1 ? pl + iw : X(i));
+    return `<text class="tr-tick" x="${x.toFixed(1)}" y="${H - 5}" text-anchor="${anchor}">${days[i].date.slice(5)}</text>`;
+  }).join("");
+  const svg = `<svg class="dash-trend" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="اتجاه يومي">`
+    + `<line class="tr-axis" x1="${pl}" y1="${pt + ih}" x2="${pl + iw}" y2="${pt + ih}"/>`
+    + (area ? `<path class="tr-area" d="${area}"/>` : "")
+    + `<polyline class="tr-line" points="${poly}"/>${dots}${ticks}</svg>`;
+  const div = el("div"); div.innerHTML = svg; return div.firstElementChild;
+}
+
+function renderDashboard() {
+  const main = renderShell("لوحة المعلومات");
+  const loading = el("div", "card");
+  loading.innerHTML = `<div class="info-box">جارٍ تحميل البيانات…</div>`;
+  main.appendChild(loading);
+  fetch(`${CONFIG.scriptUrl}?dash`)
+    .then((r) => r.json())
+    .then((data) => { main.innerHTML = ""; _buildDashboard(main, data); })
+    .catch(() => { loading.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل البيانات — تحقق من الاتصال وحاول مجدداً</div>`; });
+}
+
+function _buildDashboard(main, D) {
+  const t = D.totals || {}, q = D.quality || {};
+  const acceptPct = t.loads ? Math.round((t.received / t.loads) * 100) : 0;
+
+  const kpis = el("div", "dash-kpis");
+  [
+    ["إجمالي الحمولات", _numFmt(t.loads || 0), "شحنة"],
+    ["الأطنان المرسلة", _numFmt(Math.round(t.tons || 0)), "طن"],
+    ["أطنان مستلمة", _numFmt(Math.round(t.tonsReceived || 0)), "مؤكدة بالموقع"],
+    ["نسبة الاستلام", acceptPct + "٪", (t.received || 0) + " من " + (t.loads || 0)],
+  ].forEach((k) => {
+    const c = el("div", "kpi");
+    c.innerHTML = `<div class="kpi-val">${k[1]}</div><div class="kpi-lbl">${k[0]}</div><div class="kpi-sub">${k[2]}</div>`;
+    kpis.appendChild(c);
+  });
+  main.appendChild(kpis);
+
+  function card(title, body) {
+    const c = el("div", "card dash-card"); const h = el("h3"); h.textContent = title;
+    c.appendChild(h); c.appendChild(body); main.appendChild(c);
+  }
+  const clean = (list) => (list || []).filter((x) => x.name && x.name !== "—");
+
+  card("الأطنان حسب المشروع", _dashBars(clean(D.byProject).slice(0, 8).map((x) => ({ name: x.name, value: x.tons })), _tonsFmt));
+
+  const trendWrap = el("div"); trendWrap.appendChild(_dashTrend(D.byDay || [], "tons", _tonsFmt));
+  card("الأطنان المرسلة يومياً", trendWrap);
+
+  card("الحمولات حسب الموقع", _dashBars(clean(D.bySite).slice(0, 10).map((x) => ({ name: x.name, value: x.loads })), _numFmt));
+  card("الأطنان حسب نوع الخلطة", _dashBars(clean(D.byMix).slice(0, 8).map((x) => ({ name: x.name, value: x.tons })), _tonsFmt));
+  card("أوامر العمل الأعلى", _dashBars(clean(D.byWO).filter((x) => x.name !== "*").slice(0, 8).map((x) => ({ name: "أمر " + x.name, value: x.tons })), _tonsFmt));
+
+  const qBody = el("div");
+  qBody.appendChild(_dashBars([
+    { name: "مستلمة", value: q.received || 0, cls: "st-ok" },
+    { name: "قيد الانتظار", value: q.pending || 0, cls: "st-warn" },
+    { name: "مرفوضة", value: q.rejected || 0, cls: "st-err" },
+  ], _numFmt));
+  const sr = el("div", "dash-stat-row");
+  [
+    [(q.weightShortLoads || 0) + " شحنة", "نقص وزن (≤ -" + CONFIG.weightShortage + " ط)"],
+    [(q.avgWeightDelta || 0) + " ط", "متوسط فرق الوزن (مستلم − مرسل)"],
+    [(q.tempDropLoads || 0) + " شحنة", "انخفاض حرارة (≤ -" + CONFIG.tempDropWarning + "°)"],
+    [(q.avgTempDelta || 0) + "°", "متوسط فرق الحرارة (وصول − إرسال)"],
+  ].forEach((s) => { const d = el("div", "dash-stat"); d.innerHTML = `<div class="v">${s[0]}</div><div class="l">${s[1]}</div>`; sr.appendChild(d); });
+  qBody.appendChild(sr);
+  const legend = el("div", "dash-legend");
+  legend.innerHTML = `<span><i style="background:var(--green)"></i> مستلمة</span><span><i style="background:var(--amber)"></i> قيد الانتظار</span><span><i style="background:var(--red)"></i> مرفوضة</span>`;
+  qBody.appendChild(legend);
+  card("الجودة والاستلام", qBody);
+
+  const note = el("div", "dash-note");
+  let when = ""; try { when = new Date(D.generatedAt).toLocaleString("ar"); } catch (e) {}
+  note.textContent = "كل الفترة" + (when ? " · حُدّثت " + when : "");
+  main.appendChild(note);
+}
+
 // ── Router — runs after the cached reference overlay ──
 function runRouter() {
 const _mparams = new URLSearchParams(window.location.search);
@@ -3612,6 +3761,10 @@ const note = getNoteFromURL();
 
 if (millingReport) {
   renderMillingReportView(millingReport);                 // public, no PIN
+} else if (_mparams.has("dash")) {
+  const s = getClerkSession();
+  if (s) renderDashboard();
+  else renderClerkPINScreen(renderDashboard);             // gated by clerk PIN
 } else if (millingRole === "engineer") {
   const session = getEngineerSession();
   if (session) renderMillingEngineerHome(session.name);

@@ -1068,14 +1068,16 @@ async function sbInsert(table, rows) {
   if (res.status === 409 || body.indexOf("23505") >= 0) return { success: false, duplicate: true };
   throw new Error(`db write ${res.status}: ${body.slice(0, 200)}`);
 }
-// UPDATE rows matching a PostgREST filter string (e.g. "note=eq.125560").
-async function sbUpdate(table, filter, patch) {
-  const res = await fetch(`${CONFIG.supabaseUrl}/rest/v1/${table}?${filter}`, {
-    method: "PATCH",
-    headers: { ...sbHeaders(), Prefer: "return=minimal" },
-    body: JSON.stringify(patch),
+// Call a Postgres function. Every compound write (receipt confirm, milling
+// lifecycle) goes through a SECURITY DEFINER RPC so it commits atomically
+// server-side — the public key has no direct row-update rights on those
+// tables. Returns the function's json result.
+async function sbRpc(name, args) {
+  const res = await fetch(`${CONFIG.supabaseUrl}/rest/v1/rpc/${name}`, {
+    method: "POST", headers: sbHeaders(), body: JSON.stringify(args || {}),
   });
-  if (!res.ok) throw new Error(`db update ${res.status}`);
+  if (!res.ok) throw new Error(`db rpc ${name} ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return await res.json();
 }
 // Upload a data-URL image to Storage; returns its public URL ("" on no photo).
 async function sbUploadPhoto(name, dataUrl) {
@@ -1220,15 +1222,15 @@ async function dbSubmitDispatch(data) {
     notify_engineer: data.notifyEngineer || "",
   });
 }
-// Receipt: append the receipt, then reflect the decision on the dispatch row.
+// Receipt: one atomic RPC inserts the receipt AND reflects the decision on
+// the dispatch row (no drift possible between the two).
 async function dbSubmitReceipt(p) {
-  const r = await sbInsert("receipts", {
-    note: String(p.noteNumber), work_order: p.workOrder || "", engineer: p.engineerName || "",
-    decision: p.decision || "", weight_arrival: parseFloat(p.weightArrival) || null,
-    temp_arrival: parseFloat(p.tempArrival) || null, remarks: p.remarks || "",
+  return sbRpc("confirm_receipt", {
+    p_note: String(p.noteNumber), p_engineer: p.engineerName || "",
+    p_work_order: p.workOrder || "", p_decision: p.decision || "",
+    p_weight_arrival: parseFloat(p.weightArrival) || null,
+    p_temp_arrival: parseFloat(p.tempArrival) || null, p_remarks: p.remarks || "",
   });
-  try { await sbUpdate("dispatch_loads", `note=${sbEq(p.noteNumber)}`, { status: p.decision || "" }); } catch {}
-  return r;
 }
 // Human-readable location string from a dispatch row/data object, aware of
 // the three location types: block+street, km range, and named street.
@@ -2709,66 +2711,30 @@ async function millingGet(params) {
   } catch { return {}; }
 }
 
-// ── Milling writes (ported from Code.gs millingSubmit_/UpdateStatus_/Revise_;
-// the audit trail is an append-only jsonb array on the row) ──
-async function dbMillingSubmit(p) {
-  const now = new Date().toISOString();
-  return sbInsert("milling_programs", {
-    program_id: p.programId, project: p.project || "", work_order: p.workOrder || "",
-    site: p.site || "", block: p.block || "", street: p.street || "",
-    depth: p.depth || "", item_code: p.itemCode || "", area: parseFloat(p.area) || null,
-    machines: parseInt(p.machines, 10) || null, requested_date: p.requestedDate || null,
-    priority: p.priority || "", engineer: p.engineerName || "", submitted_at: now,
-    status: MILL_STATUS.pending, eng_notes: p.notes || "",
-    audit: [{ action: "submitted", by: p.engineerName || "", role: "engineer", ts: now }],
-  });
+// ── Milling writes — atomic RPCs. The server owns the state machine and
+// appends the audit trail under a row lock (no read-modify-write races). ──
+function _millingRpcArgs(p) {
+  return {
+    p_program_id: p.programId, p_project: p.project || "", p_work_order: p.workOrder || "",
+    p_site: p.site || "", p_block: p.block || "", p_street: p.street || "",
+    p_depth: p.depth || "", p_item_code: p.itemCode || "", p_area: parseFloat(p.area) || null,
+    p_machines: parseInt(p.machines, 10) || null, p_requested_date: p.requestedDate || null,
+    p_priority: p.priority || "", p_engineer: p.engineerName || "", p_notes: p.notes || "",
+  };
 }
-async function dbMillingFetchRow_(programId) {
-  const rows = await sbGet(`milling_programs?program_id=${sbEq(programId)}&limit=1`);
-  if (!rows.length) throw new Error("program not found");
-  return rows[0];
+async function dbMillingSubmit(p) {
+  return sbRpc("milling_submit", _millingRpcArgs(p));
 }
 async function dbMillingUpdateStatus(p) {
-  const cur = await dbMillingFetchRow_(p.programId);
-  const audit = Array.isArray(cur.audit) ? cur.audit : [];
-  const now = new Date().toISOString();
-  const sets = {};
-  let action, role = p.role || "";
-  switch (p.decision) {
-    case "approve":
-      sets.status = MILL_STATUS.approved; sets.pm_name = p.by || ""; sets.pm_decision = MILL_STATUS.approved;
-      sets.pm_note = p.note || ""; sets.pm_decided_at = now; action = "approved"; role = "pm"; break;
-    case "reject":
-      sets.status = MILL_STATUS.rejected; sets.pm_name = p.by || ""; sets.pm_decision = MILL_STATUS.rejected;
-      sets.pm_note = p.note || ""; sets.pm_decided_at = now; action = "rejected"; role = "pm"; break;
-    case "schedule":
-      sets.status = MILL_STATUS.scheduled; sets.marco_scheduled_at = now; sets.marco_note = p.note || "";
-      action = "scheduled"; role = "marco"; break;
-    case "start":
-      sets.status = MILL_STATUS.progress; action = "started"; role = "marco"; break;
-    case "complete":
-      sets.status = MILL_STATUS.complete; action = "completed"; break;
-    default: throw new Error("unknown decision");
-  }
-  const ev = { action, by: p.by || "", role, ts: now };
-  if (p.note) ev.note = p.note;
-  audit.push(ev);
-  sets.audit = audit;
-  await sbUpdate("milling_programs", `program_id=${sbEq(p.programId)}`, sets);
+  const r = await sbRpc("milling_decide", {
+    p_program_id: p.programId, p_decision: p.decision,
+    p_by: p.by || "", p_note: p.note || "", p_role: p.role || "",
+  });
+  if (!r.success) throw new Error(r.error || "milling update failed");
 }
 async function dbMillingRevise(p) {
-  const cur = await dbMillingFetchRow_(p.programId);
-  if (cur.status !== MILL_STATUS.rejected) throw new Error("not revisable");
-  const audit = Array.isArray(cur.audit) ? cur.audit : [];
-  audit.push({ action: "revised", by: p.engineerName || cur.engineer, role: "engineer", ts: new Date().toISOString() });
-  await sbUpdate("milling_programs", `program_id=${sbEq(p.programId)}`, {
-    project: p.project || "", work_order: p.workOrder || "", site: p.site || "",
-    block: p.block || "", street: p.street || "", depth: p.depth || "",
-    item_code: p.itemCode || "", area: parseFloat(p.area) || null,
-    machines: parseInt(p.machines, 10) || null, requested_date: p.requestedDate || null,
-    priority: p.priority || "", eng_notes: p.notes || "",
-    status: MILL_STATUS.review, audit,
-  });
+  const r = await sbRpc("milling_revise", _millingRpcArgs(p));
+  if (!r.success) throw new Error(r.error || "milling revise failed");
 }
 
 // Client-side unique id — the no-cors POST can't read a server-assigned id.

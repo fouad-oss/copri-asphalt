@@ -1407,7 +1407,10 @@ const TEMPLATE_HTML = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  /* print-color-adjust forces backgrounds/colors onto paper even when the
+     "background graphics" print option is off — required for kiosk-printing,
+     which auto-confirms with default settings. */
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   @page { size: A5 landscape; margin: 8mm; }
   body { font-family: 'Segoe UI', 'Arial Unicode MS', Arial, sans-serif; font-size: 9pt; color: #000; direction: rtl; background: #fff; }
   .note { width: 100%; border: 2px solid #000; padding: 4px; }
@@ -1527,10 +1530,16 @@ function makeCopies(labels) {
 </html>`;
 
 // Open the print-ready delivery note in a new window, inject the dispatch
-// data + QR, and trigger the browser print dialog.
-function printDeliveryNote(data, receiptLink) {
+// data + QR, and trigger the browser print dialog (with --kiosk-printing the
+// dialog is skipped and sheets go straight to the default printer).
+// Returns false when the popup was blocked (silent: no alert — the caller's
+// manual button is the fallback), true when the window opened.
+function printDeliveryNote(data, receiptLink, opts) {
   const w = window.open("", "_blank", "width=900,height=650");
-  if (!w) { alert("يرجى السماح بالنوافذ المنبثقة لطباعة السند"); return; }
+  if (!w) {
+    if (!(opts && opts.silent)) alert("يرجى السماح بالنوافذ المنبثقة لطباعة السند");
+    return false;
+  }
   w.document.write(TEMPLATE_HTML);
   w.document.close();
 
@@ -1598,6 +1607,40 @@ function printDeliveryNote(data, receiptLink) {
 
   if (w.document.readyState === "complete") inject();
   else w.onload = inject;
+  return true;
+}
+
+// ── Print test (?printTest=1) — printer calibration without a DB write ──
+// Opens the exact 4-copy A5 flow with clearly-marked sample data (note
+// 999999, remarks say it's a test). Used to calibrate the plant printer and
+// preview sheet layout; deliberately writes nothing.
+function renderPrintTest() {
+  const main = renderShell("طباعة تجريبية");
+  const card = el("div", "card");
+  card.appendChild(sectionTitle("معايرة الطابعة — سند تجريبي"));
+
+  const info = el("div", "info-box");
+  info.textContent = "يطبع ٤ نسخ A5 (أفقي) ببيانات تجريبية واضحة — لا يُسجَّل أي شيء في قاعدة البيانات. تأكد من ضبط الطابعة على مقاس A5 بالوضع الأفقي.";
+  card.appendChild(info);
+
+  const sample = {
+    noteNumber: "999999", loadNumber: 3,
+    company: "كوبري", project: "كوبري — صيانة حولي", contract: "ق ص / ط ش / 9",
+    workOrder: "43", plant: "AP02", truckNumber: "5875", driverName: "هلال",
+    mixType: "Type II (60/70)", tempDispatch: "160", weight: "33.0",
+    site: "سلوى", block: "6", street: "6.1", locationType: "block_street",
+    clerkName: "خالد", remarks: "سند تجريبي لمعايرة الطابعة — ليس سنداً فعلياً",
+  };
+
+  const btn = el("button", "btn-primary");
+  btn.innerHTML = "🖨️ طباعة سند تجريبي — ٤ نسخ";
+  btn.addEventListener("click", () => {
+    const receiptLink = `${window.location.href.split("?")[0]}?note=${encodeURIComponent(sample.noteNumber)}`;
+    printDeliveryNote(sample, receiptLink);
+  });
+  card.appendChild(btn);
+
+  main.appendChild(card);
 }
 
 // ════════════════════════════════════════════════════════
@@ -2093,26 +2136,19 @@ function renderDispatchSuccess(ctx, data, receiptLink) {
     s.appendChild(pLoad);
   }
 
-  // Print is the clerk's first move: 4 labeled A5 copies (driver / site
-  // engineer / plant / head office). QR receipt link only on Copri loads.
-  const printBtn = el("button", "btn-primary");
-  printBtn.style.marginTop = ".75rem";
-  printBtn.innerHTML = "🖨️ طباعة السند — ٤ نسخ";
-  printBtn.addEventListener("click", () => printDeliveryNote(data, isCopri ? receiptLink : null));
-  s.appendChild(printBtn);
+  // Auto-print the 4 labeled A5 copies immediately: silent on the plant PC
+  // (Chrome --kiosk-printing), one confirm tap elsewhere (phones print to the
+  // plant printer over WiFi). Popup blocked → the manual button below is the
+  // fallback.
+  const autoPrinted = printDeliveryNote(data, isCopri ? receiptLink : null, { silent: true });
 
-  // Copri only: site-engineer receipt link + WhatsApp notification.
+  // WhatsApp to the engineer is the clerk's one manual step until the Cloud
+  // API automates it server-side — keep it the dominant action on success.
   if (isCopri) {
-    const lb = el("div", "link-box");
-    const lbl = el("span", "link-box-label"); lbl.textContent = "🔗 رابط الاستلام — أرسله للمهندس على WhatsApp";
-    lb.appendChild(lbl);
-    lb.appendChild(document.createTextNode(receiptLink));
-    s.appendChild(lb);
-
     const notifyEng = findEngineer(data.notifyEngineer);
     if (notifyEng && notifyEng.phone) {
-      const waBtn = el("button", "btn-primary"); waBtn.style.marginTop = ".75rem";
-      waBtn.style.background = "#25D366";
+      const waBtn = el("button", "btn-primary"); waBtn.style.marginTop = ".9rem";
+      waBtn.style.background = "#25D366"; waBtn.style.fontSize = "1.05rem";
       waBtn.innerHTML = `إرسال إلى ${notifyEng.name} عبر WhatsApp &nbsp;💬`;
       waBtn.addEventListener("click", () => {
         window.open(`https://wa.me/${notifyEng.phone}?text=${whatsappMessage(data, receiptLink)}`, "_blank");
@@ -2123,6 +2159,27 @@ function renderDispatchSuccess(ctx, data, receiptLink) {
       noPhone.textContent = `لا يوجد رقم WhatsApp للمهندس ${data.notifyEngineer} — انسخ الرابط وأرسله يدوياً، أو أضف الرقم في الإعدادات.`;
       s.appendChild(noPhone);
     }
+  }
+
+  // Reprint / fallback print button (also the only print path when the
+  // popup was blocked on first use).
+  const printBtn = el("button", "btn-primary");
+  printBtn.style.marginTop = ".75rem";
+  printBtn.innerHTML = autoPrinted ? "🖨️ إعادة طباعة السند (٤ نسخ)" : "🖨️ طباعة السند — ٤ نسخ";
+  printBtn.addEventListener("click", () => printDeliveryNote(data, isCopri ? receiptLink : null));
+  s.appendChild(printBtn);
+  if (autoPrinted) {
+    const pNote = el("p", "success-note");
+    pNote.textContent = "🖨️ فُتحت نافذة الطباعة تلقائياً — ٤ نسخ";
+    s.appendChild(pNote);
+  }
+
+  if (isCopri) {
+    const lb = el("div", "link-box");
+    const lbl = el("span", "link-box-label"); lbl.textContent = "🔗 رابط الاستلام — أرسله للمهندس على WhatsApp";
+    lb.appendChild(lbl);
+    lb.appendChild(document.createTextNode(receiptLink));
+    s.appendChild(lb);
 
     const copyBtn = el("button", "btn-primary"); copyBtn.style.marginTop = ".75rem";
     copyBtn.style.background = "var(--text-2)";
@@ -4192,6 +4249,8 @@ const note = getNoteFromURL();
 
 if (millingReport) {
   renderMillingReportView(millingReport);                 // public, no PIN
+} else if (_mparams.has("printTest")) {
+  renderPrintTest();                                      // printer calibration, no PIN, no DB write
 } else if (_mparams.has("dash")) {
   // Standalone (no PIN) for now — a dedicated management PIN gate comes later,
   // driven by a new top-management reference file the user will create.

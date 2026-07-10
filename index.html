@@ -1206,20 +1206,24 @@ async function dbEngineerData(engName) {
 }
 
 // ── Domain writes ──
-// Dispatch: unique note constraint is the duplicate guard (atomic, unlike the
-// old read-then-append). Returns { success, duplicate }.
-async function dbSubmitDispatch(data) {
-  return sbInsert("dispatch_loads", {
-    project: data.project || "", contract: data.contract || "", work_order: data.workOrder || "",
-    note: String(data.noteNumber), plant: data.plant || "", truck: String(data.truckNumber || ""),
-    driver: data.driverName || "", mix: data.mixType || "", weight: parseFloat(data.weight) || null,
-    temp_dispatch: parseFloat(data.tempDispatch) || null, site: data.site || "",
-    block: data.block || "", street: data.street || "",
-    loc_type: LOC_LABEL[data.locationType] || LOC_LABEL.block_street,
-    clerk: data.clerkName || "", remarks: data.remarks || "", status: "في الطريق",
-    company: data.company || "", naqel: data.naqel || "", driver_phone: data.driverPhone || "",
-    load_number: data.loadNumber === "" || data.loadNumber == null ? null : Number(data.loadNumber),
-    notify_engineer: data.notifyEngineer || "",
+// Dispatch: one atomic RPC allocates the serial note number and inserts the
+// row (the manual carbon-book number is retired — 0004 migration). clientRef
+// makes retries idempotent: a resend after a dropped response returns the
+// note that already landed instead of consuming a new serial.
+// Returns { success, note } — note is the DB-assigned delivery-note number.
+async function dbSubmitDispatch(data, clientRef) {
+  return sbRpc("dispatch_submit", {
+    p_client_ref: clientRef || "",
+    p_project: data.project || "", p_contract: data.contract || "", p_work_order: data.workOrder || "",
+    p_plant: data.plant || "", p_truck: String(data.truckNumber || ""),
+    p_driver: data.driverName || "", p_mix: data.mixType || "", p_weight: parseFloat(data.weight) || null,
+    p_temp_dispatch: parseFloat(data.tempDispatch) || null, p_site: data.site || "",
+    p_block: data.block || "", p_street: data.street || "",
+    p_loc_type: LOC_LABEL[data.locationType] || LOC_LABEL.block_street,
+    p_clerk: data.clerkName || "", p_remarks: data.remarks || "",
+    p_company: data.company || "", p_naqel: data.naqel || "", p_driver_phone: data.driverPhone || "",
+    p_load_number: data.loadNumber === "" || data.loadNumber == null ? null : Number(data.loadNumber),
+    p_notify_engineer: data.notifyEngineer || "",
   });
 }
 // Receipt: one atomic RPC inserts the receipt AND reflects the decision on
@@ -1431,11 +1435,16 @@ const TEMPLATE_HTML = `<!DOCTYPE html>
   .sig-box .sig-line { border-bottom: 1px solid #999; margin: 0 6px; height: 18px; }
   .sig-box .sig-stamp { font-size: 7pt; color: #aaa; margin-top: 2px; }
   .note-footer { text-align: center; font-size: 6.5pt; color: #aaa; border-top: 1px solid #ddd; margin-top: 3px; padding-top: 2px; }
-  @media screen { body { background: #eaeae6; padding: 20px; } .note { max-width: 740px; margin: auto; background: #fff; box-shadow: 0 2px 16px rgba(0,0,0,0.15); padding: 8px; } }
+  .copy-label { text-align: center; font-size: 9pt; font-weight: 700; border-top: 2px solid #000; margin-top: 3px; padding-top: 3px; letter-spacing: .3px; }
+  .sheet { page-break-after: always; }
+  .sheet:last-child { page-break-after: auto; }
+  @media screen { body { background: #eaeae6; padding: 20px; } .note { max-width: 740px; margin: 0 auto 20px; background: #fff; box-shadow: 0 2px 16px rgba(0,0,0,0.15); padding: 8px; } }
   @media print { body { background: #fff; } }
 </style>
 </head>
 <body>
+<div id="sheets">
+<div class="sheet">
 <div class="note">
   <div class="header">
     <div class="header-logo">كوبري</div>
@@ -1479,7 +1488,10 @@ const TEMPLATE_HTML = `<!DOCTYPE html>
     <div class="sig-box"><div class="sig-lbl">ختم المصنع / Plant Stamp</div><div class="sig-name"></div><div class="sig-line"></div><div class="sig-stamp">الختم الرسمي</div></div>
     <div class="sig-box"><div class="sig-lbl">ختم الوزارة / MPW Stamp</div><div class="sig-name"></div><div class="sig-line"></div><div class="sig-stamp">الختم الرسمي</div></div>
   </div>
+  <div class="copy-label" id="copy-label"></div>
   <div class="note-footer">كوبري للمشاريع الإنشائية — سند رقم <span id="footer-note"></span> — طُبع من منظومة التتبع الرقمي</div>
+</div>
+</div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
 <script>
@@ -1490,9 +1502,24 @@ function generateQR(noteNumber, baseUrl) {
   qrDiv.innerHTML = '';
   if (typeof QRCode !== 'undefined') {
     new QRCode(qrDiv, { text: receiptUrl, width: 72, height: 72, colorDark: "#1a1a2e", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
-    // qrcodejs renders both a <canvas> and an <img>; hide the canvas so they don't overlap
-    var _img = qrDiv.querySelector('img'); var _cv = qrDiv.querySelector('canvas');
-    if (_img && _cv) _cv.style.display = 'none';
+    // qrcodejs renders both a <canvas> and an <img> of the same code. The
+    // canvas must GO (not just hide): cloneNode() copies a canvas as a blank
+    // bitmap, so the copies keep only the <img>, which clones fine.
+    var _cv = qrDiv.querySelector('canvas');
+    if (_cv && qrDiv.querySelector('img')) _cv.parentNode.removeChild(_cv);
+  }
+}
+// Duplicate the filled sheet once per copy label (driver / site engineer /
+// plant / head office). Must run AFTER all fields + QR are injected — the
+// clones are snapshots, not live.
+function makeCopies(labels) {
+  var container = document.getElementById('sheets');
+  var sheet = container.querySelector('.sheet');
+  sheet.querySelector('#copy-label').textContent = labels[0];
+  for (var i = 1; i < labels.length; i++) {
+    var c = sheet.cloneNode(true);
+    c.querySelector('#copy-label').textContent = labels[i];
+    container.appendChild(c);
   }
 }
 <\/script>
@@ -1544,10 +1571,27 @@ function printDeliveryNote(data, receiptLink) {
     set("date", toEN(now.toLocaleDateString("ar-KW", { timeZone: "Asia/Kuwait" })));
     set("time", toEN(now.toLocaleTimeString("ar-KW", { timeZone: "Asia/Kuwait", hour: "2-digit", minute: "2-digit" })));
 
+    // QR receipt link only when a receipt flow applies (Copri loads);
+    // external recipients get the sheet without it.
     try {
-      const base = (receiptLink || window.location.href).split("?")[0];
-      if (typeof w.generateQR === "function") w.generateQR(data.noteNumber, base);
+      if (receiptLink) {
+        const base = receiptLink.split("?")[0];
+        if (typeof w.generateQR === "function") w.generateQR(data.noteNumber, base);
+      } else {
+        const qrBox = d.querySelector(".qr-box");
+        if (qrBox) qrBox.style.visibility = "hidden";
+      }
     } catch (e) { /* QR is best-effort */ }
+
+    // 4 labeled copies — one sheet each for the paper trail's four hands.
+    try {
+      if (typeof w.makeCopies === "function") w.makeCopies([
+        "نسخة السائق — Driver Copy",
+        "نسخة مهندس الموقع — Site Engineer Copy",
+        "نسخة المصنع — Plant Copy",
+        "نسخة المكتب الرئيسي — Head Office Copy",
+      ]);
+    } catch (e) { /* copies are best-effort — worst case one sheet prints */ }
 
     setTimeout(() => { try { w.focus(); w.print(); } catch (e) {} }, 600);
   };
@@ -1687,10 +1731,11 @@ function renderDispatch(ctx) {
   // Section: Shipment data
   card.appendChild(sectionTitle("بيانات الشحنة"));
 
-  const { group: g1, input: noteInput } = fieldGroup(
-    "رقم سند التسليم", input("text", "مثال: 125407", "numeric"), true, "من الكتاب الكربوني الحالي"
-  );
-  card.appendChild(g1);
+  // Note number is DB-allocated at submit (serial continuation of the carbon
+  // book — 0004 migration). The clerk no longer types it.
+  const noteInfo = el("div", "info-box");
+  noteInfo.textContent = "🔢 رقم سند التسليم يُخصَّص تلقائياً عند الإرسال ويظهر على النسخ المطبوعة";
+  card.appendChild(noteInfo);
 
   const { group: gPlant, input: plantInput } = fieldGroup(
     "رقم المصنع", select(CONFIG.plants, "اختر المصنع"), true
@@ -1954,7 +1999,12 @@ function renderDispatch(ctx) {
 
   main.appendChild(card);
 
-  // Submit handler
+  // Submit handler. submitRef is fixed per form render: if the response is
+  // lost mid-air, the retry sends the same ref and gets back the note that
+  // already landed (no double row, no burned serial).
+  const submitRef = (window.crypto && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   btn.addEventListener("click", async () => {
     const driver = getDriver();
     const loc    = getLocation();
@@ -1963,7 +2013,6 @@ function renderDispatch(ctx) {
       project:      project.isOther ? (otherProjectInput ? otherProjectInput.value.trim() : projectName) : projectName,
       contract:     project.isOther ? (otherContractInput ? otherContractInput.value.trim() : "") : project.contract,
       workOrder:    liveWO,
-      noteNumber:   noteInput.value.trim(),
       plant:        plantInput.value,
       truckNumber:  driver.truck,
       naqel:        naqelInput.value,
@@ -1981,7 +2030,7 @@ function renderDispatch(ctx) {
       remarks:      remarksInput.value.trim(),
     };
     // street is not required in km_range "from only"? both required; in named mode only block (the name) is required.
-    const required = ["noteNumber","plant","truckNumber","naqel","driverName","mixType","weight","tempDispatch","block","clerkName"];
+    const required = ["plant","truckNumber","naqel","driverName","mixType","weight","tempDispatch","block","clerkName"];
     if (data.locationType !== "named") required.push("street");
     if (isCopri) required.push("site", "notifyEngineer");
     if (project.isOther && otherProjectInput && !otherProjectInput.value.trim()) {
@@ -2011,15 +2060,11 @@ function renderDispatch(ctx) {
 
     btn.textContent = "جارٍ الإرسال...";
     try {
-      // The unique note constraint in the database rejects duplicates
-      // atomically — no separate pre-check needed.
-      const w = await dbSubmitDispatch(data);
-      if (w.duplicate) {
-        btn.disabled = false; btn.innerHTML = submitLabel;
-        errDiv.textContent = `رقم السند ${data.noteNumber} مُستخدم مسبقاً — تأكد من الرقم`;
-        errDiv.style.display = "block";
-        return;
-      }
+      // The RPC allocates the serial note number and inserts atomically;
+      // the assigned number comes back in the response.
+      const w = await dbSubmitDispatch(data, submitRef);
+      if (!w.success || !w.note) throw new Error(w.error || "dispatch_submit failed");
+      data.noteNumber = String(w.note);
       const receiptLink = `${window.location.href.split("?")[0]}?note=${encodeURIComponent(data.noteNumber)}`;
       renderDispatchSuccess(ctx, data, receiptLink);
     } catch {
@@ -2047,6 +2092,14 @@ function renderDispatchSuccess(ctx, data, receiptLink) {
     pLoad.textContent = `🔢 رقم الحمولة لهذا الموقع: ${data.loadNumber}`;
     s.appendChild(pLoad);
   }
+
+  // Print is the clerk's first move: 4 labeled A5 copies (driver / site
+  // engineer / plant / head office). QR receipt link only on Copri loads.
+  const printBtn = el("button", "btn-primary");
+  printBtn.style.marginTop = ".75rem";
+  printBtn.innerHTML = "🖨️ طباعة السند — ٤ نسخ";
+  printBtn.addEventListener("click", () => printDeliveryNote(data, isCopri ? receiptLink : null));
+  s.appendChild(printBtn);
 
   // Copri only: site-engineer receipt link + WhatsApp notification.
   if (isCopri) {

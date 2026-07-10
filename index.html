@@ -678,7 +678,10 @@ const COPRI_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAABUCAMAAA
 
 const CONFIG = {
   // Your deployed Google Apps Script URL
-  scriptUrl: "https://script.google.com/macros/s/AKfycbwzPgQXVCufP89qDsqzw48TrMsXoadzfMfswkwGeqqa1bx-SAUkcLKPlA6ugweJkQymEQ/exec",
+  // Supabase project (the database). The anon key is a public client key by
+  // design — row access is governed by RLS policies, not by hiding the key.
+  supabaseUrl: "SUPABASE_URL_PLACEHOLDER",
+  supabaseAnonKey: "SUPABASE_ANON_KEY_PLACEHOLDER",
 
   // Project info shown in header & footer
   projectName:    "كوبري — أسفلت",
@@ -1028,12 +1031,204 @@ function fieldRow(label, value) {
   const v = el("span", "field-value"); v.textContent = value || "—";
   r.appendChild(l); r.appendChild(v); return r;
 }
-async function postToScript(payload) {
-  await fetch(CONFIG.scriptUrl, {
-    method: "POST", mode: "no-cors",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+// ════════════════════════════════════════════════════════
+// DATABASE — Supabase (PostgREST + Storage) over plain fetch.
+// No SDK: the app stays a single dependency-free file. The anon key is
+// public by design; access is enforced by RLS policies in the database.
+// Every helper returns parsed JSON or throws; readers that must never
+// break the UI catch at the call site (same contract as before).
+// ════════════════════════════════════════════════════════
+function sbHeaders() {
+  return {
+    apikey: CONFIG.supabaseAnonKey,
+    Authorization: `Bearer ${CONFIG.supabaseAnonKey}`,
+    "Content-Type": "application/json",
+  };
+}
+// GET /rest/v1/<path> (table query or RPC). Throws on HTTP error.
+async function sbGet(path, timeoutMs) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs || 15000);
+  try {
+    const res = await fetch(`${CONFIG.supabaseUrl}/rest/v1/${path}`, { headers: sbHeaders(), signal: ctrl.signal });
+    if (!res.ok) throw new Error(`db read ${res.status}`);
+    return await res.json();
+  } finally { clearTimeout(t); }
+}
+// INSERT rows. Returns { success, duplicate } — duplicate = unique-key hit,
+// the atomic replacement for the old read-then-append duplicate guards.
+async function sbInsert(table, rows) {
+  const res = await fetch(`${CONFIG.supabaseUrl}/rest/v1/${table}`, {
+    method: "POST",
+    headers: { ...sbHeaders(), Prefer: "return=minimal" },
+    body: JSON.stringify(rows),
   });
+  if (res.ok) return { success: true };
+  const body = await res.text();
+  if (res.status === 409 || body.indexOf("23505") >= 0) return { success: false, duplicate: true };
+  throw new Error(`db write ${res.status}: ${body.slice(0, 200)}`);
+}
+// UPDATE rows matching a PostgREST filter string (e.g. "note=eq.125560").
+async function sbUpdate(table, filter, patch) {
+  const res = await fetch(`${CONFIG.supabaseUrl}/rest/v1/${table}?${filter}`, {
+    method: "PATCH",
+    headers: { ...sbHeaders(), Prefer: "return=minimal" },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error(`db update ${res.status}`);
+}
+// Upload a data-URL image to Storage; returns its public URL ("" on no photo).
+async function sbUploadPhoto(name, dataUrl) {
+  if (!dataUrl) return "";
+  const blob = await (await fetch(dataUrl)).blob();
+  const res = await fetch(`${CONFIG.supabaseUrl}/storage/v1/object/material-receipts/${encodeURIComponent(name)}`, {
+    method: "POST",
+    headers: { apikey: CONFIG.supabaseAnonKey, Authorization: `Bearer ${CONFIG.supabaseAnonKey}`, "Content-Type": blob.type || "image/jpeg" },
+    body: blob,
+  });
+  if (!res.ok) throw new Error(`photo upload ${res.status}`);
+  return `${CONFIG.supabaseUrl}/storage/v1/object/public/material-receipts/${encodeURIComponent(name)}`;
+}
+const sbEq = (v) => `eq.${encodeURIComponent(v)}`;
+
+// ── Row mappers: snake_case DB rows ⇄ the object shapes the UI uses ──
+const LOC_LABEL = { block_street: "قطعة / شارع", km_range: "نطاق كيلومتر", named: "اسم الشارع" };
+function locCodeFromLabel(label) {
+  for (const k in LOC_LABEL) { if (LOC_LABEL[k] === String(label || "").trim()) return k; }
+  return "block_street";
+}
+// Kuwait wall-clock "yyyy-MM-dd HH:mm" from an ISO timestamp (display only).
+function fmtKW(iso) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    const p = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kuwait", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(d);
+    const g = (t) => (p.find(x => x.type === t) || {}).value || "";
+    return `${g("year")}-${g("month")}-${g("day")} ${g("hour")}:${g("minute")}`;
+  } catch { return String(iso); }
+}
+// Start of the current work shift (most recent noon, Kuwait) as ISO — the
+// boundary the per-location load counter resets at. Mirrors shiftStart() that
+// lived in Code.gs.
+function shiftStartISO() {
+  // Kuwait is fixed UTC+3 (no DST), so do the calendar math in Kuwait
+  // wall-clock by shifting the epoch, then shift back.
+  const KW_OFF = 3 * 3600e3;
+  const kwNow = new Date(Date.now() + KW_OFF);
+  const b = new Date(kwNow.getTime());
+  b.setUTCHours(12, 0, 0, 0);                      // noon, Kuwait wall-clock
+  if (kwNow.getUTCHours() < 12) b.setUTCDate(b.getUTCDate() - 1);
+  return new Date(b.getTime() - KW_OFF).toISOString();
+}
+function dispatchRowToUI(r) {
+  return {
+    project: r.project || "", contract: r.contract || "", workOrder: r.work_order || "",
+    noteNumber: r.note, plant: r.plant || "", truckNumber: r.truck, naqel: r.naqel || "",
+    driverName: r.driver, driverPhone: r.driver_phone || "", company: r.company || "",
+    mixType: r.mix, weight: r.weight, tempDispatch: r.temp_dispatch, site: r.site,
+    block: r.block || "", street: r.street || "", locationType: locCodeFromLabel(r.loc_type),
+    clerkName: r.clerk, loadNumber: r.load_number || "", timestamp: fmtKW(r.ts),
+    status: r.status || "",
+  };
+}
+function millingRowToUI(r) {
+  return {
+    programId: r.program_id, project: r.project || "", workOrder: r.work_order || "",
+    site: r.site || "", block: r.block || "", street: r.street || "",
+    depth: r.depth || "", itemCode: r.item_code || "", area: r.area == null ? "" : r.area,
+    machines: r.machines == null ? "" : r.machines, requestedDate: r.requested_date || "",
+    priority: r.priority || "", engineer: r.engineer || "", submittedAt: r.submitted_at || "",
+    status: r.status || "", pmName: r.pm_name || "", pmDecision: r.pm_decision || "",
+    pmNote: r.pm_note || "", pmDecidedAt: r.pm_decided_at || "",
+    audit: Array.isArray(r.audit) ? r.audit : [],
+    marcoScheduledAt: r.marco_scheduled_at || "", marcoNote: r.marco_note || "",
+    engNotes: r.eng_notes || "",
+  };
+}
+function materialRowToUI(r) {
+  return {
+    receiptId: r.receipt_id, timestamp: r.ts, receiver: r.receiver || "",
+    project: r.project || "", site: r.site || "", workOrder: r.work_order || "",
+    block: r.block || "", street: r.street || "", category: r.category || "",
+    material: r.material || "", quantity: r.quantity == null ? "" : r.quantity,
+    unit: r.unit || "", rate: r.rate == null ? "" : r.rate, amount: r.amount == null ? "" : r.amount,
+    supplier: r.supplier || "", subcontractor: r.subcontractor || "",
+    photoUrl: r.photo_url || "", remarks: r.remarks || "",
+  };
+}
+
+// ── Domain reads ──
+// Dispatch row by delivery-note number → UI shape, or null.
+async function dbDispatchByNote(note) {
+  const rows = await sbGet(`dispatch_loads?note=${sbEq(note)}&limit=1`);
+  return rows.length ? dispatchRowToUI(rows[0]) : null;
+}
+// Has this note already been receipted? → { alreadyReceived, engineer, decision, timestamp }
+async function dbCheckReceipt(note) {
+  const rows = await sbGet(`receipts?note=${sbEq(note)}&order=ts.desc&limit=1`);
+  if (!rows.length) return { alreadyReceived: false };
+  return { alreadyReceived: true, engineer: rows[0].engineer || "", decision: rows[0].decision || "", timestamp: fmtKW(rows[0].ts) };
+}
+// Engineer home payload — same shape the ?engineer= endpoint returned:
+// receipts by this engineer (joined to their dispatch) + assigned pending loads.
+async function dbEngineerData(engName) {
+  const [recRows, pendRows] = await Promise.all([
+    sbGet(`receipts?engineer=${sbEq(engName)}&order=ts.desc&limit=200`),
+    sbGet(`dispatch_loads?notify_engineer=${sbEq(engName)}&or=(status.eq.${encodeURIComponent("في الطريق")},status.eq.)&order=ts.desc&limit=200`),
+  ]);
+  const notes = [...new Set(recRows.map(r => r.note))];
+  let dispByNote = {};
+  if (notes.length) {
+    const dRows = await sbGet(`dispatch_loads?note=in.(${notes.map(n => `"${String(n).replace(/"/g, "")}"`).join(",")})&limit=${notes.length}`);
+    dRows.forEach(d => { dispByNote[d.note] = d; });
+  }
+  const receivedNotes = new Set(recRows.map(r => String(r.note)));
+  const receipts = recRows.map(r => {
+    const d = dispByNote[r.note];
+    return {
+      noteNumber: String(r.note), timestamp: r.ts, decision: r.decision || "",
+      weightArrival: r.weight_arrival == null ? "" : r.weight_arrival, remarks: r.remarks || "",
+      project: d ? d.project || "" : "", workOrder: d ? d.work_order || "" : "",
+      mixType: d ? d.mix || "" : "", weightDispatched: d ? (d.weight == null ? "" : d.weight) : "",
+      loadNumber: d ? (d.load_number == null ? "" : d.load_number) : "",
+    };
+  });
+  const pending = pendRows.filter(d => !receivedNotes.has(String(d.note))).map(d => ({
+    noteNumber: String(d.note), isoTimestamp: d.ts, project: d.project || "",
+    workOrder: d.work_order || "", plant: d.plant || "", naqel: d.naqel || "",
+    driverName: d.driver || "", driverPhone: d.driver_phone || "", mixType: d.mix || "",
+    weight: d.weight == null ? "" : d.weight, tempDispatch: d.temp_dispatch == null ? "" : d.temp_dispatch,
+    site: d.site || "", loadNumber: d.load_number == null ? "" : d.load_number,
+  }));
+  return { receipts, pending };
+}
+
+// ── Domain writes ──
+// Dispatch: unique note constraint is the duplicate guard (atomic, unlike the
+// old read-then-append). Returns { success, duplicate }.
+async function dbSubmitDispatch(data) {
+  return sbInsert("dispatch_loads", {
+    project: data.project || "", contract: data.contract || "", work_order: data.workOrder || "",
+    note: String(data.noteNumber), plant: data.plant || "", truck: String(data.truckNumber || ""),
+    driver: data.driverName || "", mix: data.mixType || "", weight: parseFloat(data.weight) || null,
+    temp_dispatch: parseFloat(data.tempDispatch) || null, site: data.site || "",
+    block: data.block || "", street: data.street || "",
+    loc_type: LOC_LABEL[data.locationType] || LOC_LABEL.block_street,
+    clerk: data.clerkName || "", remarks: data.remarks || "", status: "في الطريق",
+    company: data.company || "", naqel: data.naqel || "", driver_phone: data.driverPhone || "",
+    load_number: data.loadNumber === "" || data.loadNumber == null ? null : Number(data.loadNumber),
+    notify_engineer: data.notifyEngineer || "",
+  });
+}
+// Receipt: append the receipt, then reflect the decision on the dispatch row.
+async function dbSubmitReceipt(p) {
+  const r = await sbInsert("receipts", {
+    note: String(p.noteNumber), work_order: p.workOrder || "", engineer: p.engineerName || "",
+    decision: p.decision || "", weight_arrival: parseFloat(p.weightArrival) || null,
+    temp_arrival: parseFloat(p.tempArrival) || null, remarks: p.remarks || "",
+  });
+  try { await sbUpdate("dispatch_loads", `note=${sbEq(p.noteNumber)}`, { status: p.decision || "" }); } catch {}
+  return r;
 }
 // Human-readable location string from a dispatch row/data object, aware of
 // the three location types: block+street, km range, and named street.
@@ -1141,15 +1336,17 @@ function phoneToFull(local)   { const d = cleanPhone(local); if (!d) return ""; 
 // advances it — no site confirmation needed. Returns the next number, or null.
 async function fetchNextLoad(projectName, site, block, street, siteOnly) {
   try {
-    const u = `${CONFIG.scriptUrl}?nextLoad=1` +
-      `&project=${encodeURIComponent(projectName || "")}` +
-      `&site=${encodeURIComponent(site || "")}` +
-      `&block=${encodeURIComponent(block || "")}` +
-      `&street=${encodeURIComponent(street || "")}` +
-      (siteOnly ? `&siteOnly=1` : ``);
-    const r = await fetch(u);
-    const j = await r.json();
-    return (typeof j.next === "number") ? j.next : null;
+    // This shift's rows at the site (small set), then match the exact location
+    // client-side with whitespace-normalised comparison — same as the old
+    // backend norm(). One shift × one site is at most a few dozen rows.
+    const rows = await sbGet(
+      `dispatch_loads?select=block,street` +
+      `&project=${sbEq(normSp(projectName))}&site=${sbEq(normSp(site))}` +
+      `&ts=gte.${encodeURIComponent(shiftStartISO())}&limit=1000`);
+    const b = normSp(block), st = normSp(street);
+    const count = siteOnly ? rows.length
+      : rows.filter(r => normSp(r.block) === b && normSp(r.street) === st).length;
+    return count + 1;
   } catch { return null; }
 }
 
@@ -1804,18 +2001,6 @@ function renderDispatch(ctx) {
     errDiv.style.display = "none";
     btn.disabled = true; btn.textContent = "جارٍ التحقق...";
 
-    // Prevent duplicate delivery-note numbers — block if this note already exists
-    try {
-      const dupRes  = await fetch(`${CONFIG.scriptUrl}?note=${encodeURIComponent(data.noteNumber)}`);
-      const dupJson = await dupRes.json();
-      if (dupJson.found) {
-        btn.disabled = false; btn.innerHTML = submitLabel;
-        errDiv.textContent = `رقم السند ${data.noteNumber} مُستخدم مسبقاً — تأكد من الرقم`;
-        errDiv.style.display = "block";
-        return;
-      }
-    } catch { /* network issue checking — allow dispatch rather than block work */ }
-
     // Authoritative load number for this exact location, fetched right before
     // writing so it reflects the latest count (resets at noon Kuwait).
     const loadSiteOnly = !isCopri || data.locationType === "named";
@@ -1824,7 +2009,15 @@ function renderDispatch(ctx) {
 
     btn.textContent = "جارٍ الإرسال...";
     try {
-      await postToScript({ type: "dispatch", ...data, timestamp: timestamp() });
+      // The unique note constraint in the database rejects duplicates
+      // atomically — no separate pre-check needed.
+      const w = await dbSubmitDispatch(data);
+      if (w.duplicate) {
+        btn.disabled = false; btn.innerHTML = submitLabel;
+        errDiv.textContent = `رقم السند ${data.noteNumber} مُستخدم مسبقاً — تأكد من الرقم`;
+        errDiv.style.display = "block";
+        return;
+      }
       const receiptLink = `${window.location.href.split("?")[0]}?note=${encodeURIComponent(data.noteNumber)}`;
       renderDispatchSuccess(ctx, data, receiptLink);
     } catch {
@@ -1918,9 +2111,7 @@ async function renderReceipt(noteNumber, preAuthName) {
   // Fetch dispatch data
   let dispatch = null;
   try {
-    const res = await fetch(`${CONFIG.scriptUrl}?note=${encodeURIComponent(noteNumber)}`);
-    const json = await res.json();
-    if (json.found) dispatch = json.row;
+    dispatch = await dbDispatchByNote(noteNumber);
   } catch { /* network error — show what we have */ }
 
   main.innerHTML = "";
@@ -1928,8 +2119,7 @@ async function renderReceipt(noteNumber, preAuthName) {
   // ── One-time link check — block if already receipted ──────────────────
   if (dispatch) {
     try {
-      const statusRes  = await fetch(`${CONFIG.scriptUrl}?checkReceipt=${encodeURIComponent(noteNumber)}`);
-      const statusJson = await statusRes.json();
+      const statusJson = await dbCheckReceipt(noteNumber);
       if (statusJson.alreadyReceived) {
         const s = el("div", "success-screen");
         const icon = el("div", "success-icon ok"); icon.textContent = "✓"; s.appendChild(icon);
@@ -2096,8 +2286,7 @@ async function renderReceipt(noteNumber, preAuthName) {
     submitBtn.disabled = true; submitBtn.textContent = "جارٍ التسجيل...";
 
     try {
-      await postToScript({
-        type:          "receipt",
+      await dbSubmitReceipt({
         noteNumber,
         engineerName:  engInput.value,
         workOrder:     woReceiptInput.value.trim(),
@@ -2105,7 +2294,6 @@ async function renderReceipt(noteNumber, preAuthName) {
         weightArrival: dispatch ? dispatch.weight : "",
         tempArrival:   tempArrInput.value,
         remarks:       decision === "مرفوض" ? reasonInput.value : remarksInput.value,
-        timestamp:     timestamp(),
       });
       renderReceiptSuccess(noteNumber, decision, preAuthName);
     } catch {
@@ -2321,8 +2509,7 @@ async function renderEngineerHome(engName) {
   // Fetch all data for this engineer — filter today client-side
   let receipts = [], pendingDispatches = [];
   try {
-    const res  = await fetch(`${CONFIG.scriptUrl}?engineer=${encodeURIComponent(engName)}`);
-    const json = await res.json();
+    const json = await dbEngineerData(engName);
     const allReceipts = json.receipts || [];
     const allPending  = json.pending  || [];
 
@@ -2499,14 +2686,89 @@ function setPMSession(name)  { sessionStorage.setItem("pm_session",    JSON.stri
 function getMarcoSession()   { try { return JSON.parse(sessionStorage.getItem("marco_session") || "null"); } catch { return null; } }
 function setMarcoSession(n)  { sessionStorage.setItem("marco_session", JSON.stringify({ name: n, ts: Date.now() })); }
 
-// GET helper for milling reads (script returns JSON; readable, unlike the
-// no-cors POST). Returns the parsed object, or {} on failure.
+// Milling reads — same param shapes and return shapes as the old Apps Script
+// endpoints, served from the milling_programs table. Returns {} on failure.
+function sbIn(values) {
+  return `in.(${encodeURIComponent(values.map(v => `"${String(v).replace(/"/g, "")}"`).join(","))})`;
+}
 async function millingGet(params) {
   try {
-    const qs = Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
-    const res = await fetch(`${CONFIG.scriptUrl}?${qs}`);
-    return await res.json();
+    if (params.millingProgram || params.millingReport) {
+      const id = params.millingProgram || params.millingReport;
+      const rows = await sbGet(`milling_programs?program_id=${sbEq(id)}&limit=1`);
+      return { program: rows.length ? millingRowToUI(rows[0]) : null };
+    }
+    let filter = null;
+    if (params.millingByEngineer) filter = `engineer=${sbEq(params.millingByEngineer)}`;
+    else if (params.millingPMQueue)    filter = `status=${sbIn([MILL_STATUS.pending, MILL_STATUS.review])}`;
+    else if (params.millingDecided)    filter = `status=not.${sbIn([MILL_STATUS.pending, MILL_STATUS.review])}`;
+    else if (params.millingMarcoQueue) filter = `status=${sbIn([MILL_STATUS.approved, MILL_STATUS.scheduled, MILL_STATUS.progress])}`;
+    if (!filter) return {};
+    const rows = await sbGet(`milling_programs?${filter}&order=submitted_at.desc&limit=500`);
+    return { programs: rows.map(millingRowToUI) };
   } catch { return {}; }
+}
+
+// ── Milling writes (ported from Code.gs millingSubmit_/UpdateStatus_/Revise_;
+// the audit trail is an append-only jsonb array on the row) ──
+async function dbMillingSubmit(p) {
+  const now = new Date().toISOString();
+  return sbInsert("milling_programs", {
+    program_id: p.programId, project: p.project || "", work_order: p.workOrder || "",
+    site: p.site || "", block: p.block || "", street: p.street || "",
+    depth: p.depth || "", item_code: p.itemCode || "", area: parseFloat(p.area) || null,
+    machines: parseInt(p.machines, 10) || null, requested_date: p.requestedDate || null,
+    priority: p.priority || "", engineer: p.engineerName || "", submitted_at: now,
+    status: MILL_STATUS.pending, eng_notes: p.notes || "",
+    audit: [{ action: "submitted", by: p.engineerName || "", role: "engineer", ts: now }],
+  });
+}
+async function dbMillingFetchRow_(programId) {
+  const rows = await sbGet(`milling_programs?program_id=${sbEq(programId)}&limit=1`);
+  if (!rows.length) throw new Error("program not found");
+  return rows[0];
+}
+async function dbMillingUpdateStatus(p) {
+  const cur = await dbMillingFetchRow_(p.programId);
+  const audit = Array.isArray(cur.audit) ? cur.audit : [];
+  const now = new Date().toISOString();
+  const sets = {};
+  let action, role = p.role || "";
+  switch (p.decision) {
+    case "approve":
+      sets.status = MILL_STATUS.approved; sets.pm_name = p.by || ""; sets.pm_decision = MILL_STATUS.approved;
+      sets.pm_note = p.note || ""; sets.pm_decided_at = now; action = "approved"; role = "pm"; break;
+    case "reject":
+      sets.status = MILL_STATUS.rejected; sets.pm_name = p.by || ""; sets.pm_decision = MILL_STATUS.rejected;
+      sets.pm_note = p.note || ""; sets.pm_decided_at = now; action = "rejected"; role = "pm"; break;
+    case "schedule":
+      sets.status = MILL_STATUS.scheduled; sets.marco_scheduled_at = now; sets.marco_note = p.note || "";
+      action = "scheduled"; role = "marco"; break;
+    case "start":
+      sets.status = MILL_STATUS.progress; action = "started"; role = "marco"; break;
+    case "complete":
+      sets.status = MILL_STATUS.complete; action = "completed"; break;
+    default: throw new Error("unknown decision");
+  }
+  const ev = { action, by: p.by || "", role, ts: now };
+  if (p.note) ev.note = p.note;
+  audit.push(ev);
+  sets.audit = audit;
+  await sbUpdate("milling_programs", `program_id=${sbEq(p.programId)}`, sets);
+}
+async function dbMillingRevise(p) {
+  const cur = await dbMillingFetchRow_(p.programId);
+  if (cur.status !== MILL_STATUS.rejected) throw new Error("not revisable");
+  const audit = Array.isArray(cur.audit) ? cur.audit : [];
+  audit.push({ action: "revised", by: p.engineerName || cur.engineer, role: "engineer", ts: new Date().toISOString() });
+  await sbUpdate("milling_programs", `program_id=${sbEq(p.programId)}`, {
+    project: p.project || "", work_order: p.workOrder || "", site: p.site || "",
+    block: p.block || "", street: p.street || "", depth: p.depth || "",
+    item_code: p.itemCode || "", area: parseFloat(p.area) || null,
+    machines: parseInt(p.machines, 10) || null, requested_date: p.requestedDate || null,
+    priority: p.priority || "", eng_notes: p.notes || "",
+    status: MILL_STATUS.review, audit,
+  });
 }
 
 // Client-side unique id — the no-cors POST can't read a server-assigned id.
@@ -2808,9 +3070,9 @@ function renderMillingProgramForm(engName, existing, onDone) {
     errDiv.style.display = "none"; btn.disabled = true; btn.textContent = "جارٍ الإرسال…";
 
     const programId = existing ? existing.programId : millingNewProgramId();
-    const type = existing ? "reviseMillingProgram" : "submitMillingProgram";
     try {
-      await postToScript({ type, programId, ...data });
+      if (existing) await dbMillingRevise({ programId, ...data });
+      else          await dbMillingSubmit({ programId, ...data });
       renderMillingSubmitSuccess(programId, !!existing, () => (onDone ? onDone() : renderMillingEngineerHome(engName)));
     } catch {
       btn.disabled = false; btn.textContent = existing ? "إعادة التقديم" : "تقديم البرنامج";
@@ -2905,11 +3167,11 @@ function renderMillingMarcoPINScreen(onSuccess) {
   });
 }
 
-// Post a status change, then refresh (the no-cors POST can't be read, so wait
-// briefly for the write to commit before re-fetching).
+// Apply a status change, then refresh. The database write is confirmed
+// synchronously, so no settle-wait is needed anymore.
 async function millingAct_(payload, btns, onChange) {
   (btns || []).forEach(b => { b.disabled = true; });
-  try { await postToScript(payload); await new Promise(r => setTimeout(r, 1100)); } catch {}
+  try { await dbMillingUpdateStatus(payload); } catch {}
   onChange();
 }
 
@@ -3091,13 +3353,30 @@ function clearMatSession()    { sessionStorage.removeItem("mat_session"); }
 function matReceiverByName(name) { return (CONFIG.materialReceivers || []).find(r => r.name === name) || null; }
 function matCatByName(cat)       { return (CONFIG.materialCatalog || []).find(c => c.category === cat) || null; }
 
-// GET helper for materials reads (JSON, unlike the no-cors POST).
+// Materials reads — same shapes as the old endpoints, from material_receipts.
 async function matGet(params) {
   try {
-    const qs = Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
-    const res = await fetch(`${CONFIG.scriptUrl}?${qs}`);
-    return await res.json();
+    let filter = "";
+    if (params.materialsByReceiver) filter = `receiver=${sbEq(params.materialsByReceiver)}&`;
+    else if (!params.materialsAll) return {};
+    const rows = await sbGet(`material_receipts?${filter}order=ts.desc&limit=500`);
+    return { receipts: rows.map(materialRowToUI) };
   } catch { return {}; }
+}
+
+// Materials write: photo to Storage first, then the receipt row (unique
+// receipt_id is the duplicate guard). A row is never written without its photo.
+async function dbSubmitMaterialReceipt(p) {
+  const photoUrl = await sbUploadPhoto(`${p.receiptId}.jpg`, p.photoData);
+  return sbInsert("material_receipts", {
+    receipt_id: p.receiptId, receiver: p.receiverName || "", project: p.project || "",
+    site: p.site || "", work_order: p.workOrder || "", block: p.block || "",
+    street: p.street || "", category: p.category || "", material: p.material || "",
+    quantity: parseFloat(p.quantity) || null, unit: p.unit || "",
+    rate: parseFloat(p.rate) || null, amount: parseFloat(p.amount) || null,
+    supplier: p.supplier || "", subcontractor: p.subcontractor || "",
+    photo_url: photoUrl, remarks: p.remarks || "",
+  });
 }
 // Client-side unique id — the no-cors POST can't read a server-assigned id.
 function matNewReceiptId() {
@@ -3404,7 +3683,7 @@ function renderMaterialReceiptForm(name, onDone) {
 
     const receiptId = matNewReceiptId();
     try {
-      await postToScript({ type: "submitMaterialReceipt", receiptId, ...data, photoData, timestamp: timestamp() });
+      await dbSubmitMaterialReceipt({ receiptId, ...data, photoData });
       renderMaterialReceiptSuccess(receiptId, () => (onDone ? onDone() : renderMaterialReceiverHome(name)));
     } catch {
       btn.disabled = false; btn.textContent = "تسجيل الاستلام";
@@ -3435,8 +3714,7 @@ function renderMaterialReceiptSuccess(receiptId, backFn) {
 // so the app never breaks. Backend: setupReferenceTabs() / ?ref=1 in Code.gs.
 // ════════════════════════════════════════════════════════
 const REF_CACHE_KEY = "copri_ref_cache_v1";
-const REF_VER_KEY   = "copri_ref_ver_v1";
-let _lastRefVer = localStorage.getItem(REF_VER_KEY) || "";
+let _lastRefJson = localStorage.getItem(REF_CACHE_KEY) || "";   // last payload applied
 
 // True when it's safe to swap the screen out from under the user. Never
 // re-render while they're typing into a form field (would wipe half-typed input).
@@ -3575,57 +3853,37 @@ function applyReferenceData(ref) {
   }
 }
 
-// Fetch the reference JSON with a timeout; cache on success.
-async function fetchReference(timeoutMs, fresh) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), timeoutMs || 20000);
-  try {
-    const res = await fetch(`${CONFIG.scriptUrl}?ref=1${fresh ? "&nocache=1" : ""}`, { signal: ctrl.signal });
-    const data = await res.json();
-    if (data && (data.streets || data.workOrders || data.settings)) localStorage.setItem(REF_CACHE_KEY, JSON.stringify(data));
-    return data;
-  } finally { clearTimeout(t); }
+// Fetch the reference payload (one RPC, milliseconds); cache on success.
+// The version-probe machinery the 15-second Sheets read forced on us is gone —
+// the payload itself is cheap enough to pull and diff directly.
+async function fetchReference(timeoutMs) {
+  const data = await sbGet("rpc/ref_payload", timeoutMs || 15000);
+  if (data && (data.streets || data.workOrders || data.settings)) {
+    try { localStorage.setItem(REF_CACHE_KEY, JSON.stringify(data)); } catch (e) {}
+  }
+  return data;
 }
 
-// Cheap probe: has any reference file changed since we last applied? Returns the
-// server version string, or null on failure. Does NOT pull the full payload.
-async function fetchRefVersion(timeoutMs) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), timeoutMs || 8000);
-  try {
-    const res = await fetch(`${CONFIG.scriptUrl}?refver=1`, { signal: ctrl.signal });
-    const d = await res.json();
-    return d && d.version != null ? String(d.version) : null;
-  } catch (e) { return null; } finally { clearTimeout(t); }
-}
-
-// Seamless auto-update: probe the server version; only on a real change pull the
-// full reference, apply it, and re-render the current screen — but only when it's
-// safe (not mid-form). Silent no-op on any failure. `force` skips the version check.
-async function syncReferenceIfChanged(opts) {
-  opts = opts || {};
-  const ver = await fetchRefVersion(8000);
-  if (ver == null) return;                        // network failure — keep current
-  if (!opts.force && ver === _lastRefVer) return; // nothing changed — cheap exit
-  const fresh = await fetchReference(20000, true); // full pull, bypass backend cache
+// Seamless auto-update: pull the payload, apply + re-render only when it
+// actually changed — and only when safe (not mid-form). Silent no-op on failure.
+async function syncReferenceIfChanged() {
+  let fresh;
+  try { fresh = await fetchReference(15000); } catch (e) { return; }
   if (!fresh) return;
+  const json = JSON.stringify(fresh);
+  if (json === _lastRefJson) return;              // nothing changed
   applyReferenceData(fresh);
-  _lastRefVer = ver;
-  try { localStorage.setItem(REF_VER_KEY, ver); } catch (e) {}
+  _lastRefJson = json;
   if (_refSafeToRerender()) runRouter();          // re-render only if not mid-typing
 }
 
 // Manual refresh (🔄 in the header, on every portal): pull the latest reference
-// data now, apply it, and re-render the current screen — so staff see edits
-// without the double-reopen. Spins the icon while it fetches.
+// data now, apply it, and re-render the current screen.
 async function refreshReferenceData(btn) {
   if (btn) { btn.disabled = true; btn.classList.add("spin"); }
   try {
-    const r = await fetchReference(25000, true);
-    if (r) applyReferenceData(r);
-    // Record the version we just applied so the background poll doesn't re-pull.
-    const v = await fetchRefVersion(8000);
-    if (v != null) { _lastRefVer = v; try { localStorage.setItem(REF_VER_KEY, v); } catch (e) {} }
+    const r = await fetchReference(15000);
+    if (r) { applyReferenceData(r); _lastRefJson = JSON.stringify(r); }
   } catch (e) { /* keep current data */ }
   if (btn) { btn.disabled = false; btn.classList.remove("spin"); }
   runRouter();   // re-render the active screen with the fresh data
@@ -3762,8 +4020,7 @@ function renderDashboard(page, projName) {
   const loading = el("div", "card");
   loading.innerHTML = `<div class="info-box">جارٍ تحميل البيانات…</div>`;
   main.appendChild(loading);
-  fetch(`${CONFIG.scriptUrl}?dash=1`)   // =1 required: Apps Script treats a bare valueless param as falsy
-    .then((r) => r.json())
+  sbGet("rpc/dash_payload")
     .then((d) => {
       if (!d || !d.dispatch) throw new Error("bad payload");
       _dashCache = d; main.innerHTML = ""; _dashRoute(main, d, page, projName);

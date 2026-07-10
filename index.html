@@ -659,6 +659,36 @@
     .dash-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
     .dash-note { font-size: .72rem; color: var(--text-3); text-align: center; margin-top: .5rem; }
 
+    /* ── PLANT PORTAL ──────────────────────────────────── */
+    .portal-head { display: flex; justify-content: space-between; align-items: center; gap: .6rem; }
+    .portal-head .who { font-weight: 800; color: var(--text-1); }
+    .portal-head .sub { font-size: .74rem; color: var(--text-3); margin-top: .1rem; }
+    .portal-tabs { display: flex; gap: .35rem; margin: 0 0 1rem; background: var(--surface-2); padding: .3rem; border-radius: 12px; }
+    .portal-tabs button { flex: 1; border: 0; background: transparent; padding: .6rem .3rem; border-radius: 9px;
+      font-family: inherit; font-size: .8rem; font-weight: 700; color: var(--text-2); cursor: pointer;
+      transition: background .15s, color .15s, box-shadow .15s; }
+    .portal-tabs button.active { background: #fff; color: var(--green); box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .plant-dash-wrap > div > .history-tab { display: none; }  /* hide the "all boards" back link inside the portal */
+    .plant-chip { display: inline-block; font-size: .7rem; font-weight: 700; padding: .25rem .6rem; border-radius: 999px;
+      background: var(--surface-2); color: var(--text-2); white-space: nowrap; }
+    .prog-day-head { font-size: .85rem; font-weight: 800; color: var(--text-1); margin: 1.15rem 0 .5rem;
+      display: flex; align-items: center; gap: .55rem; }
+    .prog-day-head::after { content: ""; flex: 1; height: 1px; background: rgba(0,0,0,.08); }
+    .prog-day-head.today { color: var(--green); }
+    .prog-card { border-inline-start: 4px solid var(--green); }
+    .prog-card.done { border-inline-start-color: var(--text-3); }
+    .prog-card.cancelled { border-inline-start-color: var(--red); opacity: .75; }
+    .prog-top { display: flex; justify-content: space-between; align-items: center; gap: .5rem; margin-bottom: .45rem; }
+    .prog-mix { font-size: .78rem; font-weight: 800; color: var(--green); background: rgba(0,166,81,.10);
+      padding: .25rem .6rem; border-radius: 8px; }
+    .prog-site { font-size: 1.02rem; font-weight: 800; color: var(--text-1); margin-bottom: .45rem; }
+    .prog-meta { display: flex; flex-wrap: wrap; gap: .4rem .9rem; font-size: .8rem; color: var(--text-2); }
+    .prog-meta b { color: var(--text-1); }
+    .prog-actions { display: flex; gap: .5rem; margin-top: .7rem; }
+    .prog-actions button { width: auto; flex: 1; padding: .5rem; font-size: .8rem; }
+    .req-card .req-client { font-size: .98rem; font-weight: 800; color: var(--text-1); }
+    .req-card .req-line { font-size: .78rem; color: var(--text-2); margin-top: .25rem; }
+
     /* ── MOBILE ────────────────────────────────────────── */
     @media (hover: none) { input, select, textarea { font-size: 16px; } }
     @supports (padding: max(0px)) {
@@ -4239,6 +4269,320 @@ function _dashExec(main, data) {
   _dashFooter(main, data);
 }
 
+// ════════════════════════════════════════════════════════
+// ── PLANT PORTAL MODULE (?plantRole=manager) ──
+// Interim dropdown+PIN (plant_managers table, 0006) until Supabase Auth.
+// Tabs: plant dashboard (reuses _dashPlant) · planned asphalt programs
+// (the engineers' WhatsApp programs, structured, day-grouped) · recipient
+// requests (add a client under a company → main-office approval).
+// ════════════════════════════════════════════════════════
+function getPlantSession()  { try { return JSON.parse(sessionStorage.getItem("plant_session") || "null"); } catch { return null; } }
+function setPlantSession(n) { sessionStorage.setItem("plant_session", JSON.stringify({ name: n, ts: Date.now() })); }
+
+// ── Reads ──
+async function dbPlantManagers() {
+  try { return await sbGet("plant_managers?active=eq.true&order=id"); } catch { return []; }
+}
+async function dbPlantPrograms() {
+  // Upcoming plus the last week — the plant plans forward, glances back.
+  const from = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+  return sbGet(`asphalt_programs?work_date=gte.${from}&order=work_date.asc&limit=300`);
+}
+async function dbPlantRequests() {
+  return sbGet("recipient_requests?order=created_at.desc&limit=100");
+}
+// ── Writes — SECURITY DEFINER RPCs (0006) ──
+async function dbPlantProgramSubmit(p)          { return sbRpc("asphalt_program_submit", p); }
+async function dbPlantProgramStatus(id, st, by) { return sbRpc("asphalt_program_set_status", { p_id: id, p_status: st, p_by: by }); }
+async function dbPlantRequestSubmit(p)          { return sbRpc("recipient_request_submit", p); }
+
+// ── Kuwait wall-clock day labels ──
+function plantKwISO(offsetDays) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kuwait" })
+    .format(new Date(Date.now() + (offsetDays || 0) * 864e5));
+}
+function plantDayLabel(iso) {
+  const d = new Date(iso + "T12:00:00+03:00");
+  const wd = new Intl.DateTimeFormat("ar", { weekday: "long" }).format(d);
+  const dt = new Intl.DateTimeFormat("ar", { day: "numeric", month: "long" }).format(d);
+  const tag = iso === plantKwISO(0) ? " · اليوم" : iso === plantKwISO(1) ? " · غداً" : "";
+  return `${wd} ${dt}${tag}`;
+}
+function plantStatusChip(status) {
+  const map = { "مخطط": ["rgba(0,166,81,.12)", "var(--green)"], "منفذ": ["var(--surface-2)", "var(--text-2)"],
+                "ملغي": ["#fdecea", "var(--red)"], "قيد المراجعة": ["rgba(230,81,0,.12)", "var(--amber)"],
+                "موافَق عليه": ["rgba(0,166,81,.12)", "var(--green)"], "مرفوض": ["#fdecea", "var(--red)"] };
+  const [bg, fg] = map[status] || ["var(--surface-2)", "var(--text-2)"];
+  const s = el("span", "plant-chip"); s.textContent = status || "—";
+  s.style.background = bg; s.style.color = fg;
+  return s;
+}
+
+// ── Login ──
+async function renderPlantPINScreen(onSuccess) {
+  const main = renderShell("بوابة المصنع");
+  const loading = el("div", "loading-screen");
+  loading.innerHTML = `<div class="spinner"></div><p>جارٍ التحميل…</p>`;
+  main.appendChild(loading);
+  const managers = await dbPlantManagers();
+  if (!managers.length) {
+    main.innerHTML = "";
+    const e = el("div", "error-msg"); e.style.display = "block";
+    e.textContent = "تعذّر تحميل قائمة مديري المصنع — تحقق من الاتصال وحدّث الصفحة";
+    main.appendChild(e); return;
+  }
+  millingPinScreen_({
+    title: "تسجيل الدخول — مدير المصنع",
+    names: managers.map(m => m.name),
+    validate: (name, pin) => { const m = managers.find(x => x.name === name); return !!m && m.pin === pin; },
+    onSuccess: name => { setPlantSession(name); onSuccess(name); },
+  });
+}
+
+// ── Portal shell: header + tabs ──
+function renderPlantHome(who) {
+  setPlantSession(who);
+  const main = renderShell("بوابة مدير المصنع"); main.innerHTML = "";
+
+  const head = el("div", "card portal-head");
+  const hi = el("div");
+  hi.innerHTML = `<div class="who">${who}</div><div class="sub">المصنع — الإرساليات · البرامج · الطلبات</div>`;
+  const out = el("button", "btn-secondary"); out.type = "button"; out.textContent = "خروج"; out.style.width = "auto";
+  out.addEventListener("click", () => { sessionStorage.removeItem("plant_session"); location.href = location.href.split("?")[0] + "?plantRole=manager"; });
+  head.appendChild(hi); head.appendChild(out); main.appendChild(head);
+
+  const tabs = el("div", "portal-tabs");
+  const body = el("div");
+  const defs = [
+    ["📊 لوحة المصنع",   () => plantTabDash(body)],
+    ["🗓️ برامج الأسفلت", () => plantTabPrograms(body, who)],
+    ["✉️ الطلبات",       () => plantTabRequests(body, who)],
+  ];
+  const btns = defs.map(([label, fn]) => {
+    const b = el("button"); b.type = "button"; b.textContent = label;
+    b.addEventListener("click", () => { btns.forEach(x => x.classList.remove("active")); b.classList.add("active"); fn(); });
+    tabs.appendChild(b); return b;
+  });
+  main.appendChild(tabs); main.appendChild(body);
+  btns[0].classList.add("active"); defs[0][1]();
+}
+
+// ── Tab 1: the plant dashboard, embedded (range tabs stay interactive) ──
+async function plantTabDash(body) {
+  body.innerHTML = "";
+  const box = el("div", "plant-dash-wrap"); body.appendChild(box);
+  const paint = (data) => { box.innerHTML = ""; _dashPlant(box, data); };
+  if (_dashCache) { paint(_dashCache); return; }
+  const info = el("div", "info-box"); info.textContent = "جارٍ تحميل البيانات…"; box.appendChild(info);
+  try {
+    const d = await sbGet("rpc/dash_payload");
+    if (!d || !d.dispatch) throw new Error("bad payload");
+    _dashCache = d; paint(d);
+  } catch {
+    box.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل البيانات — تحقق من الاتصال</div>`;
+  }
+}
+
+// ── Tab 2: planned asphalt work days ──
+async function plantTabPrograms(body, who) {
+  body.innerHTML = "";
+
+  // Add-program form (collapsed behind a button; engineers get their own
+  // entry path in the auth phase — until then programs arrive on WhatsApp
+  // and whoever holds them records them here).
+  const addWrap = el("div", "card");
+  const addBtn = el("button", "btn-secondary"); addBtn.type = "button";
+  addBtn.textContent = "+ إضافة برنامج جديد";
+  addWrap.appendChild(addBtn);
+  const form = el("div"); form.style.display = "none"; addWrap.appendChild(form);
+
+  const { group: gDate,  input: dateI }  = fieldGroup("تاريخ العمل", input("date", ""), true);
+  dateI.value = plantKwISO(1);
+  const { group: gSite,  input: siteI }  = fieldGroup("موقع العمل", input("text", "مثال: مشرف ش57"), true);
+  const { group: gMix,   input: mixI }   = fieldGroup("نوع الخلطة", select(CONFIG.mixTypes, "اختر النوع"), false);
+  const { group: gLoads, input: loadsI } = fieldGroup("عدد السيارات", input("number", "مثال: 9", "numeric"), false);
+  const { group: gPlant, input: plantI } = fieldGroup("المصنع", select(CONFIG.plants, "اختر المصنع"), false);
+  const { group: gLoadT, input: loadTI } = fieldGroup("موعد التحميل", input("time", ""), false);
+  const { group: gPaveT, input: paveTI } = fieldGroup("موعد الفرش", input("time", ""), false);
+  const { group: gNotes, input: notesI } = fieldGroup("ملاحظات", textarea("المهندس المشرف، تفاصيل التنسيق…"), false);
+  [gDate, gSite, gMix, gLoads, gPlant, gLoadT, gPaveT, gNotes].forEach(g => form.appendChild(g));
+  const addErr = el("div", "error-msg"); addErr.style.display = "none"; form.appendChild(addErr);
+  const saveBtn = el("button", "btn-primary"); saveBtn.type = "button"; saveBtn.textContent = "حفظ البرنامج";
+  form.appendChild(saveBtn);
+
+  addBtn.addEventListener("click", () => {
+    const open = form.style.display !== "none";
+    form.style.display = open ? "none" : "block";
+    addBtn.textContent = open ? "+ إضافة برنامج جديد" : "إخفاء النموذج ▴";
+  });
+  saveBtn.addEventListener("click", async () => {
+    if (!dateI.value || !siteI.value.trim()) {
+      addErr.textContent = "التاريخ وموقع العمل مطلوبان"; addErr.style.display = "block"; return;
+    }
+    addErr.style.display = "none"; saveBtn.disabled = true; saveBtn.textContent = "جارٍ الحفظ…";
+    try {
+      const r = await dbPlantProgramSubmit({
+        p_work_date: dateI.value, p_site: siteI.value.trim(), p_mix: mixI.value || "",
+        p_loads: loadsI.value ? parseInt(loadsI.value, 10) : null, p_plant: plantI.value || "",
+        p_load_time: loadTI.value || "", p_pave_time: paveTI.value || "",
+        p_notes: notesI.value.trim(), p_by: who,
+      });
+      if (!r.success) throw new Error(r.error || "failed");
+      plantTabPrograms(body, who);
+    } catch {
+      saveBtn.disabled = false; saveBtn.textContent = "حفظ البرنامج";
+      addErr.textContent = "حدث خطأ — حاول مجدداً"; addErr.style.display = "block";
+    }
+  });
+  body.appendChild(addWrap);
+
+  const listWrap = el("div"); body.appendChild(listWrap);
+  const info = el("div", "info-box"); info.textContent = "جارٍ التحميل…"; listWrap.appendChild(info);
+  let rows = [];
+  try { rows = await dbPlantPrograms(); } catch {}
+  listWrap.innerHTML = "";
+  if (!rows.length) {
+    const e = el("div", "info-box");
+    e.textContent = "لا توجد برامج مسجلة بعد — أضف برنامج اليوم من الزر أعلاه.";
+    listWrap.appendChild(e); return;
+  }
+
+  const today = plantKwISO(0);
+  const upcoming = rows.filter(r => r.work_date >= today);
+  const past     = rows.filter(r => r.work_date < today).reverse();
+  const renderGroup = (list) => {
+    let lastDate = null;
+    list.forEach(r => {
+      if (r.work_date !== lastDate) {
+        lastDate = r.work_date;
+        const h = el("div", "prog-day-head" + (r.work_date === today ? " today" : ""));
+        h.textContent = plantDayLabel(r.work_date);
+        listWrap.appendChild(h);
+      }
+      listWrap.appendChild(plantProgramCard(r, who, () => plantTabPrograms(body, who)));
+    });
+  };
+  renderGroup(upcoming);
+  if (past.length) {
+    const ph = el("div", "prog-day-head"); ph.textContent = "الأيام السابقة"; ph.style.color = "var(--text-3)";
+    listWrap.appendChild(ph);
+    renderGroup(past);
+  }
+}
+
+function plantProgramCard(p, who, refresh) {
+  const cls = p.status === "ملغي" ? " cancelled" : p.status === "منفذ" ? " done" : "";
+  const c = el("div", "card prog-card" + cls);
+
+  const top = el("div", "prog-top");
+  const mix = el("span", "prog-mix"); mix.textContent = p.mix || "خلطة غير محددة";
+  top.appendChild(mix); top.appendChild(plantStatusChip(p.status));
+  c.appendChild(top);
+
+  const site = el("div", "prog-site"); site.textContent = p.site; c.appendChild(site);
+
+  const meta = el("div", "prog-meta");
+  const item = (icon, label, val) => { if (!val) return; const s = el("span"); s.innerHTML = `${icon} ${label} <b>${val}</b>`; meta.appendChild(s); };
+  item("🚛", "", p.loads ? `${p.loads} سيارة` : "");
+  item("🏭", "", p.plant);
+  item("⏱️", "تحميل", p.load_time);
+  item("🛣️", "فرش", p.pave_time);
+  c.appendChild(meta);
+
+  if (p.notes) { const n = el("div", "field-hint"); n.style.marginTop = ".5rem"; n.textContent = p.notes; c.appendChild(n); }
+
+  if (p.status === "مخطط") {
+    const acts = el("div", "prog-actions");
+    const doneB = el("button", "btn-secondary"); doneB.type = "button"; doneB.textContent = "تم التنفيذ ✓";
+    const cancB = el("button", "btn-secondary"); cancB.type = "button"; cancB.textContent = "إلغاء ✕";
+    cancB.style.color = "var(--red)";
+    const act = async (status, btn) => {
+      if (!confirm(status === "ملغي" ? "إلغاء هذا البرنامج؟ (سوء أحوال جوية / عطل مصنع…)" : "تأكيد تنفيذ هذا البرنامج؟")) return;
+      doneB.disabled = cancB.disabled = true;
+      try { await dbPlantProgramStatus(p.id, status, who); } catch {}
+      refresh();
+    };
+    doneB.addEventListener("click", () => act("منفذ", doneB));
+    cancB.addEventListener("click", () => act("ملغي", cancB));
+    acts.appendChild(doneB); acts.appendChild(cancB); c.appendChild(acts);
+  }
+  return c;
+}
+
+// ── Tab 3: recipient requests → main office ──
+async function plantTabRequests(body, who) {
+  body.innerHTML = "";
+
+  const formCard = el("div", "card");
+  formCard.appendChild(sectionTitle("طلب إضافة عميل جديد"));
+  const explain = el("div", "info-box");
+  explain.textContent = "أضف عميلاً جديداً لاستلام الأسفلت (العميل عادةً مشروع تحت شركة). يُرسل الطلب للمكتب الرئيسي للاعتماد، ويظهر العميل في نموذج الإرسال بعد الموافقة.";
+  formCard.appendChild(explain);
+
+  const companyNames = Object.keys(CONFIG.companies || {});
+  const { group: gComp, input: compI } = fieldGroup("الشركة", select([...companyNames, "شركة أخرى / جديدة"], "اختر الشركة"), true);
+  const { group: gCompNew, input: compNewI } = fieldGroup("اسم الشركة الجديدة", input("text", "اسم الشركة"), true);
+  gCompNew.style.display = "none";
+  compI.addEventListener("change", () => { gCompNew.style.display = compI.value === "شركة أخرى / جديدة" ? "" : "none"; });
+  const { group: gClient,   input: clientI }   = fieldGroup("اسم العميل / المشروع", input("text", "مثال: مشروع صيانة الجهراء"), true);
+  const { group: gContract, input: contractI } = fieldGroup("رقم العقد", input("text", "اختياري"), false);
+  const { group: gDetails,  input: detailsI }  = fieldGroup("تفاصيل", textarea("الموقع، جهة التنسيق، سبب الإضافة…"), false);
+  [gComp, gCompNew, gClient, gContract, gDetails].forEach(g => formCard.appendChild(g));
+  const reqErr = el("div", "error-msg"); reqErr.style.display = "none"; formCard.appendChild(reqErr);
+  const sendBtn = el("button", "btn-primary"); sendBtn.type = "button"; sendBtn.textContent = "إرسال الطلب للمكتب الرئيسي 📨";
+  formCard.appendChild(sendBtn);
+  body.appendChild(formCard);
+
+  sendBtn.addEventListener("click", async () => {
+    const company = compI.value === "شركة أخرى / جديدة" ? compNewI.value.trim() : compI.value;
+    if (!company || !clientI.value.trim()) {
+      reqErr.textContent = "الشركة واسم العميل مطلوبان"; reqErr.style.display = "block"; return;
+    }
+    reqErr.style.display = "none"; sendBtn.disabled = true; sendBtn.textContent = "جارٍ الإرسال…";
+    try {
+      const r = await dbPlantRequestSubmit({
+        p_company: company, p_client: clientI.value.trim(),
+        p_contract: contractI.value.trim(), p_details: detailsI.value.trim(), p_by: who,
+      });
+      if (!r.success) throw new Error(r.error || "failed");
+      plantTabRequests(body, who);
+    } catch {
+      sendBtn.disabled = false; sendBtn.textContent = "إرسال الطلب للمكتب الرئيسي 📨";
+      reqErr.textContent = "حدث خطأ — حاول مجدداً"; reqErr.style.display = "block";
+    }
+  });
+
+  const listWrap = el("div"); body.appendChild(listWrap);
+  const info = el("div", "info-box"); info.textContent = "جارٍ التحميل…"; listWrap.appendChild(info);
+  let rows = [];
+  try { rows = await dbPlantRequests(); } catch {}
+  listWrap.innerHTML = "";
+  if (!rows.length) {
+    const e = el("div", "info-box"); e.textContent = "لا توجد طلبات سابقة.";
+    listWrap.appendChild(e); return;
+  }
+  const h = el("div", "prog-day-head"); h.textContent = "الطلبات السابقة"; listWrap.appendChild(h);
+  rows.forEach(r => {
+    const c = el("div", "card req-card");
+    const top = el("div", "prog-top");
+    const client = el("div", "req-client"); client.textContent = r.client;
+    top.appendChild(client); top.appendChild(plantStatusChip(r.status));
+    c.appendChild(top);
+    const l1 = el("div", "req-line");
+    l1.textContent = r.company + (r.contract ? ` · عقد ${r.contract}` : "");
+    c.appendChild(l1);
+    const l2 = el("div", "req-line");
+    l2.textContent = `طلبه ${r.requested_by || "—"} · ${fmtKW(r.created_at)}`;
+    c.appendChild(l2);
+    if (r.details) { const d = el("div", "field-hint"); d.style.marginTop = ".4rem"; d.textContent = r.details; c.appendChild(d); }
+    if (r.office_note) {
+      const n = el("div", "req-line"); n.innerHTML = `<strong>رد المكتب:</strong> ${r.office_note}`;
+      c.appendChild(n);
+    }
+    listWrap.appendChild(c);
+  });
+}
+
 // ── Router — runs after the cached reference overlay ──
 function runRouter() {
 const _mparams = new URLSearchParams(window.location.search);
@@ -4268,6 +4612,10 @@ if (millingReport) {
   const marcoSession = getMarcoSession();
   if (marcoSession) renderMillingMarcoHome(marcoSession.name);
   else renderMillingMarcoPINScreen(name => renderMillingMarcoHome(name));
+} else if (_mparams.get("plantRole") === "manager") {
+  const plantSession = getPlantSession();
+  if (plantSession) renderPlantHome(plantSession.name);
+  else renderPlantPINScreen(name => renderPlantHome(name));
 } else if (matRole === "receiver") {
   const matSession = getMatSession();
   if (matSession) renderMaterialReceiverHome(matSession.name);

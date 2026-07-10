@@ -4,26 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Progressive Web App for tracking asphalt deliveries (plant → site) and milling works for COPRI Construction, a Kuwait road-maintenance contractor for the Ministry of Public Works. All UI is Arabic / RTL. Two moving parts:
+A Progressive Web App for tracking asphalt deliveries (plant → site), milling works, and materials receipts for COPRI Construction, a Kuwait road-maintenance contractor for the Ministry of Public Works. All UI is Arabic / RTL. Moving parts:
 
-- `index.html` — the entire frontend, one standalone file (~2900 lines): vanilla JS, no framework, no build step, no npm. It calls the Apps Script backend over HTTP as a JSON API.
-- `apps-script/Code.gs` — the backend (~1680 lines), a Google Apps Script web app that reads/writes a Google Sheet and also generates PDF reports.
+- `index.html` — the entire frontend, one standalone file: vanilla JS, no framework, no build step, no npm, no SDKs. It talks **directly to Supabase** (PostgREST + Storage) via a small fetch-based layer near the top of the script (`sbGet`/`sbInsert`/`sbUpdate`/`sbUploadPhoto` + `db*` domain functions + row mappers).
+- **Supabase project `abwsxqnppihrmkhydkai`** — the database (migrated from Google Sheets 2026-07-10). Schema lives in `supabase/migrations/` (apply via the dashboard SQL editor). Reference tables replace the old per-unit Google Sheet files; log tables replace the register tabs; `ref_payload()` / `dash_payload()` RPCs return the aggregate JSON shapes the client consumes. RLS v1 = anon read everything, anon insert/update on log tables only; reference edits happen in the Supabase Table Editor until per-user-type auth lands.
+- `apps-script/Code.gs` — **LEGACY**, no longer called by the app. Kept only for the in-Sheet PDF report menu (تقارير كوبري) over the frozen pre-migration data. Do not extend it; rebuild reports from Supabase instead.
 - `delivery-note-sample.html` — a standalone print template (reference only, not wired into the app).
 
-There is no local dev server, test suite, linter, or package manager. "Building" means editing the files; "running" means deploying (see below).
+There is no test suite, linter, or package manager. For local testing serve statically (`python -m http.server`) — the page talks to the live database, so use TEST-prefixed ids and delete them (service key) afterwards.
 
-## Deploy workflow (this is the build/release process)
+## Deploy workflow
 
-Nothing runs locally — deployment is manual copy-paste, so **changes only reach production once committed, pushed, and pasted by the user.**
-
-- **Frontend:** commit + push `index.html` to `main` → Vercel auto-deploys to `copri-asphalt-app.vercel.app`. Every non-`main` branch gets its own Vercel preview URL.
-- **Backend:** the user copies raw `apps-script/Code.gs` from GitHub into the Apps Script editor (select all → replace → Save). For pure report-logic changes, paste + Save is enough. For changes to `doGet`/`doPost` request handling, a new Web App version must also be published: **Deploy → Manage deployments → New version**.
-- **Sheet schema changes** require running a setup function once from the Apps Script editor: `setupSheets()` (asphalt) or `setupMillingSheet()` (milling). Reference tab: `setupReferenceTab()`.
-
-Sanity-check `Code.gs` before handing it over (it is valid JS syntactically):
-```bash
-cp apps-script/Code.gs /tmp/code_check.js && node --check /tmp/code_check.js && rm /tmp/code_check.js
-```
+- **Frontend:** commit + push `index.html` to `main` → Vercel auto-deploys to `copri-asphalt-app.vercel.app`. Every non-`main` branch gets its own Vercel preview URL. This is the whole deploy — no more Apps Script paste.
+- **Database schema changes:** add a numbered file in `supabase/migrations/` and run it in the Supabase SQL editor (the user pastes it, same ritual as the old Code.gs paste). Keep migrations append-only.
+- **Keys:** `CONFIG.supabaseUrl` + `CONFIG.supabaseAnonKey` (publishable key — public by design, RLS enforces access). The secret key is never committed and never leaves the user's machine.
 
 ## Branch discipline
 
@@ -43,19 +37,21 @@ cp apps-script/Code.gs /tmp/code_check.js && node --check /tmp/code_check.js && 
 - `?millingReport=PROG_ID` → public milling report (no PIN)
 - `?matRole=receiver` → materials-receipt portal (site engineer records materials received)
 
-**Milling and Materials are bolted-on but separable modules — same pattern, follow it for any new module.** Client-side, each is grouped under its own `// ── <NAME> MODULE` block with a function prefix (`renderMilling*`/`milling*`, `renderMaterial*`/`mat*`). Server-side, each has `<name>DoGet_` / `<name>DoPost_` + helpers, dispatched from the top of the main `doGet`/`doPost` (return early if handled). Both reuse shared asphalt helpers (e.g. `millingAllProjects()`).
+**Milling and Materials are bolted-on but separable modules — same pattern, follow it for any new module.** Each is grouped under its own `// ── <NAME> MODULE` block with a function prefix (`renderMilling*`/`milling*`/`dbMilling*`, `renderMaterial*`/`mat*`), with its reads going through a translated query helper (`millingGet`/`matGet` — same param/return shapes the old endpoints had) and its writes through `db*` functions. Both reuse shared asphalt helpers (e.g. `millingAllProjects()`). Keep the separation — only ADD module code, don't entangle it with the asphalt dispatch/receipt flow. **Milling** = engineer→PM→Marco approval workflow. **Materials** = simple one-and-done record: receiver logs material (category→detailed item, qty, rate, supplier, subcontractor) + a required paper-receipt photo.
 
-**Work orders — field currently REMOVED from the forms.** The WO must never be user-editable, so the field was taken out of dispatch, milling, and materials (they now submit `workOrder: ""`); the `refresh*WO()` functions are no-ops. It will return as a **locked, auto-filled** value once the site→WO paths are defined. The machinery is kept dormant for that: `makeWorkOrderField()` (builds the picker), `workOrdersFor(project, site)` + `CONFIG.contractWorkOrders` (active/جاري orders from the MPW contract-9 tracker; see `.assets/work_orders_ref.md`), and the older `CONFIG.workOrders` + `lookupWorkOrder()` single-value map. Note a site+block maps to several WOs by discipline, so the eventual auto-fill needs more than site+block to pick one. The receipt form's WO stays a read-only display of the originating dispatch's value. Keep the separation — only ADD module code, don't entangle it with the asphalt dispatch/receipt flow. **Milling** = engineer→PM→Marco approval workflow. **Materials** = simple one-and-done record: receiver logs material (category→detailed item, qty, rate, supplier, subcontractor) + a required paper-receipt photo, which `materialSavePhoto_` decodes from base64 and stores in the "Materials Receipts" Drive folder (link written to the sheet).
+**Work orders — locked auto-fill, never user-editable.** `autoWorkOrder(project, site, block, street, discipline)` resolves the single active order covering a location from `CONFIG.contractWorkOrders` (fed by the `work_orders` reference table), filtered by discipline (dispatch passes `"asphalt"`, materials `"civil"`, a WO tagged `both`/`كلا` matches either). A read-only info-box shows the result; the forms submit the derived value. The receipt form's WO stays a read-only display of the originating dispatch's value. Older picker machinery (`makeWorkOrderField`/`workOrdersFor`/`lookupWorkOrder`) is kept dormant.
 
-**Staff-editable reference data (live-read, one Sheet FILE per unit).** Non-devs maintain app data in separate spreadsheets — one per unit (Plant, Materials, Milling, and one per Copri project) — so each is shared with only the right people. `REF_SOURCES` in `Code.gs` lists each file's `{unit, id, project?}`; `setupReferenceFiles()` creates each file's tabs (`REF_SPEC` defines them; Arabic only in header constants); `?ref=1` → `readReference_()` opens every file and aggregates one payload. Client: on boot `applyReferenceData()` rebuilds/overlays `CONFIG` from it (datasets present in the sheet replace their baked default; absent → default kept), then `runRouter()`; `fetchReference()` refreshes the cache in the background (stale-while-revalidate). Any failure → cache → baked defaults, so it never blocks/breaks. Per-project **Staff** rows carry `Function` (asphalt/civil/both → dispatch-receiver / material-receiver) + `Milling` flag; there is no separate receiver list. Blueprint + guide: `.assets/data_reference_blueprint.md`. Column order matters (rows read by position). Files hold PINs — restrict their sharing.
+**Staff-editable reference data (Supabase reference tables).** Non-devs maintain app data in the Supabase Table Editor: `app_settings` (kv), `clients`, `client_projects`, `clerks`, `drivers`, `list_options` (kind-discriminated pick-lists), `projects`, `staff`, `sites`, `streets`, `work_orders`, `suppliers`, `subcontractors`, `material_catalog`, `milling_managers`, `milling_machines`. The client fetches `rpc/ref_payload` (same shape the old `?ref=1` returned); `applyReferenceData()` rebuilds/overlays `CONFIG` from it (datasets present replace their baked default; absent → default kept). Cached in localStorage, applied instantly on boot, re-synced on boot / tab-refocus / 60s visible poll by diffing the payload JSON (no version probe needed). Any failure → cache → baked defaults, so it never blocks/breaks. Per-project **staff** rows carry `function` (asphalt/civil/both → dispatch-receiver / material-receiver) + `milling` flag; there is no separate receiver list. Staff PINs are readable via the anon key (v1 posture — same exposure as before; fix with real auth in the front-end phase).
 
-**Backend = Sheet-as-database.** `Code.gs` constants `SHEET_ID`, `DISPATCH_SHEET`, `RECEIPT_SHEET`, `MILLING_SHEET`, `MATERIALS_SHEET`, `TZ = "Asia/Kuwait"` define the store. `doGet` serves reads (`?note=`, `?checkReceipt=`, `?engineer=`, milling/materials queries); `doPost` handles writes. Each sheet has a one-time `setup*Sheet()` to create/reset headers (`setupSheets`, `setupMillingSheet`, `setupMaterialsSheet`). An `onOpen()` menu (تقارير كوبري) exposes report generation (per-shift / week / month, backfill, rebuild) that renders HTML → PDF into a Drive folder.
+**Database = Supabase Postgres.** Log tables `dispatch_loads`, `receipts`, `material_receipts`, `milling_programs` (snake_case columns; the client maps to its camelCase shapes via `dispatchRowToUI`/`millingRowToUI`/`materialRowToUI`). Delivery-note/receipt/program uniqueness is enforced by DB constraints — `sbInsert` returns `{duplicate:true}` on a unique-key hit, which the forms surface. Receipt confirmation inserts a `receipts` row then patches the dispatch row's `status`. Milling audit trail is an append-only jsonb array. Receipt photos upload to the public `material-receipts` Storage bucket.
 
-## Two hard-won gotchas — do not regress these
+## Gotchas — do not regress these
 
-1. **Arabic strings in `Code.gs` live only in the `COL` / `LABEL` (and `REP`/`REPP`) constant blocks, one string per line.** The rest of the file is pure ASCII and refers to them by key. Pasting Arabic embedded mid-expression into the Apps Script editor corrupts it via bidirectional-text reordering. When adding any Arabic literal to the backend, add it as a named constant, never inline.
+1. **Timestamps are timestamptz (UTC ISO) end-to-end.** Kuwait wall-clock is display-only: `fmtKW()` formats, `shiftStartISO()` computes the noon-Kuwait shift boundary (fixed UTC+3, no DST — calendar math must be done in shifted epoch, see the function). The dashboard RPCs bucket days with `at time zone 'Asia/Kuwait'`.
 
-2. **Timestamps.** Sheet cells store Arabic-formatted date strings that `new Date()` cannot parse. The backend returns ISO timestamps (`x instanceof Date ? x.toISOString() : x`) and the client filters "today" in the Kuwait timezone. Numerals are rendered English via a `toEN()` helper even when day/month names are Arabic.
+2. **Keep the payload shapes stable.** `ref_payload()`/`dash_payload()` (SQL) and the `db*` read functions return the exact shapes the render functions have always consumed. If you add a column, extend both the SQL RPC / mapper and the consumer — don't fork new shapes.
+
+3. **Arabic in `Code.gs`** (legacy, only if you must touch it): Arabic strings live only in the `COL`/`LABEL` constant blocks, one per line — pasting Arabic mid-expression into the Apps Script editor corrupts it via bidi reordering. Arabic in `.sql` migration files is fine (pasted into the Supabase SQL editor, which handles UTF-8 correctly).
 
 ## Assets
 

@@ -2328,13 +2328,29 @@ async function renderReceipt(noteNumber, preAuthName) {
   loading.innerHTML = `<div class="spinner"></div><p>جارٍ تحميل بيانات الشحنة...</p>`;
   main.appendChild(loading);
 
-  // Fetch dispatch data
-  let dispatch = null;
+  // Fetch dispatch data. A network failure stays lenient (the engineer can
+  // still confirm); a SUCCESSFUL lookup that finds nothing is a wrong note
+  // number — usually a carbon-book number instead of the app's serial — and
+  // gets a clear stop instead of a silently empty form.
+  let dispatch = null, lookupFailed = false;
   try {
     dispatch = await dbDispatchByNote(noteNumber);
-  } catch { /* network error — show what we have */ }
+  } catch { lookupFailed = true; /* network error — show what we have */ }
 
   main.innerHTML = "";
+
+  if (!dispatch && !lookupFailed) {
+    const s = el("div", "success-screen");
+    const icon = el("div", "success-icon"); icon.textContent = "؟"; icon.style.background = "#fdecea"; icon.style.color = "var(--red)";
+    s.appendChild(icon);
+    const h = el("h2"); h.textContent = "لا توجد شحنة بهذا الرقم"; s.appendChild(h);
+    const p1 = el("p"); p1.innerHTML = `رقم السند <strong>${noteNumber}</strong> غير مسجل في المنظومة.`; s.appendChild(p1);
+    const hint = el("div", "info-box"); hint.style.textAlign = "right";
+    hint.textContent = "افتح رابط الاستلام المرسل من المصنع عبر WhatsApp كما هو — الرقم المكتوب على الورقة الكربونية قد يختلف عن رقم المنظومة.";
+    s.appendChild(hint);
+    main.appendChild(s);
+    return;
+  }
 
   // ── One-time link check — block if already receipted ──────────────────
   if (dispatch) {

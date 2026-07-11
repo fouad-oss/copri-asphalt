@@ -15,7 +15,7 @@ create table plant_managers (
   pin    text not null default '',
   active boolean not null default true
 );
-insert into plant_managers (name, pin) values ('مدير المصنع', '1098');
+insert into plant_managers (name, pin) values ('صلاح الخطيب', '1064');
 
 -- ── Planned asphalt work days (source: engineers' WhatsApp programs) ─
 create table asphalt_programs (

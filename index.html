@@ -4234,6 +4234,110 @@ function _dashRoute(main, data, page, projName) {
   return _dashHome(main);
 }
 
+// ── Reports: print-ready summary for a period (Supabase-era successor of
+// the old Apps Script daily PDFs). Opens a window → browser print/PDF. ──
+async function dbReportDayLoads(dayISO) {
+  // Kuwait calendar day → UTC range (fixed +03, no DST).
+  const start = new Date(dayISO + "T00:00:00+03:00");
+  return sbGet(`dispatch_loads?ts=gte.${start.toISOString()}&ts=lt.${new Date(start.getTime() + 864e5).toISOString()}&order=ts.asc&limit=1000`);
+}
+async function dashGenerateReport(kind) {
+  if (!_dashCache) {
+    try { const d = await sbGet("rpc/dash_payload"); if (d && d.dispatch) _dashCache = d; } catch (e) {}
+  }
+  if (!_dashCache) { alert("تعذّر تحميل البيانات — تحقق من الاتصال"); return; }
+  const all = _dashCache.dispatch || [];
+  const today = _dashDayStr(new Date());
+  let from, to, label;
+  if (kind === "day") {
+    to = from = all.length ? all.map((r) => r.d).reduce((a, b) => (a > b ? a : b)) : today;
+    label = "آخر يوم عمل";
+  } else if (kind === "week") {
+    to = today; from = _dashDayStr(new Date(Date.now() - 6 * 864e5)); label = "آخر أسبوع";
+  } else {
+    to = today; from = _dashDayStr(new Date(Date.now() - 29 * 864e5)); label = "آخر شهر";
+  }
+  const rows = all.filter((r) => r.d >= from && r.d <= to);
+  let detail = null;
+  if (kind === "day") { try { detail = await dbReportDayLoads(from); } catch (e) { /* summary still prints */ } }
+  _openReport(label, from, to, rows, detail);
+}
+function _openReport(label, from, to, rows, detail) {
+  const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const tons = _sum(rows, (r) => r.t), tonsRecv = _sum(rows, (r) => r.tr);
+  const copri = rows.filter((r) => r.c === (_dashCache.copri || "كوبري"));
+  const acc = copri.filter((r) => r.st === 1).length;
+  const accPct = copri.length ? Math.round((acc / copri.length) * 100) : 0;
+  const kpi = (v, l) => `<div class="rk"><div class="v">${v}</div><div class="l">${l}</div></div>`;
+  const table = (title, heads, body) => body
+    ? `<h2>${title}</h2><table><thead><tr>${heads.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>` : "";
+  const aggTable = (title, keyFn, cap) => {
+    const ag = _aggBy(rows, keyFn, (r) => r.t).slice(0, cap || 100);
+    const counts = {}; rows.forEach((r) => { const k = keyFn(r); if (k && k !== "—") counts[k] = (counts[k] || 0) + 1; });
+    return table(title, ["البند", "الدروب", "الكمية (طن)"],
+      ag.map((x) => `<tr><td>${esc(x.name)}</td><td>${_numFmt(counts[x.name] || 0)}</td><td>${_numFmt(x.value)}</td></tr>`).join(""));
+  };
+  // Per-day subtotals (multi-day reports only)
+  let daysTable = "";
+  if (from !== to) {
+    const byDay = {};
+    rows.forEach((r) => { (byDay[r.d] = byDay[r.d] || { n: 0, t: 0, tr: 0 }); byDay[r.d].n++; byDay[r.d].t += r.t || 0; byDay[r.d].tr += r.tr || 0; });
+    daysTable = table("الكميات حسب اليوم", ["اليوم", "الدروب", "صادرة (طن)", "مستلمة (طن)"],
+      Object.keys(byDay).sort().map((d) => `<tr><td>${d}</td><td>${_numFmt(byDay[d].n)}</td><td>${_numFmt(Math.round(byDay[d].t))}</td><td>${_numFmt(Math.round(byDay[d].tr))}</td></tr>`).join(""));
+  }
+  // Per-load detail (last-work-day report only)
+  let detailTable = "";
+  if (detail && detail.length) {
+    detailTable = table(`تفاصيل الدروب (${detail.length})`,
+      ["السند", "الوقت", "الشركة / المشروع", "الموقع", "الخلطة", "طن", "الحالة"],
+      detail.map((d) => `<tr><td>${esc(d.note)}</td><td>${esc(fmtKW(d.ts).slice(11))}</td><td>${esc(d.company)} — ${esc(d.project)}</td><td>${esc(d.site)}${d.block ? " ق" + esc(d.block) : ""}${d.street ? " ش" + esc(d.street) : ""}</td><td>${esc(d.mix)}</td><td>${d.weight == null ? "—" : d.weight}</td><td>${esc(d.status)}</td></tr>`).join(""));
+  }
+  const html = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>تقرير الإرساليات</title><style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  @page { size: A4 portrait; margin: 12mm; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10pt; color: #1a1a1a; direction: rtl; padding: 8px; }
+  .head { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #00A651; padding-bottom: 8px; margin-bottom: 12px; }
+  .head img { height: 44px; }
+  .head .t1 { font-size: 15pt; font-weight: 800; }
+  .head .t2 { font-size: 9pt; color: #555; margin-top: 2px; }
+  .rks { display: flex; gap: 8px; margin-bottom: 14px; }
+  .rk { flex: 1; border: 1px solid #ddd; border-radius: 8px; padding: 8px 10px; text-align: center; }
+  .rk .v { font-size: 14pt; font-weight: 800; color: #007A3D; }
+  .rk .l { font-size: 7.5pt; color: #555; margin-top: 2px; }
+  h2 { font-size: 11pt; margin: 14px 0 6px; color: #007A3D; }
+  table { width: 100%; border-collapse: collapse; font-size: 8.5pt; }
+  th { background: #f0f6f2; border: 1px solid #cfe0d6; padding: 4px 6px; font-weight: 700; text-align: right; }
+  td { border: 1px solid #e2e2e2; padding: 3.5px 6px; }
+  tr:nth-child(even) td { background: #fafaf8; }
+  .foot { margin-top: 14px; border-top: 1px solid #ddd; padding-top: 6px; font-size: 7.5pt; color: #999; text-align: center; }
+  @media screen { body { max-width: 800px; margin: auto; } }
+  </style></head><body>
+  <div class="head">
+    <div><div class="t1">تقرير الإرساليات — ${label}</div>
+    <div class="t2">${from === to ? "يوم " + from : "من " + from + " إلى " + to} · أُنشئ ${esc(fmtKW(new Date().toISOString()))}</div></div>
+    <img src="${COPRI_LOGO}" alt="COPRI"/>
+  </div>
+  <div class="rks">
+    ${kpi(_numFmt(rows.length), "عدد الدروب")}
+    ${kpi(_numFmt(Math.round(tons)), "الكميات الصادرة (طن)")}
+    ${kpi(_numFmt(Math.round(tonsRecv)), "الكميات المستلمة (طن)")}
+    ${kpi(accPct + "٪", "نسبة الاستلام — كوبري")}
+    ${kpi(rows.length ? (tons / rows.length).toFixed(1) : "0", "متوسط الحمولة (طن)")}
+  </div>
+  ${aggTable("الكميات حسب الشركة", (r) => r.c)}
+  ${aggTable("الكميات حسب المشروع", (r) => r.p)}
+  ${daysTable}
+  ${aggTable("الكميات حسب الموقع", (r) => r.s, 15)}
+  ${aggTable("الكميات حسب نوع الخلطة", (r) => r.m)}
+  ${detailTable}
+  <div class="foot">شركة كوبري للمشاريع الإنشائية — طُبع من منظومة التتبع الرقمي</div>
+  </body></html>`;
+  const w = window.open("", "_blank", "width=900,height=700");
+  if (!w) { alert("يرجى السماح بالنوافذ المنبثقة لإنشاء التقرير"); return; }
+  w.document.write(html); w.document.close();
+  setTimeout(() => { try { w.focus(); w.print(); } catch (e) {} }, 500);
+}
+
 // ── Home: pick a board (per company unit) ──
 function _dashHome(main) {
   const card = el("div", "card");
@@ -4469,8 +4573,21 @@ function renderPlantHome(who) {
 }
 
 // ── Tab 1: the plant dashboard, embedded (range tabs stay interactive) ──
+// Report generator sits above the range selector — plant portal only.
 async function plantTabDash(body) {
   body.innerHTML = "";
+  const rep = el("div", "card");
+  rep.appendChild(sectionTitle("📄 إنشاء تقرير"));
+  const rrow = el("div"); rrow.style.cssText = "display:flex;gap:.5rem;flex-wrap:wrap;";
+  [["day", "آخر يوم عمل"], ["week", "آخر أسبوع"], ["month", "آخر شهر"]].forEach(([k, l]) => {
+    const b = el("button", "btn-secondary"); b.type = "button"; b.textContent = l;
+    b.style.cssText = "width:auto;flex:1;min-width:110px;";
+    b.addEventListener("click", () => dashGenerateReport(k));
+    rrow.appendChild(b);
+  });
+  rep.appendChild(rrow);
+  body.appendChild(rep);
+
   const box = el("div", "plant-dash-wrap"); body.appendChild(box);
   const paint = (data) => { box.innerHTML = ""; _dashPlant(box, data); };
   if (_dashCache) { paint(_dashCache); return; }

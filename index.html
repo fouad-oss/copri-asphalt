@@ -632,22 +632,47 @@
 
     /* ── DASHBOARD ─────────────────────────────────────── */
     .dash-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .7rem; margin-bottom: 1rem; }
-    .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: .85rem .95rem; }
+    @keyframes dashIn { from { opacity: 0; transform: translateY(10px); } }
+    .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: .85rem .95rem;
+      animation: dashIn .45s cubic-bezier(.2,.8,.3,1) both;
+      transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+    .kpi:hover { transform: translateY(-3px); box-shadow: 0 6px 18px rgba(0,166,81,.12); border-color: var(--green); }
     .kpi-val { font-size: 1.55rem; font-weight: 800; color: var(--green-dark); line-height: 1.1; }
     .kpi-lbl { font-size: .78rem; color: var(--text-2); font-weight: 600; margin-top: .25rem; }
     .kpi-sub { font-size: .7rem; color: var(--text-3); margin-top: .1rem; }
+    .dash-card { animation: dashIn .5s cubic-bezier(.2,.8,.3,1) both; }
     .dash-card h3 { font-size: .95rem; font-weight: 700; color: var(--text-1); margin: 0 0 .85rem; }
+    .dash-daypick { margin: -.4rem 0 1rem; }
+    .dash-daypick input { max-width: 220px; }
     .hbars { display: flex; flex-direction: column; gap: .55rem; }
-    .hbar { display: flex; align-items: center; gap: .5rem; }
+    .hbar { display: flex; align-items: center; gap: .5rem; position: relative; border-radius: 6px; transition: background .15s ease; }
+    .hbar:hover { background: rgba(0,166,81,.05); }
+    /* Instant tooltip bubble (native title has a delay) */
+    .hbar::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 4px); inset-inline-start: 36%;
+      background: #1a1a2e; color: #fff; font-size: .7rem; font-weight: 700; padding: .25rem .6rem; border-radius: 6px;
+      white-space: nowrap; opacity: 0; transform: translateY(3px); pointer-events: none;
+      transition: opacity .15s ease, transform .15s ease; z-index: 5; }
+    .hbar:hover::after { opacity: 1; transform: translateY(0); }
     .hbar-name { flex: 0 0 34%; font-size: .78rem; color: var(--text-2); font-weight: 600; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .hbar-track { flex: 1; background: var(--surface-2); border-radius: 5px; height: 20px; overflow: hidden; }
-    .hbar-fill { height: 100%; background: var(--green); border-radius: 5px; min-width: 3px; transition: width .5s ease; }
+    @keyframes barGrow { from { width: 0; } }
+    .hbar-fill { height: 100%; background: linear-gradient(90deg, var(--green), #00c261); border-radius: 5px; min-width: 3px;
+      transition: width .5s ease, filter .15s ease; animation: barGrow .6s cubic-bezier(.2,.8,.3,1) both; }
+    .hbar:hover .hbar-fill { filter: brightness(1.12); }
     .hbar-fill.st-ok { background: var(--green); } .hbar-fill.st-warn { background: var(--amber); } .hbar-fill.st-err { background: var(--red); }
-    .hbar-val { flex: 0 0 auto; font-size: .76rem; font-weight: 700; color: var(--text-1); min-width: 52px; text-align: left; }
+    .hbar-val { flex: 0 0 auto; font-size: .76rem; font-weight: 700; color: var(--text-1); min-width: 52px; text-align: left; transition: color .15s ease; }
+    .hbar:hover .hbar-val { color: var(--green-dark); }
+    .trend-wrap { position: relative; }
+    .trend-tip { position: absolute; transform: translate(-50%, -140%); background: #1a1a2e; color: #fff;
+      font-size: .7rem; font-weight: 700; padding: .25rem .6rem; border-radius: 6px; white-space: nowrap;
+      direction: ltr; opacity: 0; pointer-events: none; transition: opacity .12s ease; z-index: 5; }
+    .trend-tip.on { opacity: 1; }
     .dash-trend { width: 100%; height: auto; display: block; direction: ltr; }
     .dash-trend .tr-line { fill: none; stroke: var(--green); stroke-width: 2; }
-    .dash-trend .tr-area { fill: var(--green-light); stroke: none; }
-    .dash-trend .tr-dot { fill: var(--green); stroke: var(--surface); stroke-width: 1.5; }
+    @keyframes fadeIn { from { opacity: 0; } }
+    .dash-trend .tr-area { fill: var(--green-light); stroke: none; animation: fadeIn .9s ease-out both; }
+    .dash-trend .tr-dot { fill: var(--green); stroke: var(--surface); stroke-width: 1.5; transition: r .15s ease; }
+    .dash-trend .tr-dot.hot { r: 5; }
     .dash-trend .tr-axis { stroke: var(--border); stroke-width: 1; }
     .dash-trend .tr-tick { fill: var(--text-3); font-size: 9px; }
     .dash-stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; margin-top: .3rem; }
@@ -4006,13 +4031,14 @@ function _dashBars(items, fmt) {
   const wrap = el("div", "hbars");
   const max = Math.max(1, ...items.map((x) => x.value));
   if (!items.length) { const e = el("div", "field-hint"); e.textContent = "لا توجد بيانات"; wrap.appendChild(e); return wrap; }
-  items.forEach((x) => {
+  items.forEach((x, i) => {
     const row = el("div", "hbar");
+    row.setAttribute("data-tip", x.name + ": " + (fmt ? fmt(x.value) : x.value));
     const name = el("div", "hbar-name"); name.textContent = x.name; name.title = x.name;
     const track = el("div", "hbar-track");
     const fill = el("div", "hbar-fill" + (x.cls ? " " + x.cls : ""));
     fill.style.width = Math.max(3, Math.round((x.value / max) * 100)) + "%";
-    fill.title = x.name + ": " + (fmt ? fmt(x.value) : x.value);
+    fill.style.animationDelay = (i * 45) + "ms";   // staggered grow-in
     track.appendChild(fill);
     const val = el("div", "hbar-val"); val.textContent = fmt ? fmt(x.value) : x.value;
     row.appendChild(name); row.appendChild(track); row.appendChild(val);
@@ -4032,7 +4058,7 @@ function _dashTrend(days, key, fmt) {
   const poly = pts.map((p) => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
   let area = "";
   if (pts.length) area = "M" + pts[0][0].toFixed(1) + "," + (pt + ih) + " " + pts.map((p) => "L" + p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ") + " L" + pts[pts.length - 1][0].toFixed(1) + "," + (pt + ih) + " Z";
-  const dots = days.map((d, i) => `<circle class="tr-dot" cx="${X(i).toFixed(1)}" cy="${Y(d[key]).toFixed(1)}" r="2.6"><title>${d.date}: ${fmt ? fmt(d[key]) : d[key]}</title></circle>`).join("");
+  const dots = days.map((d, i) => `<circle class="tr-dot" data-i="${i}" cx="${X(i).toFixed(1)}" cy="${Y(d[key]).toFixed(1)}" r="2.6"/>`).join("");
   const tickIdx = n <= 1 ? [0] : [0, Math.floor((n - 1) / 2), n - 1];
   const ticks = tickIdx.map((i) => {
     if (!days[i]) return "";
@@ -4044,13 +4070,56 @@ function _dashTrend(days, key, fmt) {
     + `<line class="tr-axis" x1="${pl}" y1="${pt + ih}" x2="${pl + iw}" y2="${pt + ih}"/>`
     + (area ? `<path class="tr-area" d="${area}"/>` : "")
     + `<polyline class="tr-line" points="${poly}"/>${dots}${ticks}</svg>`;
-  const div = el("div"); div.innerHTML = svg; return div.firstElementChild;
+
+  // Hover/tap tooltip: track the pointer, snap to the nearest day point.
+  const wrap = el("div", "trend-wrap");
+  wrap.innerHTML = svg;
+  const svgEl = wrap.firstElementChild;
+  const tip = el("div", "trend-tip"); wrap.appendChild(tip);
+  const show = (i) => {
+    const d = days[i]; if (!d) return;
+    const r = svgEl.getBoundingClientRect();
+    tip.textContent = `${d.date.slice(5)} — ${fmt ? fmt(d[key]) : d[key]}`;
+    tip.style.left = (pts[i][0] / W) * r.width + "px";
+    tip.style.top  = (pts[i][1] / H) * r.height + "px";
+    tip.classList.add("on");
+    svgEl.querySelectorAll(".tr-dot").forEach((c) => c.classList.toggle("hot", +c.getAttribute("data-i") === i));
+  };
+  const track = (e) => {
+    const r = svgEl.getBoundingClientRect();
+    const cx = (e.touches ? e.touches[0].clientX : e.clientX);
+    const x = ((cx - r.left) / r.width) * W;
+    let best = 0, bd = Infinity;
+    pts.forEach((p, i) => { const d2 = Math.abs(p[0] - x); if (d2 < bd) { bd = d2; best = i; } });
+    show(best);
+  };
+  svgEl.addEventListener("mousemove", track);
+  svgEl.addEventListener("touchstart", track, { passive: true });
+  svgEl.addEventListener("mouseleave", () => {
+    tip.classList.remove("on");
+    svgEl.querySelectorAll(".tr-dot.hot").forEach((c) => c.classList.remove("hot"));
+  });
+
+  // Draw-in: measure the real line length once mounted, then transition.
+  requestAnimationFrame(() => {
+    try {
+      const line = svgEl.querySelector(".tr-line");
+      const L = line.getTotalLength();
+      line.style.strokeDasharray = L; line.style.strokeDashoffset = L;
+      requestAnimationFrame(() => {
+        line.style.transition = "stroke-dashoffset .9s ease-out";
+        line.style.strokeDashoffset = "0";
+      });
+    } catch (e) { /* draw-in is decorative */ }
+  });
+  return wrap;
 }
 
 // ── Dashboard state, filters, aggregation ──
 let _dashCache = null;                       // fetched slim-row payload
-let _dashRange = "month";                    // today | week | month | all
-const DASH_RANGES = [["today", "اليوم"], ["week", "٧ أيام"], ["month", "٣٠ يوماً"], ["all", "الكل"]];
+let _dashRange = "month";                    // today | week | month | all | day
+let _dashDay = null;                         // yyyy-mm-dd when _dashRange === "day"
+const DASH_RANGES = [["today", "اليوم"], ["week", "٧ أيام"], ["month", "٣٠ يوماً"], ["all", "الكل"], ["day", "📅 يوم محدد"]];
 const _kdFmt = (n) => new Intl.NumberFormat("en", { maximumFractionDigits: 0 }).format(n) + " د.ك";
 
 function _dashDayStr(dt) { const p = (n) => String(n).padStart(2, "0"); return dt.getFullYear() + "-" + p(dt.getMonth() + 1) + "-" + p(dt.getDate()); }
@@ -4058,7 +4127,13 @@ function _dashCutoff() {
   const days = { today: 1, week: 7, month: 30 }[_dashRange];
   return days ? _dashDayStr(new Date(Date.now() - (days - 1) * 86400000)) : null;
 }
-function _dashWindow(rows) { const cut = _dashCutoff(); return cut ? (rows || []).filter((r) => r.d >= cut) : (rows || []); }
+function _dashWindow(rows) {
+  if (_dashRange === "day") {
+    const d = _dashDay || (_dashDay = _dashDayStr(new Date()));
+    return (rows || []).filter((r) => r.d === d);
+  }
+  const cut = _dashCutoff(); return cut ? (rows || []).filter((r) => r.d >= cut) : (rows || []);
+}
 function _aggBy(rows, keyFn, valFn) {
   const map = {};
   rows.forEach((r) => { const k = keyFn(r); if (!k || k === "—") return; map[k] = (map[k] || 0) + (valFn ? valFn(r) : 1); });
@@ -4074,7 +4149,12 @@ const _sum = (rows, f) => rows.reduce((a, r) => a + (f(r) || 0), 0);
 // ── Shared page pieces ──
 function _dashKpis(main, items) {
   const k = el("div", "dash-kpis");
-  items.forEach((x) => { const c = el("div", "kpi"); c.innerHTML = `<div class="kpi-val">${x[1]}</div><div class="kpi-lbl">${x[0]}</div><div class="kpi-sub">${x[2] || ""}</div>`; k.appendChild(c); });
+  items.forEach((x, i) => {
+    const c = el("div", "kpi");
+    c.style.animationDelay = (i * 60) + "ms";   // staggered entrance
+    c.innerHTML = `<div class="kpi-val">${x[1]}</div><div class="kpi-lbl">${x[0]}</div><div class="kpi-sub">${x[2] || ""}</div>`;
+    k.appendChild(c);
+  });
   main.appendChild(k);
 }
 function _dashCard(main, title, body) {
@@ -4097,6 +4177,17 @@ function _dashPageHead(main, title, onChange) {
     bar.appendChild(b);
   });
   head.appendChild(bar);
+  // Specific-day picker: segment every board to one calendar day.
+  if (_dashRange === "day") {
+    bar.style.marginBottom = ".55rem";
+    const dp = el("div", "dash-daypick");
+    const di = input("date", "");
+    di.value = _dashDay || (_dashDay = _dashDayStr(new Date()));
+    di.max = _dashDayStr(new Date());
+    di.addEventListener("change", () => { if (!di.value) return; _dashDay = di.value; onChange(); });
+    dp.appendChild(di);
+    head.appendChild(dp);
+  }
   main.appendChild(head);
 }
 function _dashFooter(main, D) {
@@ -4168,18 +4259,18 @@ function _dashPlant(main, data) {
   const tons = _sum(rows, (r) => r.t);
   const clients = new Set(rows.map((r) => r.c).filter(Boolean)).size;
   _dashKpis(main, [
-    ["الحمولات", _numFmt(rows.length), "شحنة"],
-    ["الأطنان المرسلة", _numFmt(Math.round(tons)), "طن"],
+    ["عدد الدروب", _numFmt(rows.length), "درب"],
+    ["الكميات الصادرة (طن)", _numFmt(Math.round(tons)), ""],
     ["شركات مخدومة", _numFmt(clients), "عميل"],
-    ["متوسط الحمولة", rows.length ? (tons / rows.length).toFixed(1) : "0", "طن / شحنة"],
+    ["متوسط الحمولة", rows.length ? (tons / rows.length).toFixed(1) : "0", "طن / درب"],
   ]);
-  _dashCard(main, "الأطنان حسب الشركة", _dashBars(_aggBy(rows, (r) => r.c, (r) => r.t).slice(0, 8).map((x) => ({ name: x.name, value: x.value })), _tonsFmt));
+  _dashCard(main, "الكميات حسب الشركة (طن)", _dashBars(_aggBy(rows, (r) => r.c, (r) => r.t).slice(0, 8).map((x) => ({ name: x.name, value: x.value })), _tonsFmt));
   const tw = el("div"); tw.appendChild(_dashTrend(_aggDays(rows, (r) => r.t), "tons", _tonsFmt));
-  _dashCard(main, "الأطنان المرسلة يومياً", tw);
-  _dashCard(main, "الأطنان حسب الموقع", _dashBars(_aggBy(rows, (r) => r.s, (r) => r.t).slice(0, 10), _tonsFmt));
-  _dashCard(main, "الأطنان حسب المصنع", _dashBars(_aggBy(rows, (r) => r.pl, (r) => r.t), _tonsFmt));
+  _dashCard(main, "الكميات اليومية (طن)", tw);
+  _dashCard(main, "الكميات حسب الموقع (طن)", _dashBars(_aggBy(rows, (r) => r.s, (r) => r.t).slice(0, 10), _tonsFmt));
+  _dashCard(main, "الكميات حسب المصنع (طن)", _dashBars(_aggBy(rows, (r) => r.pl, (r) => r.t), _tonsFmt));
   _dashCard(main, "النقل — كوبري / مقاول خارجي", _dashBars(_aggBy(rows, (r) => r.n, (r) => r.t), _tonsFmt));
-  _dashCard(main, "الأطنان حسب نوع الخلطة", _dashBars(_aggBy(rows, (r) => r.m, (r) => r.t).slice(0, 8), _tonsFmt));
+  _dashCard(main, "الكميات حسب نوع الخلطة (طن)", _dashBars(_aggBy(rows, (r) => r.m, (r) => r.t).slice(0, 8), _tonsFmt));
   _dashFooter(main, data);
 }
 
@@ -4194,16 +4285,16 @@ function _dashProject(main, data, projName) {
   // Acceptance = accepted shipments / TOTAL dispatched to this project (Copri only by construction).
   const accPct = rows.length ? Math.round((acc / rows.length) * 100) : 0;
   _dashKpis(main, [
-    ["حمولات الأسفلت", _numFmt(rows.length), "شحنة مرسلة"],
-    ["الأطنان المرسلة", _numFmt(Math.round(tons)), "طن"],
-    ["أطنان مستلمة", _numFmt(Math.round(tonsRecv)), "مؤكدة بالموقع"],
-    ["نسبة القبول", accPct + "٪", acc + " مقبولة من " + rows.length],
+    ["عدد الدروب", _numFmt(rows.length), "درب مرسل"],
+    ["الكميات الصادرة (طن)", _numFmt(Math.round(tons)), ""],
+    ["الكميات المستلمة (طن)", _numFmt(Math.round(tonsRecv)), "مؤكدة بالموقع"],
+    ["نسبة الاستلام", accPct + "٪", acc + " مستلمة من " + rows.length],
   ]);
   _dashCard(main, "حالة الاستلام", _dashStatusBars(rows));
   const tw = el("div"); tw.appendChild(_dashTrend(_aggDays(rows, (r) => r.t), "tons", _tonsFmt));
-  _dashCard(main, "الأطنان المرسلة يومياً", tw);
-  _dashCard(main, "الأطنان حسب الموقع", _dashBars(_aggBy(rows, (r) => r.s, (r) => r.t).slice(0, 10), _tonsFmt));
-  _dashCard(main, "الأطنان حسب أمر العمل", _dashBars(
+  _dashCard(main, "الكميات اليومية (طن)", tw);
+  _dashCard(main, "الكميات حسب الموقع (طن)", _dashBars(_aggBy(rows, (r) => r.s, (r) => r.t).slice(0, 10), _tonsFmt));
+  _dashCard(main, "الكميات حسب أمر العمل (طن)", _dashBars(
     _aggBy(rows.filter((r) => r.w && r.w !== "*"), (r) => "أمر " + r.w, (r) => r.t).slice(0, 8), _tonsFmt));
 
   // Materials section.
@@ -4239,14 +4330,14 @@ function _dashExec(main, data) {
   // Acceptance excludes non-Copri clients: accepted / total dispatched to Copri projects.
   const accPct = copriRows.length ? Math.round((acc / copriRows.length) * 100) : 0;
   _dashKpis(main, [
-    ["إجمالي الأطنان", _numFmt(Math.round(tons)), _numFmt(rows.length) + " شحنة"],
-    ["أطنان كوبري", _numFmt(Math.round(copriTons)), "مشاريعنا"],
-    ["أطنان العملاء", _numFmt(Math.round(tons - copriTons)), "عملاء المصنع"],
-    ["نسبة القبول — كوبري", accPct + "٪", acc + " مقبولة من " + copriRows.length],
+    ["الكمية الإجمالية (طن)", _numFmt(Math.round(tons)), _numFmt(rows.length) + " درب"],
+    ["كميات كوبري (طن)", _numFmt(Math.round(copriTons)), "مشاريعنا"],
+    ["كميات الغير (طن)", _numFmt(Math.round(tons - copriTons)), "عملاء المصنع"],
+    ["نسبة الاستلام — كوبري", accPct + "٪", acc + " مستلمة من " + copriRows.length],
   ]);
-  _dashCard(main, "الأطنان حسب المشروع", _dashBars(_aggBy(rows, (r) => r.p, (r) => r.t).slice(0, 8), _tonsFmt));
+  _dashCard(main, "الكميات حسب المشروع (طن)", _dashBars(_aggBy(rows, (r) => r.p, (r) => r.t).slice(0, 8), _tonsFmt));
   const tw = el("div"); tw.appendChild(_dashTrend(_aggDays(rows, (r) => r.t), "tons", _tonsFmt));
-  _dashCard(main, "الأطنان المرسلة يومياً", tw);
+  _dashCard(main, "الكميات اليومية (طن)", tw);
   _dashCard(main, "حالة استلام الأسفلت — مشاريع كوبري", _dashStatusBars(copriRows));
   // Quality flags (confirmed receipts only).
   const wShort = copriRows.filter((r) => r.dw != null && r.dw <= -CONFIG.weightShortage).length;

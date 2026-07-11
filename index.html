@@ -4614,7 +4614,7 @@ function renderPlantHome(who) {
   const defs = [
     ["📊 لوحة المصنع",   () => plantTabDash(body)],
     ["🗓️ برامج الأسفلت", () => plantTabPrograms(body, who)],
-    ["✉️ الطلبات",       () => plantTabRequests(body, who)],
+    ["➕ إضافة عميل",     () => plantTabRequests(body, who)],
   ];
   const btns = defs.map(([label, fn]) => {
     const b = el("button"); b.type = "button"; b.textContent = label;
@@ -4689,8 +4689,25 @@ async function plantTabPrograms(body, who) {
   const { group: gBlock,  input: blockI }  = fieldGroup("القطعة", input("text", "اختياري", "numeric"), false);
   const { group: gStreet, input: streetI } = fieldGroup("الشارع", input("text", "رقم أو اسم"), false);
   rowBS.appendChild(gBlock); rowBS.appendChild(gStreet);
-  const { group: gMix,   input: mixI }   = fieldGroup("نوع الخلطة", select(CONFIG.mixTypes, "اختر النوع"), false);
-  const { group: gLoads, input: loadsI } = fieldGroup("عدد السيارات", input("number", "مثال: 9", "numeric"), false);
+  // Mixes: one or more mix+loads pairs (multi-mix programs are common).
+  const mixLbl = el("label"); mixLbl.textContent = "الخلطات وعدد السيارات";
+  mixLbl.style.cssText = "display:block;margin-bottom:.35rem;";
+  const mixRows = el("div");
+  const mixRowInputs = [];
+  function addMixRow() {
+    const row = el("div", "field-row-2"); row.style.marginBottom = ".5rem";
+    const mixSel = select(CONFIG.mixTypes, "اختر النوع");
+    const loadsIn = input("number", "عدد السيارات", "numeric");
+    row.appendChild(mixSel); row.appendChild(loadsIn);
+    mixRows.appendChild(row);
+    mixRowInputs.push({ mixSel, loadsIn });
+  }
+  addMixRow();
+  const moreMixBtn = el("button", "btn-ghost"); moreMixBtn.type = "button";
+  moreMixBtn.textContent = "+ خلطة أخرى";
+  moreMixBtn.style.cssText = "width:auto;font-size:.78rem;margin-bottom:.8rem;";
+  moreMixBtn.addEventListener("click", addMixRow);
+
   const { group: gPlant, input: plantI } = fieldGroup("المصنع", select(CONFIG.plants, "اختر المصنع"), false);
   const rowT = el("div", "field-row-2");
   const { group: gLoadT, input: loadTI } = fieldGroup("موعد التحميل", input("time", ""), false);
@@ -4699,7 +4716,8 @@ async function plantTabPrograms(body, who) {
   const { group: gNotes, input: notesI } = fieldGroup("ملاحظات", textarea("جهة التنسيق، تفاصيل…"), false);
   [gComp, gProj, gDate, gSite].forEach((g) => form.appendChild(g));
   form.appendChild(rowBS);
-  [gMix, gLoads, gPlant].forEach((g) => form.appendChild(g));
+  form.appendChild(mixLbl); form.appendChild(mixRows); form.appendChild(moreMixBtn);
+  form.appendChild(gPlant);
   form.appendChild(rowT); form.appendChild(gNotes);
   const addErr = el("div", "error-msg"); addErr.style.display = "none"; form.appendChild(addErr);
   const saveBtn = el("button", "btn-primary"); saveBtn.type = "button"; saveBtn.textContent = "حفظ البرنامج";
@@ -4716,10 +4734,13 @@ async function plantTabPrograms(body, who) {
     }
     addErr.style.display = "none"; saveBtn.disabled = true; saveBtn.textContent = "جارٍ الحفظ…";
     try {
+      const mixes = mixRowInputs
+        .filter((m) => m.mixSel.value)
+        .map((m) => ({ mix: m.mixSel.value, loads: m.loadsIn.value ? parseInt(m.loadsIn.value, 10) : 0 }));
       const r = await sbRpc("asphalt_program_submit", {
         p_work_date: dateI.value, p_company: compI.value, p_project: projI.value,
         p_site: siteI.value.trim(), p_block: blockI.value.trim(), p_street: streetI.value.trim(),
-        p_mix: mixI.value || "", p_loads: loadsI.value ? parseInt(loadsI.value, 10) : null,
+        p_mix: "", p_loads: null, p_mixes: mixes,
         p_plant: plantI.value || "", p_load_time: loadTI.value || "", p_pave_time: paveTI.value || "",
         p_notes: notesI.value.trim(), p_by: who,
       });
@@ -4788,7 +4809,13 @@ function plantProgramCard(p, who, refresh) {
 
   const meta = el("div", "prog-meta");
   const item = (icon, label, val) => { if (!val) return; const s = el("span"); s.innerHTML = `${icon} ${label} <b>${val}</b>`; meta.appendChild(s); };
-  item("🚛", "", p.loads ? `${p.loads} سيارة` : "");
+  // Multi-mix programs list the per-mix load split; single-mix shows the total.
+  const mixes = Array.isArray(p.mixes) ? p.mixes : [];
+  if (mixes.length > 1) {
+    item("🚛", "", mixes.map((m) => `${m.loads || "؟"} × ${m.mix}`).join(" · "));
+  } else {
+    item("🚛", "", p.loads ? `${p.loads} سيارة` : "");
+  }
   item("🏭", "", p.plant);
   item("⏱️", "تحميل", p.load_time);
   item("🛣️", "فرش", p.pave_time);
@@ -4814,14 +4841,36 @@ function plantProgramCard(p, who, refresh) {
   return c;
 }
 
-// ── Tab 3: recipient requests → main office ──
-async function plantTabRequests(body, who) {
+// ── Tab 3: add a recipient (request → finance approval) ──
+async function plantTabRequests(body, who, justSent) {
   body.innerHTML = "";
 
+  // After a submit: confirmation + one-tap WhatsApp handoff to finance.
+  if (justSent) {
+    const ok = el("div", "card");
+    const okTitle = el("div"); okTitle.style.cssText = "font-weight:800;color:var(--green);margin-bottom:.5rem;";
+    okTitle.textContent = "✓ تم تسجيل الطلب — بانتظار اعتماد المالية";
+    ok.appendChild(okTitle);
+    const waBtn = el("button", "btn-primary"); waBtn.style.background = "#25D366";
+    waBtn.innerHTML = `إبلاغ ${justSent.financeName} عبر WhatsApp &nbsp;💬`;
+    const msg = encodeURIComponent(
+      `طلب إضافة عميل جديد لاستلام الأسفلت:\n` +
+      `الشركة: ${justSent.company}\nالعميل: ${justSent.client}\n` +
+      (justSent.contract ? `العقد: ${justSent.contract}\n` : "") +
+      `الدفع: ${justSent.payment || "—"}\n` +
+      (justSent.details ? `تفاصيل: ${justSent.details}\n` : "") +
+      `مقدم الطلب: ${who}\n` +
+      `للاعتماد: ${location.href.split("?")[0]}?financeRole=manager`
+    );
+    waBtn.addEventListener("click", () => window.open(`https://wa.me/${justSent.financePhone}?text=${msg}`, "_blank"));
+    ok.appendChild(waBtn);
+    body.appendChild(ok);
+  }
+
   const formCard = el("div", "card");
-  formCard.appendChild(sectionTitle("طلب إضافة عميل جديد"));
+  formCard.appendChild(sectionTitle("إضافة عميل جديد"));
   const explain = el("div", "info-box");
-  explain.textContent = "أضف عميلاً جديداً لاستلام الأسفلت (العميل عادةً مشروع تحت شركة). يُرسل الطلب للمكتب الرئيسي للاعتماد، ويظهر العميل في نموذج الإرسال بعد الموافقة.";
+  explain.textContent = "أضف عميلاً جديداً لاستلام الأسفلت (العميل عادةً مشروع تحت شركة). يُعتمد الطلب من المدير المالي، ويظهر العميل في نموذج الإرسال بعد الموافقة.";
   formCard.appendChild(explain);
 
   const companyNames = Object.keys(CONFIG.companies || {});
@@ -4831,28 +4880,56 @@ async function plantTabRequests(body, who) {
   compI.addEventListener("change", () => { gCompNew.style.display = compI.value === "شركة أخرى / جديدة" ? "" : "none"; });
   const { group: gClient,   input: clientI }   = fieldGroup("اسم العميل / المشروع", input("text", "مثال: مشروع صيانة الجهراء"), true);
   const { group: gContract, input: contractI } = fieldGroup("رقم العقد", input("text", "اختياري"), false);
-  const { group: gDetails,  input: detailsI }  = fieldGroup("تفاصيل", textarea("الموقع، جهة التنسيق، سبب الإضافة…"), false);
-  [gComp, gCompNew, gClient, gContract, gDetails].forEach(g => formCard.appendChild(g));
+
+  // Payment: cash / credit tick
+  let payment = "";
+  const payLbl = el("label"); payLbl.innerHTML = 'طريقة الدفع <span class="req">*</span>';
+  payLbl.style.cssText = "display:block;margin-bottom:.35rem;";
+  const payRow = el("div", "history-tabs"); payRow.style.marginBottom = "1rem";
+  const mkPay = (label) => {
+    const b = el("button", "history-tab"); b.type = "button"; b.textContent = label;
+    b.addEventListener("click", () => {
+      payment = label;
+      [...payRow.children].forEach((x) => x.classList.toggle("active", x === b));
+    });
+    payRow.appendChild(b); return b;
+  };
+  mkPay("نقدي"); mkPay("آجل");
+
+  const { group: gDetails, input: detailsI } = fieldGroup("تفاصيل", textarea("الموقع، جهة التنسيق، سبب الإضافة…"), false);
+  [gComp, gCompNew, gClient, gContract].forEach(g => formCard.appendChild(g));
+  formCard.appendChild(payLbl); formCard.appendChild(payRow);
+  formCard.appendChild(gDetails);
   const reqErr = el("div", "error-msg"); reqErr.style.display = "none"; formCard.appendChild(reqErr);
-  const sendBtn = el("button", "btn-primary"); sendBtn.type = "button"; sendBtn.textContent = "إرسال الطلب للمكتب الرئيسي 📨";
+  const sendBtn = el("button", "btn-primary"); sendBtn.type = "button"; sendBtn.textContent = "إرسال الطلب للاعتماد 📨";
   formCard.appendChild(sendBtn);
   body.appendChild(formCard);
 
   sendBtn.addEventListener("click", async () => {
     const company = compI.value === "شركة أخرى / جديدة" ? compNewI.value.trim() : compI.value;
-    if (!company || !clientI.value.trim()) {
-      reqErr.textContent = "الشركة واسم العميل مطلوبان"; reqErr.style.display = "block"; return;
+    if (!company || !clientI.value.trim() || !payment) {
+      reqErr.textContent = "الشركة واسم العميل وطريقة الدفع مطلوبة"; reqErr.style.display = "block"; return;
     }
     reqErr.style.display = "none"; sendBtn.disabled = true; sendBtn.textContent = "جارٍ الإرسال…";
     try {
       const r = await dbPlantRequestSubmit({
-        p_company: company, p_client: clientI.value.trim(),
-        p_contract: contractI.value.trim(), p_details: detailsI.value.trim(), p_by: who,
+        p_company: company, p_client: clientI.value.trim(), p_contract: contractI.value.trim(),
+        p_payment: payment, p_details: detailsI.value.trim(), p_by: who,
       });
       if (!r.success) throw new Error(r.error || "failed");
-      plantTabRequests(body, who);
+      // Finance contact for the WhatsApp handoff (best-effort fetch).
+      let fm = { name: "المدير المالي", phone: "96566445179" };
+      try {
+        const fms = await sbGet("finance_managers?active=eq.true&order=id&limit=1");
+        if (fms.length) fm = { name: fms[0].name, phone: fms[0].phone || fm.phone };
+      } catch (e) {}
+      plantTabRequests(body, who, {
+        company, client: clientI.value.trim(), contract: contractI.value.trim(),
+        payment, details: detailsI.value.trim(),
+        financeName: fm.name, financePhone: fm.phone,
+      });
     } catch {
-      sendBtn.disabled = false; sendBtn.textContent = "إرسال الطلب للمكتب الرئيسي 📨";
+      sendBtn.disabled = false; sendBtn.textContent = "إرسال الطلب للاعتماد 📨";
       reqErr.textContent = "حدث خطأ — حاول مجدداً"; reqErr.style.display = "block";
     }
   });
@@ -4874,7 +4951,7 @@ async function plantTabRequests(body, who) {
     top.appendChild(client); top.appendChild(plantStatusChip(r.status));
     c.appendChild(top);
     const l1 = el("div", "req-line");
-    l1.textContent = r.company + (r.contract ? ` · عقد ${r.contract}` : "");
+    l1.textContent = r.company + (r.contract ? ` · عقد ${r.contract}` : "") + (r.payment ? ` · ${r.payment}` : "");
     c.appendChild(l1);
     const l2 = el("div", "req-line");
     l2.textContent = `طلبه ${r.requested_by || "—"} · ${fmtKW(r.created_at)}`;
@@ -4886,6 +4963,112 @@ async function plantTabRequests(body, who) {
     }
     listWrap.appendChild(c);
   });
+}
+
+// ════════════════════════════════════════════════════════
+// ── FINANCE PORTAL (?financeRole=manager) ──
+// Brief approval desk for recipient requests: the finance manager
+// (finance_managers table, 0006) approves or rejects what the plant
+// manager submits. Decisions via the recipient_request_decide RPC.
+// ════════════════════════════════════════════════════════
+function getFinanceSession()  { try { return JSON.parse(sessionStorage.getItem("finance_session") || "null"); } catch { return null; } }
+function setFinanceSession(n) { sessionStorage.setItem("finance_session", JSON.stringify({ name: n, ts: Date.now() })); }
+
+async function renderFinancePINScreen(onSuccess) {
+  const main = renderShell("بوابة المالية");
+  const loading = el("div", "loading-screen");
+  loading.innerHTML = `<div class="spinner"></div><p>جارٍ التحميل…</p>`;
+  main.appendChild(loading);
+  let managers = [];
+  try { managers = await sbGet("finance_managers?active=eq.true&order=id"); } catch (e) {}
+  if (!managers.length) {
+    main.innerHTML = "";
+    const e2 = el("div", "error-msg"); e2.style.display = "block";
+    e2.textContent = "تعذّر تحميل القائمة — تحقق من الاتصال وحدّث الصفحة";
+    main.appendChild(e2); return;
+  }
+  millingPinScreen_({
+    title: "تسجيل الدخول — المدير المالي",
+    names: managers.map((m) => m.name),
+    validate: (name, pin) => { const m = managers.find((x) => x.name === name); return !!m && m.pin === pin; },
+    onSuccess: (name) => { setFinanceSession(name); onSuccess(name); },
+  });
+}
+
+async function renderFinanceHome(who) {
+  setFinanceSession(who);
+  const main = renderShell("اعتماد العملاء — المالية"); main.innerHTML = "";
+
+  const head = el("div", "card portal-head");
+  const hi = el("div");
+  hi.innerHTML = `<div class="who">${who}</div><div class="sub">طلبات إضافة عملاء الأسفلت — الاعتماد المالي</div>`;
+  const out = el("button", "btn-secondary"); out.type = "button"; out.textContent = "خروج"; out.style.width = "auto";
+  out.addEventListener("click", () => { sessionStorage.removeItem("finance_session"); location.href = location.href.split("?")[0] + "?financeRole=manager"; });
+  head.appendChild(hi); head.appendChild(out); main.appendChild(head);
+
+  const listWrap = el("div"); main.appendChild(listWrap);
+  const info = el("div", "info-box"); info.textContent = "جارٍ التحميل…"; listWrap.appendChild(info);
+  let rows = [];
+  try { rows = await dbPlantRequests(); } catch (e) {}
+  listWrap.innerHTML = "";
+
+  const pending = rows.filter((r) => r.status === "قيد المراجعة");
+  const decided = rows.filter((r) => r.status !== "قيد المراجعة");
+
+  const reqCard = (r, withActions) => {
+    const c = el("div", "card req-card");
+    const top = el("div", "prog-top");
+    const client = el("div", "req-client"); client.textContent = r.client;
+    top.appendChild(client); top.appendChild(plantStatusChip(r.status));
+    c.appendChild(top);
+    const l1 = el("div", "req-line");
+    l1.textContent = r.company + (r.contract ? ` · عقد ${r.contract}` : "") + (r.payment ? ` · ${r.payment}` : "");
+    c.appendChild(l1);
+    const l2 = el("div", "req-line");
+    l2.textContent = `طلبه ${r.requested_by || "—"} · ${fmtKW(r.created_at)}`;
+    c.appendChild(l2);
+    if (r.details) { const d = el("div", "field-hint"); d.style.marginTop = ".4rem"; d.textContent = r.details; c.appendChild(d); }
+    if (r.office_note) { const n = el("div", "req-line"); n.innerHTML = `<strong>الرد:</strong> ${r.office_note}`; c.appendChild(n); }
+    if (withActions) {
+      const noteI = textarea("ملاحظة (اختياري — مطلوبة عند الرفض)");
+      noteI.style.cssText = "margin-top:.6rem;min-height:44px;";
+      c.appendChild(noteI);
+      const acts = el("div", "prog-actions");
+      const okB = el("button", "btn-primary"); okB.type = "button"; okB.textContent = "موافقة ✓";
+      const noB = el("button", "btn-secondary"); noB.type = "button"; noB.textContent = "رفض ✕";
+      noB.style.color = "var(--red)";
+      const decide = async (decision) => {
+        if (decision === "مرفوض" && !noteI.value.trim()) {
+          noteI.style.borderColor = "var(--red)"; noteI.placeholder = "اذكر سبب الرفض"; return;
+        }
+        okB.disabled = noB.disabled = true;
+        try {
+          await sbRpc("recipient_request_decide", {
+            p_id: r.id, p_decision: decision, p_by: who, p_note: noteI.value.trim(),
+          });
+        } catch (e) {}
+        renderFinanceHome(who);
+      };
+      okB.addEventListener("click", () => decide("موافَق عليه"));
+      noB.addEventListener("click", () => decide("مرفوض"));
+      acts.appendChild(okB); acts.appendChild(noB); c.appendChild(acts);
+    }
+    return c;
+  };
+
+  const hPend = el("div", "prog-day-head today");
+  hPend.textContent = `بانتظار قرارك (${pending.length})`;
+  listWrap.appendChild(hPend);
+  if (!pending.length) {
+    const e2 = el("div", "info-box"); e2.textContent = "لا توجد طلبات بانتظار الاعتماد.";
+    listWrap.appendChild(e2);
+  } else pending.forEach((r) => listWrap.appendChild(reqCard(r, true)));
+
+  if (decided.length) {
+    const hLog = el("div", "prog-day-head"); hLog.textContent = "قرارات سابقة";
+    listWrap.appendChild(hLog);
+    decided.forEach((r) => listWrap.appendChild(reqCard(r, false)));
+  }
 }
 
 // ── Router — runs after the cached reference overlay ──
@@ -4921,6 +5104,10 @@ if (millingReport) {
   const plantSession = getPlantSession();
   if (plantSession) renderPlantHome(plantSession.name);
   else renderPlantPINScreen(name => renderPlantHome(name));
+} else if (_mparams.get("financeRole") === "manager") {
+  const finSession = getFinanceSession();
+  if (finSession) renderFinanceHome(finSession.name);
+  else renderFinancePINScreen(name => renderFinanceHome(name));
 } else if (matRole === "receiver") {
   const matSession = getMatSession();
   if (matSession) renderMaterialReceiverHome(matSession.name);

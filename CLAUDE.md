@@ -36,7 +36,8 @@ There is no test suite, linter, or package manager. For local testing serve stat
 - `?millingRole=engineer|pm|marco` → milling portals
 - `?millingReport=PROG_ID` → public milling report (no PIN)
 - `?matRole=receiver` → materials-receipt portal (site engineer records materials received)
-- `?plantRole=manager` → plant-manager portal (interim PIN from the `plant_managers` table): embedded plant dashboard + planned asphalt programs (day-grouped `asphalt_programs`) + recipient requests (`recipient_requests` → main-office approval)
+- `?plantRole=manager` → plant-manager portal (interim PIN from the `plant_managers` table): embedded plant dashboard + report generator, planned asphalt programs (day-grouped `asphalt_programs`; manager can add for non-Copri clients only, multi-mix via `mixes` jsonb), add-recipient requests (`recipient_requests`, cash/credit) with a WhatsApp handoff to finance
+- `?financeRole=manager` → finance approval desk (interim PIN from `finance_managers`): approve/reject recipient requests via `recipient_request_decide`
 - `?printTest=1` → printer-calibration screen (no PIN, no DB write)
 
 **Milling and Materials are bolted-on but separable modules — same pattern, follow it for any new module.** Each is grouped under its own `// ── <NAME> MODULE` block with a function prefix (`renderMilling*`/`milling*`/`dbMilling*`, `renderMaterial*`/`mat*`), with its reads going through a translated query helper (`millingGet`/`matGet` — same param/return shapes the old endpoints had) and its writes through `db*` functions. Both reuse shared asphalt helpers (e.g. `millingAllProjects()`). Keep the separation — only ADD module code, don't entangle it with the asphalt dispatch/receipt flow. **Milling** = engineer→PM→Marco approval workflow. **Materials** = simple one-and-done record: receiver logs material (category→detailed item, qty, rate, supplier, subcontractor) + a required paper-receipt photo.

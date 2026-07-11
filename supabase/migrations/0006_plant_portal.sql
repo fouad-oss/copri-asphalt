@@ -22,7 +22,11 @@ create table asphalt_programs (
   id         bigint generated always as identity primary key,
   created_at timestamptz not null default now(),
   work_date  date not null,
-  site       text not null default '',   -- موقع العمل, e.g. مشرف ش57
+  company    text not null default '',   -- receiving company (كوبري or external)
+  project    text not null default '',   -- receiving project — matched by the dispatch form's quick-pick
+  site       text not null default '',   -- bare site name (مشرف / سلوى…) so it matches the site dropdown
+  block      text not null default '',   -- قطعة (may be empty)
+  street     text not null default '',   -- شارع / street name
   mix        text not null default '',   -- e.g. Type I (60/70)
   loads      int,                        -- عدد السيارات
   plant      text not null default '',   -- AP01 / AP02
@@ -35,7 +39,8 @@ create table asphalt_programs (
 create index asphalt_programs_date on asphalt_programs (work_date desc);
 
 create or replace function asphalt_program_submit(
-  p_work_date date, p_site text, p_mix text, p_loads int, p_plant text,
+  p_work_date date, p_company text, p_project text, p_site text,
+  p_block text, p_street text, p_mix text, p_loads int, p_plant text,
   p_load_time text, p_pave_time text, p_notes text, p_by text
 ) returns json
 language plpgsql security definer set search_path = public as $$
@@ -44,9 +49,12 @@ begin
   if p_work_date is null or coalesce(p_site, '') = '' then
     return json_build_object('success', false, 'error', 'work_date and site are required');
   end if;
-  insert into asphalt_programs (work_date, site, mix, loads, plant, load_time, pave_time, notes, created_by)
-  values (p_work_date, p_site, coalesce(p_mix, ''), p_loads, coalesce(p_plant, ''),
-          coalesce(p_load_time, ''), coalesce(p_pave_time, ''), coalesce(p_notes, ''), coalesce(p_by, ''))
+  insert into asphalt_programs (work_date, company, project, site, block, street,
+                                mix, loads, plant, load_time, pave_time, notes, created_by)
+  values (p_work_date, coalesce(p_company, ''), coalesce(p_project, ''), p_site,
+          coalesce(p_block, ''), coalesce(p_street, ''), coalesce(p_mix, ''), p_loads,
+          coalesce(p_plant, ''), coalesce(p_load_time, ''), coalesce(p_pave_time, ''),
+          coalesce(p_notes, ''), coalesce(p_by, ''))
   returning id into v_id;
   return json_build_object('success', true, 'id', v_id);
 end $$;
@@ -114,12 +122,12 @@ end $$;
 
 -- ── Seed: real programs from Eng. Tawfik's WhatsApp (2026-07-10 evening),
 --    for Saturday 2026-07-11 — Hawalli contract ق ص/ط ش/9 ────────────────
-insert into asphalt_programs (work_date, site, mix, loads, plant, load_time, pave_time, notes, created_by) values
-('2026-07-11', 'مشرف ش57', 'Type I (60/70)', 9, 'AP01', '19:00', '21:00',
+insert into asphalt_programs (work_date, company, project, site, block, street, mix, loads, plant, load_time, pave_time, notes, created_by) values
+('2026-07-11', 'كوبري', 'كوبري — صيانة حولي', 'مشرف', '', '57', 'Type I (60/70)', 9, 'AP01', '19:00', '21:00',
  'المهندس المشرف: حسين مراد · مهندس المتعهد: مجدي الحسيني · للتنسيق: م. احمد الدريويش 98052257', 'م. توفيق'),
-('2026-07-11', 'سلوى ق9 ش1', 'Type II (60/70)', 6, 'AP01', '20:00', '22:00',
+('2026-07-11', 'كوبري', 'كوبري — صيانة حولي', 'سلوى', '9', '1', 'Type II (60/70)', 6, 'AP01', '20:00', '22:00',
  'المهندس المشرف: حسين مراد · مهندس المتعهد: مجدي الحسيني · للتنسيق: م. محمد الزيد 99917627', 'م. توفيق'),
-('2026-07-11', 'بيان ق10 ش1', 'Type II + Type I (60/70)', 8, 'AP01', '15:00', '20:00',
+('2026-07-11', 'كوبري', 'كوبري — صيانة حولي', 'بيان', '10', '1', 'Type II + Type I (60/70)', 8, 'AP01', '15:00', '20:00',
  '٦ سيارات Type II + سيارتان Type I · المهندس المشرف: حسين مراد · مهندس المتعهد: مجدي الحسيني · للتنسيق: م. فالح حمود 99012990', 'م. توفيق');
 
 -- ── RLS: anon read; all writes via the definer RPCs above ────────────

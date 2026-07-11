@@ -1921,6 +1921,12 @@ function renderDispatch(ctx) {
   row3.appendChild(g5); row3.appendChild(g6);
   card.appendChild(row3);
 
+  // Planned-program quick-pick (0006): today's/tomorrow's programs for this
+  // project appear as one-tap chips that fill site + location (+ mix), and
+  // their sites join the dropdown options. Filled async; hidden when none.
+  const progPick = el("div"); progPick.style.display = "none";
+  card.appendChild(progPick);
+
   // Site: required dropdown for Copri; optional free text (no suggestions) otherwise
   let siteInput;
   if (isCopri) {
@@ -1933,6 +1939,14 @@ function renderDispatch(ctx) {
       "الموقع المستلم", input("text", "اختياري"), false
     );
     siteInput = sIn; card.appendChild(g7);
+  }
+  // A program site missing from the reference list still becomes pickable.
+  function ensureSiteOption(name) {
+    if (!name || siteInput.tagName !== "SELECT") return;
+    if (![...siteInput.options].some((o) => o.value === name)) {
+      const o = document.createElement("option"); o.value = o.textContent = name;
+      siteInput.appendChild(o);
+    }
   }
 
   // ── Location section ──────────────────────────────────────────────
@@ -2053,6 +2067,45 @@ function renderDispatch(ctx) {
     locContainer.addEventListener("input",  refreshWorkOrder);
   }
   refreshWorkOrder();
+
+  // ── Planned-program quick-pick: fetch + render chips (best-effort) ──
+  function applyProgram(p) {
+    ensureSiteOption(p.site);
+    if (p.site) { siteInput.value = p.site; siteInput.dispatchEvent(new Event("change", { bubbles: true })); }
+    // blocks-mode inputs sit in locContainer as [block, street]
+    const ins = locContainer ? locContainer.querySelectorAll("input") : [];
+    if (ins.length >= 2) {
+      if (p.block)  ins[0].value = p.block;
+      if (p.street) ins[1].value = p.street;
+      if (p.block || p.street) ins[1].dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    if (p.mix && [...mixInput.options].some((o) => o.value === p.mix)) mixInput.value = p.mix;
+  }
+  (async () => {
+    try {
+      const from = plantKwISO(-1), to = plantKwISO(1);   // last night's shift .. tomorrow
+      const progs = (await sbGet(
+        `asphalt_programs?work_date=gte.${from}&work_date=lte.${to}&status=eq.${encodeURIComponent("مخطط")}&order=work_date.asc&limit=50`
+      )).filter((p) => p.project === projectName);
+      if (!progs.length) return;
+      progs.forEach((p) => ensureSiteOption(p.site));
+      const box = el("div", "info-box");
+      const lbl = el("div"); lbl.style.cssText = "font-weight:700;margin-bottom:.45rem;";
+      lbl.textContent = "📋 برامج الأعمال المخططة — اضغط لتعبئة الموقع";
+      box.appendChild(lbl);
+      const rowC = el("div"); rowC.style.cssText = "display:flex;flex-wrap:wrap;gap:.4rem;";
+      progs.forEach((p) => {
+        const chip = el("button", "history-tab"); chip.type = "button";
+        chip.style.cssText = "width:auto;font-size:.75rem;";
+        chip.textContent = `${p.work_date === plantKwISO(0) ? "اليوم" : p.work_date === plantKwISO(1) ? "غداً" : p.work_date} · ${p.site}${p.block ? " ق" + p.block : ""}${p.street ? " ش" + p.street : ""}${p.mix ? " · " + p.mix : ""}`;
+        chip.addEventListener("click", () => applyProgram(p));
+        rowC.appendChild(chip);
+      });
+      box.appendChild(rowC);
+      progPick.appendChild(box);
+      progPick.style.display = "";
+    } catch (e) { /* quick-pick is a convenience — the form works without it */ }
+  })();
 
   // Engineer to notify — Copri only (other companies end at the plant)
   let notifyInput = null;
@@ -4601,13 +4654,84 @@ async function plantTabDash(body) {
   }
 }
 
-// ── Tab 2: planned asphalt work days (read-only for the manager) ──
-// No in-portal entry by design (user decision 2026-07-11): programs arrive
-// from the site engineers and are loaded into asphalt_programs upstream
-// (via asphalt_program_submit / SQL); engineers get their own entry path
-// in the auth phase. The manager views, marks executed, or cancels.
+// ── Tab 2: planned asphalt work days ──
+// Copri programs arrive from the site engineers and are loaded upstream
+// (asphalt_program_submit via SQL/API); engineers get their own entry path
+// in the auth phase. The manager can ADD programs for NON-Copri clients
+// only (user decision 2026-07-11), and mark any program executed/cancelled.
 async function plantTabPrograms(body, who) {
   body.innerHTML = "";
+
+  // Add form — external (non-Copri) clients only.
+  const addWrap = el("div", "card");
+  const addBtn = el("button", "btn-secondary"); addBtn.type = "button";
+  addBtn.textContent = "+ برنامج لعميل خارجي";
+  addWrap.appendChild(addBtn);
+  const form = el("div"); form.style.display = "none"; addWrap.appendChild(form);
+
+  const fi = el("div", "info-box"); fi.style.marginTop = ".6rem";
+  fi.textContent = "برامج مشاريع كوبري تصل من مهندسي المواقع — الإضافة هنا لعملاء المصنع الخارجيين فقط.";
+  form.appendChild(fi);
+  const nonCopri = Object.entries(CONFIG.companies || {}).filter(([, c]) => !c.isCopri);
+  const { group: gComp, input: compI } = fieldGroup("الشركة", select(nonCopri.map(([n]) => n), "اختر الشركة"), true);
+  const { group: gProj, input: projI } = fieldGroup("المشروع / العميل", select([], "اختر المشروع"), true);
+  const rebuildProjects = () => {
+    const comp = (CONFIG.companies || {})[compI.value];
+    const names = comp ? Object.keys(comp.projects || {}) : [];
+    projI.innerHTML = `<option value="" disabled selected>اختر المشروع</option>` +
+      names.map((n) => `<option>${n}</option>`).join("");
+  };
+  compI.addEventListener("change", rebuildProjects);
+  const { group: gDate,   input: dateI }   = fieldGroup("تاريخ العمل", input("date", ""), true);
+  dateI.value = plantKwISO(1);
+  const { group: gSite,   input: siteI }   = fieldGroup("الموقع", input("text", "مثال: مشرف"), true);
+  const rowBS = el("div", "field-row-2");
+  const { group: gBlock,  input: blockI }  = fieldGroup("القطعة", input("text", "اختياري", "numeric"), false);
+  const { group: gStreet, input: streetI } = fieldGroup("الشارع", input("text", "رقم أو اسم"), false);
+  rowBS.appendChild(gBlock); rowBS.appendChild(gStreet);
+  const { group: gMix,   input: mixI }   = fieldGroup("نوع الخلطة", select(CONFIG.mixTypes, "اختر النوع"), false);
+  const { group: gLoads, input: loadsI } = fieldGroup("عدد السيارات", input("number", "مثال: 9", "numeric"), false);
+  const { group: gPlant, input: plantI } = fieldGroup("المصنع", select(CONFIG.plants, "اختر المصنع"), false);
+  const rowT = el("div", "field-row-2");
+  const { group: gLoadT, input: loadTI } = fieldGroup("موعد التحميل", input("time", ""), false);
+  const { group: gPaveT, input: paveTI } = fieldGroup("موعد الفرش", input("time", ""), false);
+  rowT.appendChild(gLoadT); rowT.appendChild(gPaveT);
+  const { group: gNotes, input: notesI } = fieldGroup("ملاحظات", textarea("جهة التنسيق، تفاصيل…"), false);
+  [gComp, gProj, gDate, gSite].forEach((g) => form.appendChild(g));
+  form.appendChild(rowBS);
+  [gMix, gLoads, gPlant].forEach((g) => form.appendChild(g));
+  form.appendChild(rowT); form.appendChild(gNotes);
+  const addErr = el("div", "error-msg"); addErr.style.display = "none"; form.appendChild(addErr);
+  const saveBtn = el("button", "btn-primary"); saveBtn.type = "button"; saveBtn.textContent = "حفظ البرنامج";
+  form.appendChild(saveBtn);
+
+  addBtn.addEventListener("click", () => {
+    const open = form.style.display !== "none";
+    form.style.display = open ? "none" : "block";
+    addBtn.textContent = open ? "+ برنامج لعميل خارجي" : "إخفاء النموذج ▴";
+  });
+  saveBtn.addEventListener("click", async () => {
+    if (!compI.value || !projI.value || !dateI.value || !siteI.value.trim()) {
+      addErr.textContent = "الشركة والمشروع والتاريخ والموقع مطلوبة"; addErr.style.display = "block"; return;
+    }
+    addErr.style.display = "none"; saveBtn.disabled = true; saveBtn.textContent = "جارٍ الحفظ…";
+    try {
+      const r = await sbRpc("asphalt_program_submit", {
+        p_work_date: dateI.value, p_company: compI.value, p_project: projI.value,
+        p_site: siteI.value.trim(), p_block: blockI.value.trim(), p_street: streetI.value.trim(),
+        p_mix: mixI.value || "", p_loads: loadsI.value ? parseInt(loadsI.value, 10) : null,
+        p_plant: plantI.value || "", p_load_time: loadTI.value || "", p_pave_time: paveTI.value || "",
+        p_notes: notesI.value.trim(), p_by: who,
+      });
+      if (!r.success) throw new Error(r.error || "failed");
+      plantTabPrograms(body, who);
+    } catch {
+      saveBtn.disabled = false; saveBtn.textContent = "حفظ البرنامج";
+      addErr.textContent = "حدث خطأ — حاول مجدداً"; addErr.style.display = "block";
+    }
+  });
+  body.appendChild(addWrap);
+
   const listWrap = el("div"); body.appendChild(listWrap);
   const info = el("div", "info-box"); info.textContent = "جارٍ التحميل…"; listWrap.appendChild(info);
   let rows = [];
@@ -4651,7 +4775,16 @@ function plantProgramCard(p, who, refresh) {
   top.appendChild(mix); top.appendChild(plantStatusChip(p.status));
   c.appendChild(top);
 
-  const site = el("div", "prog-site"); site.textContent = p.site; c.appendChild(site);
+  const site = el("div", "prog-site");
+  site.textContent = p.site + (p.block ? ` ق${p.block}` : "") + (p.street ? ` ش${p.street}` : "");
+  c.appendChild(site);
+
+  // External-client programs carry who the asphalt is for.
+  if (p.company && p.company !== "كوبري") {
+    const cl = el("div", "req-line");
+    cl.textContent = `لـ ${p.company}${p.project ? " — " + p.project : ""}`;
+    c.appendChild(cl);
+  }
 
   const meta = el("div", "prog-meta");
   const item = (icon, label, val) => { if (!val) return; const s = el("span"); s.innerHTML = `${icon} ${label} <b>${val}</b>`; meta.appendChild(s); };

@@ -4127,6 +4127,9 @@ function _dashCutoff() {
   const days = { today: 1, week: 7, month: 30 }[_dashRange];
   return days ? _dashDayStr(new Date(Date.now() - (days - 1) * 86400000)) : null;
 }
+// Single-day views (today / picked day) — the daily-quantities trend is
+// meaningless with one point, so boards skip it.
+const _dashSingleDay = () => _dashRange === "today" || _dashRange === "day";
 function _dashWindow(rows) {
   if (_dashRange === "day") {
     const d = _dashDay || (_dashDay = _dashDayStr(new Date()));
@@ -4265,8 +4268,10 @@ function _dashPlant(main, data) {
     ["متوسط الحمولة", rows.length ? (tons / rows.length).toFixed(1) : "0", "طن / درب"],
   ]);
   _dashCard(main, "الكميات حسب الشركة (طن)", _dashBars(_aggBy(rows, (r) => r.c, (r) => r.t).slice(0, 8).map((x) => ({ name: x.name, value: x.value })), _tonsFmt));
-  const tw = el("div"); tw.appendChild(_dashTrend(_aggDays(rows, (r) => r.t), "tons", _tonsFmt));
-  _dashCard(main, "الكميات اليومية (طن)", tw);
+  if (!_dashSingleDay()) {
+    const tw = el("div"); tw.appendChild(_dashTrend(_aggDays(rows, (r) => r.t), "tons", _tonsFmt));
+    _dashCard(main, "الكميات اليومية (طن)", tw);
+  }
   _dashCard(main, "الكميات حسب الموقع (طن)", _dashBars(_aggBy(rows, (r) => r.s, (r) => r.t).slice(0, 10), _tonsFmt));
   _dashCard(main, "الكميات حسب المصنع (طن)", _dashBars(_aggBy(rows, (r) => r.pl, (r) => r.t), _tonsFmt));
   _dashCard(main, "النقل — كوبري / مقاول خارجي", _dashBars(_aggBy(rows, (r) => r.n, (r) => r.t), _tonsFmt));
@@ -4291,8 +4296,10 @@ function _dashProject(main, data, projName) {
     ["نسبة الاستلام", accPct + "٪", acc + " مستلمة من " + rows.length],
   ]);
   _dashCard(main, "حالة الاستلام", _dashStatusBars(rows));
-  const tw = el("div"); tw.appendChild(_dashTrend(_aggDays(rows, (r) => r.t), "tons", _tonsFmt));
-  _dashCard(main, "الكميات اليومية (طن)", tw);
+  if (!_dashSingleDay()) {
+    const tw = el("div"); tw.appendChild(_dashTrend(_aggDays(rows, (r) => r.t), "tons", _tonsFmt));
+    _dashCard(main, "الكميات اليومية (طن)", tw);
+  }
   _dashCard(main, "الكميات حسب الموقع (طن)", _dashBars(_aggBy(rows, (r) => r.s, (r) => r.t).slice(0, 10), _tonsFmt));
   _dashCard(main, "الكميات حسب أمر العمل (طن)", _dashBars(
     _aggBy(rows.filter((r) => r.w && r.w !== "*"), (r) => "أمر " + r.w, (r) => r.t).slice(0, 8), _tonsFmt));
@@ -4336,8 +4343,10 @@ function _dashExec(main, data) {
     ["نسبة الاستلام — كوبري", accPct + "٪", acc + " مستلمة من " + copriRows.length],
   ]);
   _dashCard(main, "الكميات حسب المشروع (طن)", _dashBars(_aggBy(rows, (r) => r.p, (r) => r.t).slice(0, 8), _tonsFmt));
-  const tw = el("div"); tw.appendChild(_dashTrend(_aggDays(rows, (r) => r.t), "tons", _tonsFmt));
-  _dashCard(main, "الكميات اليومية (طن)", tw);
+  if (!_dashSingleDay()) {
+    const tw = el("div"); tw.appendChild(_dashTrend(_aggDays(rows, (r) => r.t), "tons", _tonsFmt));
+    _dashCard(main, "الكميات اليومية (طن)", tw);
+  }
   _dashCard(main, "حالة استلام الأسفلت — مشاريع كوبري", _dashStatusBars(copriRows));
   // Quality flags (confirmed receipts only).
   const wShort = copriRows.filter((r) => r.dw != null && r.dw <= -CONFIG.weightShortage).length;

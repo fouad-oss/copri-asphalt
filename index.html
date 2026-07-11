@@ -4566,6 +4566,14 @@ function plantDayLabel(iso) {
   const tag = iso === plantKwISO(0) ? " · اليوم" : iso === plantKwISO(1) ? " · غداً" : "";
   return `${wd} ${dt}${tag}`;
 }
+// Work-order items line for request cards (mix: qty × rate per row).
+function reqItemsLines(r) {
+  const items = Array.isArray(r.items) ? r.items : [];
+  if (!items.length) return null;
+  const d = el("div", "req-line");
+  d.innerHTML = items.map((it) => `${it.mix}: <b>${it.qty} طن × ${it.rate} د.ك</b>`).join(" · ");
+  return d;
+}
 function plantStatusChip(status) {
   const map = { "مخطط": ["rgba(0,166,81,.12)", "var(--green)"], "منفذ": ["var(--surface-2)", "var(--text-2)"],
                 "ملغي": ["#fdecea", "var(--red)"], "قيد المراجعة": ["rgba(230,81,0,.12)", "var(--amber)"],
@@ -4614,7 +4622,7 @@ function renderPlantHome(who) {
   const defs = [
     ["📊 لوحة المصنع",   () => plantTabDash(body)],
     ["🗓️ برامج الأسفلت", () => plantTabPrograms(body, who)],
-    ["➕ إضافة عميل",     () => plantTabRequests(body, who)],
+    ["➕ طلب أمر عمل",    () => plantTabRequests(body, who)],
   ];
   const btns = defs.map(([label, fn]) => {
     const b = el("button"); b.type = "button"; b.textContent = label;
@@ -4854,10 +4862,11 @@ async function plantTabRequests(body, who, justSent) {
     const waBtn = el("button", "btn-primary"); waBtn.style.background = "#25D366";
     waBtn.innerHTML = `إبلاغ ${justSent.financeName} عبر WhatsApp &nbsp;💬`;
     const msg = encodeURIComponent(
-      `طلب إضافة عميل جديد لاستلام الأسفلت:\n` +
+      `طلب إضافة أمر عمل:\n` +
       `الشركة: ${justSent.company}\nالعميل: ${justSent.client}\n` +
       (justSent.contract ? `العقد: ${justSent.contract}\n` : "") +
       `الدفع: ${justSent.payment || "—"}\n` +
+      (justSent.items || []).map((it) => `- ${it.mix}: ${it.qty} طن × ${it.rate} د.ك`).join("\n") + "\n" +
       (justSent.details ? `تفاصيل: ${justSent.details}\n` : "") +
       `مقدم الطلب: ${who}\n` +
       `للاعتماد: ${location.href.split("?")[0]}?financeRole=manager`
@@ -4868,9 +4877,9 @@ async function plantTabRequests(body, who, justSent) {
   }
 
   const formCard = el("div", "card");
-  formCard.appendChild(sectionTitle("إضافة عميل جديد"));
+  formCard.appendChild(sectionTitle("طلب إضافة أمر عمل"));
   const explain = el("div", "info-box");
-  explain.textContent = "أضف عميلاً جديداً لاستلام الأسفلت (العميل عادةً مشروع تحت شركة). يُعتمد الطلب من المدير المالي، ويظهر العميل في نموذج الإرسال بعد الموافقة.";
+  explain.textContent = "طلب أمر عمل جديد لاستلام الأسفلت — حدّد العميل والكميات وسعر الوحدة لكل خلطة. يُعتمد الطلب من المدير المالي، ويظهر العميل في نموذج الإرسال بعد الموافقة.";
   formCard.appendChild(explain);
 
   const companyNames = Object.keys(CONFIG.companies || {});
@@ -4896,9 +4905,36 @@ async function plantTabRequests(body, who, justSent) {
   };
   mkPay("نقدي"); mkPay("آجل");
 
+  // Work-order items: one mandatory row per mix type — quantity (tons)
+  // and unit rate (KD/ton). Multi-mix orders add rows.
+  const itemsLbl = el("label");
+  itemsLbl.innerHTML = 'الخلطات — الكمية وسعر الوحدة <span class="req">*</span>';
+  itemsLbl.style.cssText = "display:block;margin-bottom:.35rem;";
+  const itemsHead = el("div");
+  itemsHead.style.cssText = "display:flex;gap:.5rem;font-size:.7rem;color:var(--text-3);margin-bottom:.25rem;";
+  itemsHead.innerHTML = `<span style="flex:1.4">نوع الخلطة</span><span style="flex:1">الكمية (طن)</span><span style="flex:1">سعر الطن (د.ك)</span>`;
+  const itemRowsWrap = el("div");
+  const itemRows = [];
+  function addItemRow() {
+    const row = el("div"); row.style.cssText = "display:flex;gap:.5rem;margin-bottom:.5rem;";
+    const mixSel = select(CONFIG.mixTypes, "اختر النوع"); mixSel.style.flex = "1.4";
+    const qtyIn  = input("number", "الكمية", "decimal"); qtyIn.style.flex = "1";
+    const rateIn = input("number", "السعر", "decimal");  rateIn.style.flex = "1";
+    row.appendChild(mixSel); row.appendChild(qtyIn); row.appendChild(rateIn);
+    itemRowsWrap.appendChild(row);
+    itemRows.push({ mixSel, qtyIn, rateIn });
+  }
+  addItemRow();
+  const moreItemBtn = el("button", "btn-ghost"); moreItemBtn.type = "button";
+  moreItemBtn.textContent = "+ خلطة أخرى";
+  moreItemBtn.style.cssText = "width:auto;font-size:.78rem;margin-bottom:.8rem;";
+  moreItemBtn.addEventListener("click", addItemRow);
+
   const { group: gDetails, input: detailsI } = fieldGroup("تفاصيل", textarea("الموقع، جهة التنسيق، سبب الإضافة…"), false);
   [gComp, gCompNew, gClient, gContract].forEach(g => formCard.appendChild(g));
   formCard.appendChild(payLbl); formCard.appendChild(payRow);
+  formCard.appendChild(itemsLbl); formCard.appendChild(itemsHead);
+  formCard.appendChild(itemRowsWrap); formCard.appendChild(moreItemBtn);
   formCard.appendChild(gDetails);
   const reqErr = el("div", "error-msg"); reqErr.style.display = "none"; formCard.appendChild(reqErr);
   const sendBtn = el("button", "btn-primary"); sendBtn.type = "button"; sendBtn.textContent = "إرسال الطلب للاعتماد 📨";
@@ -4910,11 +4946,19 @@ async function plantTabRequests(body, who, justSent) {
     if (!company || !clientI.value.trim() || !payment) {
       reqErr.textContent = "الشركة واسم العميل وطريقة الدفع مطلوبة"; reqErr.style.display = "block"; return;
     }
+    // Every started row must be complete; at least one row overall.
+    const started = itemRows.filter((r) => r.mixSel.value || r.qtyIn.value || r.rateIn.value);
+    const items = started.map((r) => ({
+      mix: r.mixSel.value, qty: parseFloat(r.qtyIn.value) || 0, rate: parseFloat(r.rateIn.value) || 0,
+    }));
+    if (!items.length || items.some((it) => !it.mix || it.qty <= 0 || it.rate <= 0)) {
+      reqErr.textContent = "لكل خلطة: النوع والكمية وسعر الوحدة مطلوبة"; reqErr.style.display = "block"; return;
+    }
     reqErr.style.display = "none"; sendBtn.disabled = true; sendBtn.textContent = "جارٍ الإرسال…";
     try {
       const r = await dbPlantRequestSubmit({
         p_company: company, p_client: clientI.value.trim(), p_contract: contractI.value.trim(),
-        p_payment: payment, p_details: detailsI.value.trim(), p_by: who,
+        p_payment: payment, p_details: detailsI.value.trim(), p_by: who, p_items: items,
       });
       if (!r.success) throw new Error(r.error || "failed");
       // Finance contact for the WhatsApp handoff (best-effort fetch).
@@ -4925,7 +4969,7 @@ async function plantTabRequests(body, who, justSent) {
       } catch (e) {}
       plantTabRequests(body, who, {
         company, client: clientI.value.trim(), contract: contractI.value.trim(),
-        payment, details: detailsI.value.trim(),
+        payment, details: detailsI.value.trim(), items,
         financeName: fm.name, financePhone: fm.phone,
       });
     } catch {
@@ -4953,6 +4997,7 @@ async function plantTabRequests(body, who, justSent) {
     const l1 = el("div", "req-line");
     l1.textContent = r.company + (r.contract ? ` · عقد ${r.contract}` : "") + (r.payment ? ` · ${r.payment}` : "");
     c.appendChild(l1);
+    const li = reqItemsLines(r); if (li) c.appendChild(li);
     const l2 = el("div", "req-line");
     l2.textContent = `طلبه ${r.requested_by || "—"} · ${fmtKW(r.created_at)}`;
     c.appendChild(l2);
@@ -5024,6 +5069,7 @@ async function renderFinanceHome(who) {
     const l1 = el("div", "req-line");
     l1.textContent = r.company + (r.contract ? ` · عقد ${r.contract}` : "") + (r.payment ? ` · ${r.payment}` : "");
     c.appendChild(l1);
+    const li = reqItemsLines(r); if (li) c.appendChild(li);
     const l2 = el("div", "req-line");
     l2.textContent = `طلبه ${r.requested_by || "—"} · ${fmtKW(r.created_at)}`;
     c.appendChild(l2);

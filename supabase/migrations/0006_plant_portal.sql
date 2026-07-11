@@ -112,6 +112,16 @@ exception when check_violation then
   return json_build_object('success', false, 'error', 'invalid decision');
 end $$;
 
+-- ── Seed: real programs from Eng. Tawfik's WhatsApp (2026-07-10 evening),
+--    for Saturday 2026-07-11 — Hawalli contract ق ص/ط ش/9 ────────────────
+insert into asphalt_programs (work_date, site, mix, loads, plant, load_time, pave_time, notes, created_by) values
+('2026-07-11', 'مشرف ش57', 'Type I (60/70)', 9, 'AP01', '19:00', '21:00',
+ 'المهندس المشرف: حسين مراد · مهندس المتعهد: مجدي الحسيني · للتنسيق: م. احمد الدريويش 98052257', 'م. توفيق'),
+('2026-07-11', 'سلوى ق9 ش1', 'Type II (60/70)', 6, 'AP01', '20:00', '22:00',
+ 'المهندس المشرف: حسين مراد · مهندس المتعهد: مجدي الحسيني · للتنسيق: م. محمد الزيد 99917627', 'م. توفيق'),
+('2026-07-11', 'بيان ق10 ش1', 'Type II + Type I (60/70)', 8, 'AP01', '15:00', '20:00',
+ '٦ سيارات Type II + سيارتان Type I · المهندس المشرف: حسين مراد · مهندس المتعهد: مجدي الحسيني · للتنسيق: م. فالح حمود 99012990', 'م. توفيق');
+
 -- ── RLS: anon read; all writes via the definer RPCs above ────────────
 do $$
 declare t text;

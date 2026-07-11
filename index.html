@@ -4291,8 +4291,9 @@ async function dbPlantPrograms() {
 async function dbPlantRequests() {
   return sbGet("recipient_requests?order=created_at.desc&limit=100");
 }
-// ── Writes — SECURITY DEFINER RPCs (0006) ──
-async function dbPlantProgramSubmit(p)          { return sbRpc("asphalt_program_submit", p); }
+// ── Writes — SECURITY DEFINER RPCs (0006). Program ENTRY is deliberately
+// absent here: programs are loaded upstream (asphalt_program_submit via
+// SQL/API); the manager only flips status. ──
 async function dbPlantProgramStatus(id, st, by) { return sbRpc("asphalt_program_set_status", { p_id: id, p_status: st, p_by: by }); }
 async function dbPlantRequestSubmit(p)          { return sbRpc("recipient_request_submit", p); }
 
@@ -4383,59 +4384,13 @@ async function plantTabDash(body) {
   }
 }
 
-// ── Tab 2: planned asphalt work days ──
+// ── Tab 2: planned asphalt work days (read-only for the manager) ──
+// No in-portal entry by design (user decision 2026-07-11): programs arrive
+// from the site engineers and are loaded into asphalt_programs upstream
+// (via asphalt_program_submit / SQL); engineers get their own entry path
+// in the auth phase. The manager views, marks executed, or cancels.
 async function plantTabPrograms(body, who) {
   body.innerHTML = "";
-
-  // Add-program form (collapsed behind a button; engineers get their own
-  // entry path in the auth phase — until then programs arrive on WhatsApp
-  // and whoever holds them records them here).
-  const addWrap = el("div", "card");
-  const addBtn = el("button", "btn-secondary"); addBtn.type = "button";
-  addBtn.textContent = "+ إضافة برنامج جديد";
-  addWrap.appendChild(addBtn);
-  const form = el("div"); form.style.display = "none"; addWrap.appendChild(form);
-
-  const { group: gDate,  input: dateI }  = fieldGroup("تاريخ العمل", input("date", ""), true);
-  dateI.value = plantKwISO(1);
-  const { group: gSite,  input: siteI }  = fieldGroup("موقع العمل", input("text", "مثال: مشرف ش57"), true);
-  const { group: gMix,   input: mixI }   = fieldGroup("نوع الخلطة", select(CONFIG.mixTypes, "اختر النوع"), false);
-  const { group: gLoads, input: loadsI } = fieldGroup("عدد السيارات", input("number", "مثال: 9", "numeric"), false);
-  const { group: gPlant, input: plantI } = fieldGroup("المصنع", select(CONFIG.plants, "اختر المصنع"), false);
-  const { group: gLoadT, input: loadTI } = fieldGroup("موعد التحميل", input("time", ""), false);
-  const { group: gPaveT, input: paveTI } = fieldGroup("موعد الفرش", input("time", ""), false);
-  const { group: gNotes, input: notesI } = fieldGroup("ملاحظات", textarea("المهندس المشرف، تفاصيل التنسيق…"), false);
-  [gDate, gSite, gMix, gLoads, gPlant, gLoadT, gPaveT, gNotes].forEach(g => form.appendChild(g));
-  const addErr = el("div", "error-msg"); addErr.style.display = "none"; form.appendChild(addErr);
-  const saveBtn = el("button", "btn-primary"); saveBtn.type = "button"; saveBtn.textContent = "حفظ البرنامج";
-  form.appendChild(saveBtn);
-
-  addBtn.addEventListener("click", () => {
-    const open = form.style.display !== "none";
-    form.style.display = open ? "none" : "block";
-    addBtn.textContent = open ? "+ إضافة برنامج جديد" : "إخفاء النموذج ▴";
-  });
-  saveBtn.addEventListener("click", async () => {
-    if (!dateI.value || !siteI.value.trim()) {
-      addErr.textContent = "التاريخ وموقع العمل مطلوبان"; addErr.style.display = "block"; return;
-    }
-    addErr.style.display = "none"; saveBtn.disabled = true; saveBtn.textContent = "جارٍ الحفظ…";
-    try {
-      const r = await dbPlantProgramSubmit({
-        p_work_date: dateI.value, p_site: siteI.value.trim(), p_mix: mixI.value || "",
-        p_loads: loadsI.value ? parseInt(loadsI.value, 10) : null, p_plant: plantI.value || "",
-        p_load_time: loadTI.value || "", p_pave_time: paveTI.value || "",
-        p_notes: notesI.value.trim(), p_by: who,
-      });
-      if (!r.success) throw new Error(r.error || "failed");
-      plantTabPrograms(body, who);
-    } catch {
-      saveBtn.disabled = false; saveBtn.textContent = "حفظ البرنامج";
-      addErr.textContent = "حدث خطأ — حاول مجدداً"; addErr.style.display = "block";
-    }
-  });
-  body.appendChild(addWrap);
-
   const listWrap = el("div"); body.appendChild(listWrap);
   const info = el("div", "info-box"); info.textContent = "جارٍ التحميل…"; listWrap.appendChild(info);
   let rows = [];
@@ -4443,7 +4398,7 @@ async function plantTabPrograms(body, who) {
   listWrap.innerHTML = "";
   if (!rows.length) {
     const e = el("div", "info-box");
-    e.textContent = "لا توجد برامج مسجلة بعد — أضف برنامج اليوم من الزر أعلاه.";
+    e.textContent = "لا توجد برامج مسجلة — تصل برامج الأعمال من مهندسي المواقع وتظهر هنا.";
     listWrap.appendChild(e); return;
   }
 

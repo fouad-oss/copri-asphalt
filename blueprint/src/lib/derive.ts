@@ -1,4 +1,4 @@
-import { STAGE_INDEX } from '../config/stages'
+import { STAGES, STAGE_INDEX } from '../config/stages'
 import type { WorkLogEntry } from '../types'
 
 // The heart of the app: a segment's stage at any point in time is the
@@ -20,4 +20,26 @@ export function currentStage(
     if (idx > highest) highest = idx
   }
   return highest
+}
+
+// First date each stage was logged for a segment (date <= asOfDate),
+// index-aligned with STAGES; null where nothing is logged. Feeds the
+// progress rail and the days-in-stage calculation.
+export function stageDates(
+  worklog: WorkLogEntry[],
+  segmentId: string,
+  asOfDate: string,
+): (string | null)[] {
+  const dates: (string | null)[] = STAGES.map(() => null)
+  for (const row of worklog) {
+    if (row.segment_id !== segmentId || row.date > asOfDate) continue
+    const i = STAGE_INDEX[row.stage]
+    const cur = dates[i]
+    if (cur === null || row.date < cur) dates[i] = row.date
+  }
+  return dates
+}
+
+export function daysBetween(fromISO: string, toISO: string): number {
+  return Math.round((Date.parse(toISO) - Date.parse(fromISO)) / 86400000)
 }

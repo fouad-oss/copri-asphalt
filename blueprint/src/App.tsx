@@ -1,53 +1,45 @@
-import { useEffect, useState } from 'react'
-import { STAGES, stageColor } from './config/stages'
-import type { SegmentCollection, WorkLogEntry } from './types'
-import worklogJson from './data/worklog.json'
-import segmentsUrl from './data/segments.geojson?url'
+import { useEffect } from 'react'
+import MapView from './components/MapView'
+import { STAGES, COMPLETE_INDEX, stageColor } from './config/stages'
+import { useApp } from './store'
 
-// Step-1 placeholder: proves the stage config and generated data wire up.
-// The map view replaces this in step 2.
+function Legend() {
+  return (
+    <div className="pointer-events-none absolute bottom-4 left-4 z-10 border border-slate-700/70 bg-[#0d1420]/90 px-3 py-2.5">
+      {STAGES.map((s, i) => (
+        <div key={s.key} className="flex items-center gap-2.5 py-0.5 text-[10px] uppercase tracking-wider text-slate-300">
+          <svg width="26" height="4">
+            <line
+              x1="0" y1="2" x2="26" y2="2"
+              stroke={stageColor(i)}
+              strokeWidth="3"
+              strokeDasharray={i > 0 && i < COMPLETE_INDEX ? '5 3' : undefined}
+            />
+          </svg>
+          <span className={i === 0 ? 'text-slate-500' : ''}>{s.label}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function App() {
-  const worklog = worklogJson as WorkLogEntry[]
-  const [segments, setSegments] = useState<SegmentCollection | null>(null)
+  const loadSegments = useApp((s) => s.loadSegments)
+  const asOfDate = useApp((s) => s.asOfDate)
   useEffect(() => {
-    fetch(segmentsUrl)
-      .then((r) => r.json())
-      .then(setSegments)
-  }, [])
-
-  const reports = new Set(worklog.map((r) => r.report_id)).size
+    loadSegments()
+  }, [loadSegments])
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-12">
-      <h1 className="text-xl font-bold tracking-widest text-cyan-300">
-        BLUEPRINT
-      </h1>
-      <p className="mt-1 text-sm text-slate-400">
-        COPRI road works — step 1 of 6: scaffold, stage config, fake data
-      </p>
-
-      <div className="mt-8 text-sm leading-7">
-        <div>segments : {segments ? segments.features.length : '…'}</div>
-        <div>
-          worklog : {worklog.length} rows / {reports} reports
-        </div>
-      </div>
-
-      <div className="mt-8">
-        <div className="mb-2 text-xs uppercase tracking-widest text-slate-500">
-          stage ramp (warm → cold)
-        </div>
-        {STAGES.map((s, i) => (
-          <div key={s.key} className="flex items-center gap-3 py-1 text-sm">
-            <span className="w-4 text-right text-slate-500">{i}</span>
-            <span
-              className="h-1 w-16"
-              style={{ background: stageColor(i) }}
-            />
-            <span>{s.label}</span>
-          </div>
-        ))}
-      </div>
+    <div className="relative h-screen w-screen overflow-hidden">
+      <MapView />
+      <header className="pointer-events-none absolute left-4 top-4 z-10">
+        <h1 className="text-base font-bold tracking-[.35em] text-cyan-300">BLUEPRINT</h1>
+        <p className="mt-0.5 text-[11px] tracking-wider text-slate-400">
+          COPRI ROAD WORKS · AS OF {asOfDate} · FAKE DATA
+        </p>
+      </header>
+      <Legend />
     </div>
   )
 }

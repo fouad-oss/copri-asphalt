@@ -29,10 +29,11 @@ export function isValidStage(key: string): key is StageKey {
 // Warm→cold ramp, derived from stage order: early work runs hot (orange),
 // completion lands cold (cyan). Stage 0 — untouched road — is a
 // desaturated slate so it reads as background, not as work.
-export function stageColor(index: number): string {
-  if (index <= 0) return 'hsl(215, 12%, 36%)'
+// `lift` raises lightness (hover/highlight variants).
+export function stageColor(index: number, lift = 0): string {
+  if (index <= 0) return `hsl(215, 12%, ${36 + lift}%)`
   const t = (index - 1) / (COMPLETE_INDEX - 1) // 0..1 across work stages
   const hue = 18 + t * 168 // 18 (hot orange) → 186 (cyan)
-  const lightness = 54 + t * 8
-  return `hsl(${Math.round(hue)}, 85%, ${Math.round(lightness)}%)`
+  const lightness = 54 + t * 8 + lift
+  return `hsl(${Math.round(hue)}, 85%, ${Math.round(Math.min(lightness, 92))}%)`
 }

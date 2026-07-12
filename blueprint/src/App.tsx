@@ -28,11 +28,12 @@ function Legend() {
 }
 
 function App() {
-  const loadSegments = useApp((s) => s.loadSegments)
+  const loadData = useApp((s) => s.loadData)
   const asOfDate = useApp((s) => s.asOfDate)
+  const live = useApp((s) => s.live)
   useEffect(() => {
-    loadSegments()
-  }, [loadSegments])
+    loadData()
+  }, [loadData])
 
   return (
     <div className="relative h-screen w-screen overflow-hidden">
@@ -44,7 +45,8 @@ function App() {
         <header>
           <h1 className="text-base font-bold tracking-[.35em] text-cyan-300">BLUEPRINT</h1>
           <p className="mt-0.5 text-[11px] tracking-wider text-slate-400">
-            COPRI ROAD WORKS · AS OF {asOfDate} · FAKE DATA
+            أعمال الأسفلت — حتى {asOfDate} ·{' '}
+            {live ? <span className="text-emerald-400">بيانات حية</span> : 'نسخة محفوظة'}
           </p>
         </header>
         <div className="pointer-events-auto mt-0.5">

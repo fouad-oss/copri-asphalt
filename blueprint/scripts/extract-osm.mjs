@@ -1,0 +1,344 @@
+// Real-geometry extraction for Blueprint (asphalt pilot).
+// Pulls Kuwait block (قطعة) boundaries + street centerlines from OSM for
+// every area the live dispatch data touches, chains split ways, cuts true
+// 100 m segments, and writes:
+//   src/data/real/segments.geojson   street segments (unit = matchable key)
+//   src/data/real/blocks.geojson     block boundary polygons
+//   src/data/real/dispatch-snapshot.json   offline fallback of dispatch_loads
+//
+//   node scripts/extract-osm.mjs
+//
+// Overpass is queried once per area with retries + spacing (be polite).
+
+import { writeFileSync, mkdirSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+const SUPABASE_URL = 'https://abwsxqnppihrmkhydkai.supabase.co'
+const SUPABASE_KEY = 'sb_publishable_4k0seyEmCwB-9oI1krpvKQ_VBDwuNgE'
+
+// Dispatch-site vocabulary → OSM area. bbox = [s, w, n, e].
+// COPRI-only pilot (user decision): the contract-9 areas — Copri's own
+// dispatches go exclusively to بيان/مشرف/سلوى. External-client areas
+// (Green Line etc.) are out of scope.
+const AREAS = [
+  { site: 'بيان', code: 'bayan', match: /بيان/, bbox: [29.29, 48.025, 29.318, 48.062] },
+  { site: 'مشرف', code: 'mishref', match: /مشرف/, bbox: [29.266, 48.048, 29.3, 48.095] },
+  { site: 'سلوى', code: 'salwa', match: /سلوى/, bbox: [29.266, 48.055, 29.313, 48.108] },
+]
+
+const HIGHWAYS = 'residential|tertiary|secondary|primary|unclassified|living_street'
+const WIDTHS = { primary: 18, secondary: 15, tertiary: 12, residential: 8, unclassified: 8, living_street: 6 }
+const ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+]
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+async function overpass(query, label) {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const url = ENDPOINTS[attempt % ENDPOINTS.length]
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        body: 'data=' + encodeURIComponent(query),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          // overpass-api.de returns 406 without a proper UA + Accept
+          'User-Agent': 'copri-blueprint/1.0 (contact: fszoghby@gmail.com)',
+          Accept: 'application/json',
+        },
+      })
+      const text = await res.text()
+      if (text.trimStart().startsWith('{')) return JSON.parse(text)
+      console.log(`  ${label}: non-JSON from ${new URL(url).host} (attempt ${attempt + 1}) — backing off`)
+    } catch (e) {
+      console.log(`  ${label}: ${e.message} (attempt ${attempt + 1})`)
+    }
+    await sleep(20000 + attempt * 15000)
+  }
+  throw new Error(`overpass failed: ${label}`)
+}
+
+// ── geometry helpers ──
+const R = 6371000
+const rad = (d) => (d * Math.PI) / 180
+function dist(a, b) {
+  const dLat = rad(b[1] - a[1])
+  const dLng = rad(b[0] - a[0])
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a[1])) * Math.cos(rad(b[1])) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(s))
+}
+function pointInRing(pt, ring) {
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i]
+    const [xj, yj] = ring[j]
+    if (yi > pt[1] !== yj > pt[1] && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) inside = !inside
+  }
+  return inside
+}
+const round6 = (c) => [+c[0].toFixed(6), +c[1].toFixed(6)]
+
+// ── name normalisation — MUST mirror src/lib/asphalt.ts ──
+const AR_DIGITS = { '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4', '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9' }
+function normName(s) {
+  return String(s || '')
+    .replace(/[٠-٩]/g, (d) => AR_DIGITS[d])
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/شارع|طريق|street|road/gi, '')
+    .replace(/\bال/g, '')
+    .replace(/[\s\-_.']/g, '')
+    .toLowerCase()
+}
+function streetNum(s) {
+  const m = String(s || '').replace(/[٠-٩]/g, (d) => AR_DIGITS[d]).match(/\d+/)
+  return m ? String(parseInt(m[0], 10)) : null
+}
+
+async function main() {
+  const here = dirname(fileURLToPath(import.meta.url))
+  const outDir = join(here, '..', 'src', 'data', 'real')
+  mkdirSync(outDir, { recursive: true })
+
+  const blockFeatures = []
+  const segFeatures = []
+  const seenBlockOsm = new Set()
+  const seenWayIds = new Set()
+  let streetsTotal = 0
+
+  for (const area of AREAS) {
+    const [s, w, n, e] = area.bbox
+    const bbox = `${s},${w},${n},${e}`
+    const q = `[out:json][timeout:120];(
+      relation["boundary"="administrative"]["admin_level"="6"](${bbox});
+      relation["boundary"="administrative"]["admin_level"="7"](${bbox});
+      way["highway"~"^(${HIGHWAYS})$"](${bbox});
+    );out geom;`
+    console.log(`fetching ${area.site} …`)
+    const data = await overpass(q, area.site)
+    await sleep(8000)
+
+    // suburb boundary (admin_level 6) — ownership test for blocks and
+    // streets, so overlapping query bboxes can't steal the neighbour's.
+    const suburbRings = []
+    for (const el of data.elements) {
+      if (el.type !== 'relation' || el.tags?.admin_level !== '6') continue
+      const name = el.tags['name:ar'] || el.tags.name || ''
+      if (!area.match.test(name)) continue
+      const rings = (el.members || [])
+        .filter((m) => m.type === 'way' && m.role !== 'inner' && m.geometry)
+        .map((m) => m.geometry.map((g) => round6([g.lon, g.lat])))
+      if (rings.length) suburbRings.push(chainRings(rings))
+    }
+    const owns = (pt) => {
+      if (!suburbRings.length) return true // no boundary in OSM — bbox rules
+      if (suburbRings.some((ring) => pointInRing(pt, ring))) return true
+      // boundary roads sit ON the suburb edge — accept within ~150 m
+      return suburbRings.some((ring) => ring.some((rp) => dist(pt, rp) < 150))
+    }
+
+    // blocks: relation outer rings, named "… قطعة N"
+    const blocks = []
+    for (const el of data.elements) {
+      if (el.type !== 'relation' || seenBlockOsm.has(el.id)) continue
+      if (el.tags?.admin_level === '6') continue
+      const name = (el.tags && (el.tags['name:ar'] || el.tags.name)) || ''
+      const numM = name.match(/قطعة\s*([0-9٠-٩]+)/)
+      if (!numM) continue
+      // explicit other-suburb prefix → not ours; else the boundary decides
+      const named = AREAS.find((a) => a.match.test(name))
+      if (named && named.site !== area.site) continue
+      // a prefix naming ANY other suburb (e.g. "الرميثية - قطعة 3") → skip
+      const prefix = name.split('قطعة')[0].replace(/[-–—]/g, '').trim()
+      if (prefix && !area.match.test(prefix)) continue
+      const num = String(parseInt(numM[1].replace(/[٠-٩]/g, (d) => AR_DIGITS[d]), 10))
+      const rings = (el.members || [])
+        .filter((m) => m.type === 'way' && m.role !== 'inner' && m.geometry)
+        .map((m) => m.geometry.map((g) => round6([g.lon, g.lat])))
+      if (!rings.length) continue
+      // join member ways into one outer ring (greedy endpoint chaining)
+      const ring = chainRings(rings)
+      if (ring.length < 4) continue
+      if (!named && !owns(ring[Math.floor(ring.length / 2)])) continue // neighbour's — their query claims it
+      seenBlockOsm.add(el.id)
+      blocks.push({ num, ring })
+      blockFeatures.push({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: ring },
+        properties: { site: area.site, block: num, unit: `${area.site}|${num}|*`, name },
+      })
+    }
+
+    // streets
+    const groups = new Map() // (block|normname|num) → ways
+    for (const el of data.elements) {
+      if (el.type !== 'way' || !el.tags?.highway || !el.geometry || seenWayIds.has(el.id)) continue
+      const coords = el.geometry.map((g) => round6([g.lon, g.lat]))
+      if (coords.length < 2) continue
+      const mid = coords[Math.floor(coords.length / 2)]
+      if (!owns(mid)) continue // neighbouring suburb's street — its query claims it
+      seenWayIds.add(el.id)
+      const blk = blocks.find((b) => pointInRing(mid, b.ring))
+      const rawName = (el.tags['name:ar'] || el.tags.name || '').trim()
+      const num = streetNum(rawName)
+      const nn = rawName ? normName(rawName) : ''
+      const key = `${blk ? blk.num : ''}|${num || nn || 'w' + el.id}`
+      const g = groups.get(key) || {
+        block: blk ? blk.num : '',
+        name: rawName,
+        num,
+        norm: nn,
+        width: WIDTHS[el.tags.highway] || 8,
+        ways: [],
+      }
+      g.width = Math.max(g.width, WIDTHS[el.tags.highway] || 8)
+      if (!g.name && rawName) g.name = rawName
+      g.ways.push(coords)
+      groups.set(key, g)
+    }
+
+    let areaSegs = 0
+    let sIdx = 0
+    for (const g of groups.values()) {
+      const chains = chainWays(g.ways)
+      streetsTotal++
+      for (const chain of chains) {
+        sIdx++
+        const stok = g.num ? `st${g.num}` : g.norm ? `n${sIdx}` : `u${sIdx}`
+        const unit = g.name ? `${area.site}|${g.block}|${g.num || g.norm}` : null
+        areaSegs += cutSegments(chain, {
+          site: area.site,
+          code: area.code,
+          block: g.block,
+          street: g.name || '',
+          street_num: g.num || '',
+          unit,
+          width: g.width,
+          stok,
+        }, segFeatures)
+      }
+    }
+    console.log(`  ${area.site}: blocks ${blocks.length} · street groups ${groups.size} · segments +${areaSegs}`)
+  }
+
+  // dispatch snapshot (offline fallback for the app)
+  console.log('fetching dispatch snapshot …')
+  const disp = await fetch(
+    `${SUPABASE_URL}/rest/v1/dispatch_loads?select=note,ts,site,block,street,loc_type,mix,weight,status,plant,project,company&company=eq.${encodeURIComponent('كوبري')}&order=ts.asc&limit=10000`,
+    { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } },
+  ).then((r) => r.json())
+
+  writeFileSync(join(outDir, 'segments.geojson'), JSON.stringify({ type: 'FeatureCollection', features: segFeatures }))
+  writeFileSync(join(outDir, 'blocks.geojson'), JSON.stringify({ type: 'FeatureCollection', features: blockFeatures }))
+  writeFileSync(join(outDir, 'dispatch-snapshot.json'), JSON.stringify(disp))
+  console.log(`\nwrote ${segFeatures.length} segments · ${blockFeatures.length} blocks · ${disp.length} dispatch rows`)
+  console.log(`street groups total: ${streetsTotal}`)
+}
+
+// join closed-boundary member ways into one ring
+function chainRings(parts) {
+  const pool = parts.map((p) => [...p])
+  const ring = pool.shift()
+  let guard = 0
+  while (pool.length && guard++ < 500) {
+    const end = ring[ring.length - 1]
+    let found = -1
+    let rev = false
+    for (let i = 0; i < pool.length; i++) {
+      if (dist(end, pool[i][0]) < 25) { found = i; rev = false; break }
+      if (dist(end, pool[i][pool[i].length - 1]) < 25) { found = i; rev = true; break }
+    }
+    if (found < 0) break
+    const part = pool.splice(found, 1)[0]
+    if (rev) part.reverse()
+    ring.push(...part.slice(1))
+  }
+  return ring
+}
+
+// join same-street ways into continuous chains (may yield several)
+function chainWays(ways) {
+  const pool = ways.map((w) => [...w])
+  const chains = []
+  while (pool.length) {
+    const chain = pool.shift()
+    let grew = true
+    while (grew) {
+      grew = false
+      for (let i = 0; i < pool.length; i++) {
+        const p = pool[i]
+        const head = chain[0]
+        const tail = chain[chain.length - 1]
+        if (dist(tail, p[0]) < 20) { chain.push(...p.slice(1)); pool.splice(i, 1); grew = true; break }
+        if (dist(tail, p[p.length - 1]) < 20) { chain.push(...[...p].reverse().slice(1)); pool.splice(i, 1); grew = true; break }
+        if (dist(head, p[p.length - 1]) < 20) { chain.unshift(...p.slice(0, -1)); pool.splice(i, 1); grew = true; break }
+        if (dist(head, p[0]) < 20) { chain.unshift(...[...p].reverse().slice(0, -1)); pool.splice(i, 1); grew = true; break }
+      }
+    }
+    chains.push(chain)
+  }
+  return chains
+}
+
+// cut a chain into 100 m segments; the tail keeps its true length
+function cutSegments(chain, meta, out) {
+  const segLen = 100
+  let segPts = [chain[0]]
+  let acc = 0
+  let fromCh = 0
+  let made = 0
+  const emit = (to) => {
+    const len = to - fromCh
+    if (len < 1) return
+    out.push({
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: segPts },
+      properties: {
+        id: `${meta.code}-${meta.block || 'x'}-${meta.stok}-${String(fromCh).padStart(4, '0')}`,
+        site: meta.site,
+        block: meta.block,
+        governorate: '',
+        street: meta.street,
+        street_num: meta.street_num,
+        unit: meta.unit,
+        from_ch: fromCh,
+        to_ch: to,
+        length_m: len,
+        width_m: meta.width,
+        notes: '',
+      },
+    })
+    made++
+  }
+  for (let i = 1; i < chain.length; i++) {
+    let a = chain[i - 1]
+    const b = chain[i]
+    let d = dist(a, b)
+    while (acc + d >= segLen) {
+      const need = segLen - acc
+      const t = need / d
+      const cut = round6([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t])
+      segPts.push(cut)
+      emit(fromCh + segLen)
+      fromCh += segLen
+      segPts = [cut]
+      a = cut
+      d = dist(a, b)
+      acc = 0
+    }
+    acc += d
+    segPts.push(b)
+  }
+  emit(fromCh + Math.round(acc))
+  return made
+}
+
+main().catch((e) => {
+  console.error(e)
+  process.exit(1)
+})

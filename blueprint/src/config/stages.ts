@@ -1,17 +1,16 @@
 // THE ordered stage list — the single source of truth.
 // Colors, the progress rail, filters and violation detection all derive
 // from this array. Never hardcode a stage name or index anywhere else.
+//
+// ASPHALT PILOT profile: stages derive from the mix types in the live
+// dispatch data (Type I base → Type II binder → Type III surface = done).
+// The 9-stage civil-works profile returns when worklog entry exists.
 
 export const STAGES = [
-  { key: 'not_started', label: 'Not started' },
-  { key: 'excavation', label: 'Excavation' },
-  { key: 'pipelaying', label: 'Pipelaying' },
-  { key: 'backfill', label: 'Backfill' },
-  { key: 'temporary_asphalt', label: 'Temporary asphalt' },
-  { key: 'milling', label: 'Milling' },
-  { key: 'type_i', label: 'Type I' },
+  { key: 'not_started', label: 'لم يبدأ' },
+  { key: 'type_i', label: 'Type I — أساس' },
   { key: 'type_ii', label: 'Type II' },
-  { key: 'type_iii', label: 'Type III' }, // = complete
+  { key: 'type_iii', label: 'Type III — سطح نهائي' }, // = complete
 ] as const
 
 export type StageKey = (typeof STAGES)[number]['key']

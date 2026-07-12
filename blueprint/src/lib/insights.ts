@@ -3,7 +3,6 @@ import { daysBetween } from './derive'
 import type { SegmentFeature, WorkLogEntry } from '../types'
 
 export const STALL_DAYS = 14
-export const RECON_TOLERANCE = 0.1 // |qty − Σlength| / Σlength
 
 export interface SegmentInsight {
   stageIdx: number
@@ -59,61 +58,39 @@ export function segmentInsights(
 }
 
 export interface Filters {
-  block: string | null
+  site: string | null
   stageIdx: number | null
   stalledOnly: boolean
 }
 
-export const NO_FILTERS: Filters = { block: null, stageIdx: null, stalledOnly: false }
+export const NO_FILTERS: Filters = { site: null, stageIdx: null, stalledOnly: false }
 
 export function matchesFilters(
   f: SegmentFeature,
   ins: SegmentInsight,
   filters: Filters,
 ): boolean {
-  if (filters.block && f.properties.block !== filters.block) return false
+  if (filters.site && f.properties.site !== filters.site) return false
   if (filters.stageIdx !== null && ins.stageIdx !== filters.stageIdx) return false
   if (filters.stalledOnly && !ins.stalled) return false
   return true
 }
 
-export interface ReconRow {
-  reportId: string
-  qty: number
-  sumLen: number
-  pct: number // signed divergence, e.g. +0.35
-}
-
-// Per report: stated quantity vs the summed true length of its segments.
-// > tolerance is a data-quality signal — surfaced, never blocking.
-// Only reports touching the included (filtered) segments are considered.
-export function reconciliation(
+// Σ tons over the included units up to asOfDate. A delivery expanded to
+// several street units repeats its weight per row, so each delivery note
+// (report_id) counts once.
+export function totalTons(
   worklog: WorkLogEntry[],
   asOfDate: string,
-  lengthById: Map<string, number>,
-  includeIds: Set<string>,
-): ReconRow[] {
-  const byReport = new Map<string, { qty: number; segs: Set<string> }>()
+  includeUnits: Set<string>,
+): number {
+  const seen = new Set<string>()
+  let tons = 0
   for (const r of worklog) {
     if (r.date > asOfDate || r.reported_qty == null) continue
-    let e = byReport.get(r.report_id)
-    if (!e) {
-      e = { qty: r.reported_qty, segs: new Set() }
-      byReport.set(r.report_id, e)
-    }
-    e.segs.add(r.segment_id)
+    if (!includeUnits.has(r.segment_id) || seen.has(r.report_id)) continue
+    seen.add(r.report_id)
+    tons += r.reported_qty
   }
-  const out: ReconRow[] = []
-  for (const [reportId, e] of byReport) {
-    let touchesFiltered = false
-    let sumLen = 0
-    for (const id of e.segs) {
-      sumLen += lengthById.get(id) ?? 0
-      if (includeIds.has(id)) touchesFiltered = true
-    }
-    if (!touchesFiltered || sumLen === 0) continue
-    const pct = (e.qty - sumLen) / sumLen
-    if (Math.abs(pct) > RECON_TOLERANCE) out.push({ reportId, qty: e.qty, sumLen, pct })
-  }
-  return out.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct))
+  return tons
 }

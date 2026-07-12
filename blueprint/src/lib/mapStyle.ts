@@ -87,6 +87,37 @@ export function gridLayer(): LayerSpecification {
   }
 }
 
+// Block (قطعة) boundaries — faint when idle, stage-colored when dispatch
+// activity resolved only to the block (no matching street geometry).
+export function blocksLayer(): LayerSpecification {
+  return {
+    id: 'blocks',
+    type: 'line',
+    source: 'blocks',
+    paint: {
+      'line-color': colorMatch(0),
+      'line-width': ['case', ['>', ['get', 'stage_idx'], 0], 2, 0.8] as unknown as ExpressionSpecification,
+      'line-opacity': ['case', ['>', ['get', 'stage_idx'], 0], 0.75, 0.35] as unknown as ExpressionSpecification,
+      'line-dasharray': [4, 2.5],
+      ...SMOOTH,
+    },
+  }
+}
+
+// Satellite underlay — Esri World Imagery (free with attribution).
+export const SAT_SOURCE = {
+  type: 'raster' as const,
+  tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+  tileSize: 256,
+  attribution: 'Imagery © Esri, Maxar, Earthstar Geographics',
+}
+export const SAT_LAYER = {
+  id: 'sat',
+  type: 'raster' as const,
+  source: 'sat',
+  paint: { 'raster-opacity': 0.55, 'raster-saturation': -0.4 },
+} as LayerSpecification
+
 const stageIdx: ExpressionSpecification = ['get', 'stage_idx'] as unknown as ExpressionSpecification
 
 // Filtered-out segments stay as a faint ghost of the network.

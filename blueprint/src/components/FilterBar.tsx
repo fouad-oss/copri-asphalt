@@ -14,13 +14,13 @@ export default function FilterBar() {
   const setFilters = useApp((s) => s.setFilters)
   const clearFilters = useApp((s) => s.clearFilters)
 
-  const blocks = useMemo(() => {
+  const sites = useMemo(() => {
     if (!segments) return []
-    return [...new Set(segments.features.map((f) => f.properties.block))]
+    return [...new Set(segments.features.map((f) => f.properties.site))]
   }, [segments])
 
   const active =
-    filters.block !== NO_FILTERS.block ||
+    filters.site !== NO_FILTERS.site ||
     filters.stageIdx !== NO_FILTERS.stageIdx ||
     filters.stalledOnly !== NO_FILTERS.stalledOnly
 
@@ -28,14 +28,14 @@ export default function FilterBar() {
     <div className="flex flex-wrap items-center gap-1.5">
       <select
         className={selectCls}
-        value={filters.block ?? ''}
-        onChange={(e) => setFilters({ block: e.target.value || null })}
-        aria-label="filter by block"
+        value={filters.site ?? ''}
+        onChange={(e) => setFilters({ site: e.target.value || null })}
+        aria-label="filter by area"
       >
-        <option value="">all blocks</option>
-        {blocks.map((b) => (
+        <option value="">كل المناطق</option>
+        {sites.map((b) => (
           <option key={b} value={b}>
-            block {b}
+            {b}
           </option>
         ))}
       </select>
@@ -45,7 +45,7 @@ export default function FilterBar() {
         onChange={(e) => setFilters({ stageIdx: e.target.value === '' ? null : Number(e.target.value) })}
         aria-label="filter by stage"
       >
-        <option value="">all stages</option>
+        <option value="">كل المراحل</option>
         {STAGES.map((s, i) => (
           <option key={s.key} value={i}>
             {i} {s.label}
@@ -59,7 +59,7 @@ export default function FilterBar() {
           checked={filters.stalledOnly}
           onChange={(e) => setFilters({ stalledOnly: e.target.checked })}
         />
-        stalled only
+        المتوقفة فقط
       </label>
       {active && (
         <button

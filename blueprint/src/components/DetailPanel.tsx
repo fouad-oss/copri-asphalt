@@ -3,6 +3,7 @@ import { useApp } from '../store'
 import { STAGES, STAGE_INDEX, COMPLETE_INDEX, stageColor } from '../config/stages'
 import { currentStage, stageDates, daysBetween } from '../lib/derive'
 import { STALL_DAYS } from '../lib/insights'
+import { PAVING, tonsToM2 } from '../config/paving'
 import ProgressRail from './ProgressRail'
 import type { SegmentFeature } from '../types'
 
@@ -28,10 +29,13 @@ export default function DetailPanel() {
 
   const derived = useMemo(() => {
     if (!p) return null
-    const cur = currentStage(worklog, p.id, asOfDate)
-    const dates = stageDates(worklog, p.id, asOfDate)
+    // Everything is derived at the UNIT level (the whole street) — the
+    // dispatch data doesn't know which 100 m piece a load landed on.
+    const unit = p.unit ?? '∅'
+    const cur = currentStage(worklog, unit, asOfDate)
+    const dates = stageDates(worklog, unit, asOfDate)
     const rows = worklog
-      .filter((r) => r.segment_id === p.id && r.date <= asOfDate)
+      .filter((r) => r.segment_id === unit && r.date <= asOfDate)
       .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.id < b.id ? 1 : -1))
     // Rows logged out of stage order (same walk as the insight strip).
     const outOfSeq = new Set<string>()
@@ -46,8 +50,23 @@ export default function DetailPanel() {
     const since = dates[cur]
     const daysIn = since ? daysBetween(since, asOfDate) : null
     const stalled = cur > 0 && cur < COMPLETE_INDEX && daysIn !== null && daysIn > STALL_DAYS
-    return { cur, dates, rows, daysIn, stalled, outOfSeq }
-  }, [p, worklog, asOfDate])
+    // Laid quantities per layer: tons → m² (config factors) vs the whole
+    // street's area (Σ segment lengths × laying width).
+    const unitLen = p.unit
+      ? (segments?.features ?? [])
+          .filter((f) => f.properties.unit === p.unit)
+          .reduce((a, f) => a + f.properties.length_m, 0)
+      : 0
+    const streetArea = unitLen * PAVING.layingWidth_m
+    const layers = STAGES.map((s, i) => {
+      if (i === 0 || !PAVING.thickness_cm[s.key]) return null
+      const tons = rows.filter((r) => STAGE_INDEX[r.stage] === i).reduce((a, r) => a + (r.reported_qty || 0), 0)
+      if (!tons) return null
+      const m2 = tonsToM2(s.key, tons) || 0
+      return { i, label: s.label, tons, m2, pct: streetArea ? m2 / streetArea : 0 }
+    }).filter(Boolean) as { i: number; label: string; tons: number; m2: number; pct: number }[]
+    return { cur, dates, rows, daysIn, stalled, outOfSeq, unitLen, streetArea, layers }
+  }, [p, worklog, asOfDate, segments])
 
   return (
     <aside
@@ -66,9 +85,13 @@ export default function DetailPanel() {
             >
               ✕
             </button>
-            <h2 className="text-base font-bold tracking-wide text-slate-100">{p.street}</h2>
-            <div className="mt-0.5 text-[11px] uppercase tracking-widest text-slate-400">
-              block {p.block} · ch {String(p.from_ch).padStart(4, '0')}–{String(p.to_ch).padStart(4, '0')}
+            <h2 className="text-base font-bold tracking-wide text-slate-100">
+              {p.street || 'شارع بدون اسم'}
+            </h2>
+            <div className="mt-0.5 text-[11px] tracking-widest text-slate-400">
+              {p.site}
+              {p.block ? ` · ق${p.block}` : ''} · ch {String(p.from_ch).padStart(4, '0')}–
+              {String(p.to_ch).padStart(4, '0')}
             </div>
             <div className="mt-1 text-[10px] text-slate-600">{p.id}</div>
           </div>
@@ -114,12 +137,50 @@ export default function DetailPanel() {
               </div>
             )}
 
-            {/* worklog, newest first */}
+            {/* laid quantities: tons → m² vs street area */}
+            {derived.layers.length > 0 && (
+              <div className="mt-4">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-[10px] uppercase tracking-[.25em] text-slate-500">
+                    الكميات المفرودة
+                  </span>
+                  <span className="text-[10px] text-slate-500">
+                    مساحة الشارع ≈ {Math.round(derived.streetArea).toLocaleString('en')} م²
+                    <span className="text-slate-600"> ({derived.unitLen} م × {PAVING.layingWidth_m} م)</span>
+                  </span>
+                </div>
+                {derived.layers.map((l) => (
+                  <div key={l.i} className="mt-2">
+                    <div className="flex justify-between text-[11px]">
+                      <span className="font-bold" style={{ color: stageColor(l.i) }}>{l.label}</span>
+                      <span className="text-slate-400">
+                        {Math.round(l.tons)} طن ≈ {Math.round(l.m2).toLocaleString('en')} م² ·{' '}
+                        <span className={l.pct > 1.15 ? 'text-amber-400' : ''}>{Math.round(l.pct * 100)}%</span>
+                      </span>
+                    </div>
+                    <div className="mt-1 h-1.5 w-full bg-slate-800">
+                      <div
+                        className="h-full"
+                        style={{ width: `${Math.min(l.pct, 1) * 100}%`, background: stageColor(l.i) }}
+                      />
+                    </div>
+                  </div>
+                ))}
+                <div className="mt-1.5 text-[9px] text-slate-600">
+                  سماكات: I={PAVING.thickness_cm.type_i} · II={PAVING.thickness_cm.type_ii} · III=
+                  {PAVING.thickness_cm.type_iii} سم · كثافة {PAVING.density_t_m3} — قابلة للتعديل لاحقاً
+                </div>
+              </div>
+            )}
+
+            {/* dispatch history for the whole street, newest first */}
             <div className="mt-4 text-[10px] uppercase tracking-[.25em] text-slate-500">
-              worklog ({derived.rows.length})
+              deliveries — كامل الشارع ({derived.rows.length})
             </div>
             {derived.rows.length === 0 && (
-              <div className="mt-2 text-[11px] text-slate-600">no entries as of {asOfDate}</div>
+              <div className="mt-2 text-[11px] text-slate-600">
+                {p.unit ? `لا توريدات حتى ${asOfDate}` : 'شارع غير مسمى — لا يمكن ربطه بالإرساليات'}
+              </div>
             )}
             {derived.rows.map((r) => (
               <div key={r.id} className="border-b border-slate-800/70 py-2 text-[11px] leading-5">
@@ -139,9 +200,9 @@ export default function DetailPanel() {
                   <span className="ml-auto text-slate-400">{r.date}</span>
                 </div>
                 <div className="mt-0.5 pl-4 text-slate-500">
-                  {r.report_id}
+                  سند {r.report_id}
                   {r.crew ? ` · ${r.crew}` : ''}
-                  {r.reported_qty != null ? ` · qty ${r.reported_qty} m` : ''}
+                  {r.reported_qty != null ? ` · ${r.reported_qty} طن` : ''}
                 </div>
                 {r.note && <div className="pl-4 text-slate-400">“{r.note}”</div>}
               </div>

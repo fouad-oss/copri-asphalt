@@ -3,7 +3,21 @@
 Single-page app showing COPRI road works as an interactive "blueprint"
 map: every street is cut into 100 m segments, each colored by its current
 work stage, with a time slider that scrubs the whole network through
-history. Static app, fake data — no backend yet.
+history.
+
+## Asphalt pilot (current mode)
+
+Real everything: geometry is OSM street centerlines + قطعة boundaries for
+every area the dispatch data touches (`npm run extract` →
+`src/data/real/`), and the "worklog" is projected live from the main
+app's `dispatch_loads` table (stage = highest mix type delivered:
+Type I → II → III = surfaced). Dispatch locations resolve to street
+units (site|block|street, comma lists split, named streets normalized);
+a location with no street match colors its block boundary instead, and
+anything unmatchable is listed in the "خارج الخريطة" tile. A bundled
+snapshot keeps the app working offline. The 9-stage civil-works profile
+returns when worklog entry (multi-select tool) exists — only
+`src/config/stages.ts` and the adapter change.
 
 ## Stack
 

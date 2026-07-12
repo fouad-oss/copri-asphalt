@@ -1,14 +1,18 @@
 import type { StageKey } from './config/stages'
 
-// Properties of one 100 m segment feature in segments.geojson.
-// Geometry is the atomic, immutable unit. There is deliberately NO stage
-// field here — stage is always derived from the worklog (see lib/derive).
+// Properties of one 100 m segment feature (real OSM geometry).
+// `unit` is the matchable location key (site|block|street) shared by all
+// segments of one street — dispatch activity resolves to units, and every
+// segment inherits its unit's derived stage. Unnamed streets have unit
+// null: permanent background line work.
 export interface SegmentProps {
-  id: string // `<street-slug>-<from_ch>`, e.g. "bayan-3-st12-0200"
-  street: string
+  id: string
+  site: string // dispatch-site vocabulary (بيان، مشرف، …)
   block: string
-  governorate: string
-  from_ch: number // chainage, metres
+  street: string // Arabic label ('' when unnamed)
+  street_num: string
+  unit: string | null
+  from_ch: number
   to_ch: number
   length_m: number // true length — tail segments carry < 100
   width_m: number
@@ -26,14 +30,16 @@ export interface SegmentCollection {
   features: SegmentFeature[]
 }
 
-// One row per segment per stage per date. Append-only.
+// One derived work event per unit per stage per date. In the asphalt
+// pilot these are projected from live dispatch_loads rows (report_id =
+// delivery-note number, reported_qty = tons). Append-only, never mutated.
 export interface WorkLogEntry {
   id: string
-  report_id: string // groups rows from a single subcontractor report
-  segment_id: string
+  report_id: string
+  segment_id: string // unit key
   stage: StageKey
-  date: string // ISO8601 (yyyy-mm-dd)
-  reported_qty?: number // whole-report qty, repeated verbatim per row
+  date: string // ISO8601 (yyyy-mm-dd, Kuwait day)
+  reported_qty?: number
   crew?: string
   note?: string
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useApp } from '../store'
 import { STAGES, STAGE_INDEX, stageColor, type StageKey } from '../config/stages'
 import { PAVING, tonsToM2 } from '../config/paving'
@@ -31,19 +31,29 @@ export default function ReportPanel() {
   const worklog = useApp((s) => s.worklog)
   const segLog = useApp((s) => s.segLog)
   const loadSegLog = useApp((s) => s.loadSegLog)
+  const unit = useApp((s) => s.reportUnit)
+  const anchor = useApp((s) => s.reportAnchor)
+  const selection = useApp((s) => s.reportSelection)
+  const setReporting = useApp((s) => s.setReporting)
+  const setReportUnit = useApp((s) => s.setReportUnit)
+  const tapReportSegment = useApp((s) => s.tapReportSegment)
+  const clearReportSelection = useApp((s) => s.clearReportSelection)
 
   const [open, setOpen] = useState(false)
   const [name, setName] = useState<string | null>(() => sessionStorage.getItem(SESSION_KEY))
   const [pin, setPin] = useState('')
   const [err, setErr] = useState('')
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
-  const [unit, setUnit] = useState<string | null>(null)
-  const [range, setRange] = useState<[number, number] | null>(null) // indices into the unit's sorted segments
-  const [anchor, setAnchor] = useState<number | null>(null)
   const [stage, setStage] = useState<StageKey>('type_ii')
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState('')
+
+  // Report mode is live while the panel is open and authenticated —
+  // the MAP itself becomes the segment selector (taps route here).
+  useEffect(() => {
+    setReporting(open && !!name)
+  }, [open, name, setReporting])
 
   // Streets with dispatch activity, most recent first.
   const streets = useMemo(() => {
@@ -90,9 +100,10 @@ export default function ReportPanel() {
   }, [unit, worklog, date, stage])
 
   const selectedLen = useMemo(() => {
-    if (!range) return 0
-    return unitSegs.slice(range[0], range[1] + 1).reduce((a, f) => a + f.properties.length_m, 0)
-  }, [range, unitSegs])
+    if (!selection.length) return 0
+    const byId = new Map(unitSegs.map((f) => [f.properties.id, f.properties.length_m]))
+    return selection.reduce((a, id) => a + (byId.get(id) || 0), 0)
+  }, [selection, unitSegs])
 
   const login = async () => {
     setErr('')
@@ -106,22 +117,12 @@ export default function ReportPanel() {
     }
   }
 
-  const tapSegment = (i: number) => {
-    setDone('')
-    if (anchor === null || range) {
-      setAnchor(i)
-      setRange(null)
-    } else {
-      setRange([Math.min(anchor, i), Math.max(anchor, i)])
-    }
-  }
-
   const save = async () => {
-    if (!unit || !range) return
+    if (!unit || !selection.length) return
     setSaving(true)
     setErr('')
     try {
-      const ids = unitSegs.slice(range[0], range[1] + 1).map((f) => f.properties.id)
+      const ids = selection
       const r = await sbRpc<{ success: boolean; report_id?: string; rows?: number; error?: string }>(
         'blueprint_report_submit',
         {
@@ -135,8 +136,7 @@ export default function ReportPanel() {
       )
       if (!r.success) { setErr('تعذّر الحفظ: ' + (r.error || '')); return }
       setDone(`تم الحفظ — ${r.rows} قطعة (${r.report_id})`)
-      setRange(null)
-      setAnchor(null)
+      clearReportSelection()
       setNote('')
       await loadSegLog()
     } catch {
@@ -193,7 +193,7 @@ export default function ReportPanel() {
               type="date"
               value={date}
               max={new Date().toISOString().slice(0, 10)}
-              onChange={(e) => { setDate(e.target.value); setRange(null); setAnchor(null) }}
+              onChange={(e) => { setDate(e.target.value); clearReportSelection() }}
               className="mt-1 w-full border border-slate-700 bg-transparent px-2 py-1.5 text-sm outline-none focus:border-cyan-400"
             />
 
@@ -203,7 +203,7 @@ export default function ReportPanel() {
                 <button
                   key={s.unit}
                   type="button"
-                  onClick={() => { setUnit(s.unit); setRange(null); setAnchor(null); setDone('') }}
+                  onClick={() => { setReportUnit(s.unit); setDone('') }}
                   className={`block w-full px-2.5 py-1.5 text-right text-[11px] leading-4 ${
                     unit === s.unit ? 'bg-cyan-400/10 text-cyan-200' : 'text-slate-300 hover:bg-slate-800/60'
                   }`}
@@ -219,18 +219,19 @@ export default function ReportPanel() {
               <>
                 <div className="mt-4 flex items-baseline justify-between">
                   <span className="text-[10px] uppercase tracking-[.25em] text-slate-500">القطاع المنجز</span>
-                  <span className="text-[10px] text-slate-500">اضغط أول قطعة ثم آخر قطعة</span>
+                  <span className="text-[10px] text-slate-500">اضغط أول وآخر قطعة — هنا أو على الخريطة</span>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-[3px]">
-                  {unitSegs.map((f, i) => {
-                    const inRange = range ? i >= range[0] && i <= range[1] : anchor === i
-                    const st = stripStage(f.properties.id)
+                  {unitSegs.map((f) => {
+                    const id = f.properties.id
+                    const inRange = selection.length ? selection.includes(id) : anchor === id
+                    const st = stripStage(id)
                     return (
                       <button
-                        key={f.properties.id}
+                        key={id}
                         type="button"
                         title={`ch ${f.properties.from_ch}–${f.properties.to_ch}`}
-                        onClick={() => tapSegment(i)}
+                        onClick={() => { setDone(''); tapReportSegment(id) }}
                         className="h-5"
                         style={{
                           width: `${Math.max(f.properties.length_m / 12, 4)}px`,
@@ -243,8 +244,8 @@ export default function ReportPanel() {
                   })}
                 </div>
                 <div className="mt-1.5 text-[10px] text-slate-500">
-                  {range
-                    ? `المحدد: ${selectedLen} م (${range[1] - range[0] + 1} قطعة)`
+                  {selection.length
+                    ? `المحدد: ${selectedLen} م (${selection.length} قطعة)`
                     : anchor !== null
                       ? 'حدد آخر قطعة…'
                       : `${unitSegs.length} قطعة — ${unitSegs.reduce((a, f) => a + f.properties.length_m, 0)} م`}
@@ -269,13 +270,13 @@ export default function ReportPanel() {
 
                 {hint && (
                   <div className={`mt-2 border px-2.5 py-1.5 text-[11px] ${
-                    range && Math.abs(selectedLen - hint.meters) / hint.meters > 0.25
+                    selection.length && Math.abs(selectedLen - hint.meters) / hint.meters > 0.25
                       ? 'border-amber-500/50 text-amber-300'
                       : 'border-slate-800 text-slate-400'
                   }`}>
                     وصل هذا اليوم {Math.round(hint.tons)} طن {STAGES[STAGE_INDEX[stage]].label.split(' — ')[0]} ≈{' '}
                     {hint.meters} م بعرض {PAVING.layingWidth_m} م
-                    {range ? ` — حددت ${selectedLen} م` : ''}
+                    {selection.length ? ` — حددت ${selectedLen} م` : ''}
                   </div>
                 )}
 
@@ -287,7 +288,7 @@ export default function ReportPanel() {
                 />
                 <button
                   type="button"
-                  disabled={!range || saving}
+                  disabled={!selection.length || saving}
                   onClick={save}
                   className="mt-3 w-full border border-cyan-400/60 py-2 text-sm text-cyan-300 hover:bg-cyan-400/10 disabled:opacity-40"
                 >

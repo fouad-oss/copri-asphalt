@@ -175,5 +175,18 @@ export function segmentLayers(): LayerSpecification[] {
       layout: { 'line-cap': 'butt' },
       paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': dimmable(1), ...SMOOTH },
     },
+    {
+      // report-mode range selection — ids fed via setFilter
+      id: 'seg-report',
+      type: 'line',
+      source: SOURCE_ID,
+      filter: ['in', ['get', 'id'], ['literal', ['']]],
+      layout: { 'line-cap': 'butt' },
+      paint: {
+        'line-color': '#22d3ee',
+        'line-width': lineWidthExpr(1.5),
+        'line-opacity': 0.95,
+      },
+    },
   ]
 }

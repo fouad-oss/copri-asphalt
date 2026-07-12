@@ -150,6 +150,13 @@ export default function MapView() {
     })
     map.on('click', (e) => {
       const feats = map.queryRenderedFeatures(e.point, { layers: interactiveLayers(map) })
+      const app = useApp.getState()
+      if (app.reporting) {
+        // report mode: taps on the map select the worked range directly
+        const f = feats.find((x) => (x.properties as SegmentProps).unit)
+        if (f) app.tapReportSegment((f.properties as SegmentProps).id)
+        return
+      }
       setSelected(feats.length ? (feats[0].properties as SegmentProps).id : null)
     })
     return () => {
@@ -229,6 +236,16 @@ export default function MapView() {
     if (!map || !mapReady || !map.getLayer('seg-halo')) return
     map.setFilter('seg-halo', ['==', ['get', 'id'], selectedId ?? ''])
   }, [selectedId, mapReady])
+
+  // Report-mode range highlight (anchor alone, then the full range).
+  const reportAnchor = useApp((s) => s.reportAnchor)
+  const reportSelection = useApp((s) => s.reportSelection)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady || !map.getLayer('seg-report')) return
+    const ids = reportSelection.length ? reportSelection : reportAnchor ? [reportAnchor] : ['']
+    map.setFilter('seg-report', ['in', ['get', 'id'], ['literal', ids]])
+  }, [reportSelection, reportAnchor, mapReady])
 
   return (
     <div className="relative h-full w-full">

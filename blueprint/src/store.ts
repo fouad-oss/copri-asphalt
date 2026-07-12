@@ -21,6 +21,11 @@ interface AppState {
   hoveredId: string | null
   selectedId: string | null
   filters: Filters
+  // report mode: shared by the report panel's strip and the map itself
+  reporting: boolean
+  reportUnit: string | null
+  reportAnchor: string | null // first-tapped segment id
+  reportSelection: string[] // ordered segment ids of the chosen range
   loadData: () => Promise<void>
   loadSegLog: () => Promise<void>
   setAsOfDate: (date: string) => void
@@ -28,6 +33,10 @@ interface AppState {
   setSelected: (id: string | null) => void
   setFilters: (patch: Partial<Filters>) => void
   clearFilters: () => void
+  setReporting: (on: boolean) => void
+  setReportUnit: (unit: string | null) => void
+  tapReportSegment: (segId: string) => void
+  clearReportSelection: () => void
 }
 
 const today = new Date().toISOString().slice(0, 10)
@@ -118,6 +127,36 @@ export const useApp = create<AppState>((set, get) => ({
   setSelected: (id) => set({ selectedId: id }),
   setFilters: (patch) => set({ filters: { ...get().filters, ...patch } }),
   clearFilters: () => set({ filters: NO_FILTERS }),
+  reporting: false,
+  reportUnit: null,
+  reportAnchor: null,
+  reportSelection: [],
+  setReporting: (on) =>
+    set(on ? { reporting: true } : { reporting: false, reportUnit: null, reportAnchor: null, reportSelection: [] }),
+  setReportUnit: (unit) => set({ reportUnit: unit, reportAnchor: null, reportSelection: [] }),
+  // Tap-tap range selection: first tap anchors, second (same street)
+  // completes the range; a third starts over. Works identically from the
+  // map and the panel strip.
+  tapReportSegment: (segId) => {
+    const { segments, reportUnit, reportAnchor, reportSelection } = get()
+    if (!segments) return
+    const f = segments.features.find((x) => x.properties.id === segId)
+    const unit = f?.properties.unit
+    if (!unit) return
+    if (unit !== reportUnit || reportAnchor === null || reportSelection.length) {
+      set({ reportUnit: unit, reportAnchor: segId, reportSelection: [] })
+      return
+    }
+    const ordered = segments.features
+      .filter((x) => x.properties.unit === unit)
+      .map((x) => x.properties.id)
+      .sort()
+    const a = ordered.indexOf(reportAnchor)
+    const b = ordered.indexOf(segId)
+    const [lo, hi] = a < b ? [a, b] : [b, a]
+    set({ reportSelection: ordered.slice(lo, hi + 1) })
+  },
+  clearReportSelection: () => set({ reportAnchor: null, reportSelection: [] }),
 }))
 
 if (import.meta.env.DEV) {

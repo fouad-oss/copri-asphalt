@@ -40,6 +40,7 @@ interface AppState {
   setReporting: (on: boolean) => void
   setReportUnit: (unit: string | null) => void
   tapReportSegment: (segId: string) => void
+  selectAllReportSegments: () => void
   clearReportSelection: () => void
 }
 
@@ -177,6 +178,16 @@ export const useApp = create<AppState>((set, get) => ({
     const b = ordered.indexOf(segId)
     const [lo, hi] = a < b ? [a, b] : [b, a]
     set({ reportSelection: ordered.slice(lo, hi + 1) })
+  },
+  // Backfill ergonomics: one tap marks the whole street as the range.
+  selectAllReportSegments: () => {
+    const { segments, reportUnit } = get()
+    if (!segments || !reportUnit) return
+    const ids = segments.features
+      .filter((f) => f.properties.unit === reportUnit)
+      .map((f) => f.properties.id)
+      .sort()
+    if (ids.length) set({ reportAnchor: ids[0], reportSelection: ids })
   },
   clearReportSelection: () => set({ reportAnchor: null, reportSelection: [] }),
 }))

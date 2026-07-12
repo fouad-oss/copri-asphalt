@@ -26,6 +26,7 @@ export default function ReportPanel() {
   const setReporting = useApp((s) => s.setReporting)
   const setReportUnit = useApp((s) => s.setReportUnit)
   const tapReportSegment = useApp((s) => s.tapReportSegment)
+  const selectAllReportSegments = useApp((s) => s.selectAllReportSegments)
   const clearReportSelection = useApp((s) => s.clearReportSelection)
 
   const [open, setOpen] = useState(false)
@@ -39,6 +40,9 @@ export default function ReportPanel() {
   const pavingRev = useApp((s) => s.pavingRev)
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState('')
+  const [showMine, setShowMine] = useState(false)
+  const [confirmDel, setConfirmDel] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   // Report mode is live while the panel is open and authenticated —
   // the MAP itself becomes the segment selector (taps route here).
@@ -96,6 +100,55 @@ export default function ReportPanel() {
     const byId = new Map(unitSegs.map((f) => [f.properties.id, f.properties.length_m]))
     return selection.reduce((a, id) => a + (byId.get(id) || 0), 0)
   }, [selection, unitSegs])
+
+  // Saved reports grouped by report_id, newest first — the edit surface:
+  // corrections are delete + re-enter, the log itself stays append-only.
+  const myReports = useMemo(() => {
+    const groups = new Map<
+      string,
+      { report_id: string; unit: string; stage: StageKey; date: string; n: number; frac: number; by: string }
+    >()
+    for (const r of segLog) {
+      const g = groups.get(r.report_id)
+      if (g) g.n++
+      else
+        groups.set(r.report_id, {
+          report_id: r.report_id,
+          unit: r.unit || r.segment_id,
+          stage: r.stage,
+          date: r.date,
+          n: 1,
+          frac: r.width_frac ?? 1,
+          by: r.crew || '',
+        })
+    }
+    const label = (u: string) => {
+      const f = segments?.features.find((x) => x.properties.unit === u)
+      return f ? `${f.properties.street || u} — ${f.properties.site}${f.properties.block ? ' ق' + f.properties.block : ''}` : u
+    }
+    return [...groups.values()]
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.report_id < b.report_id ? 1 : -1))
+      .map((g) => ({ ...g, label: label(g.unit) }))
+  }, [segLog, segments])
+
+  const deleteReport = async (reportId: string) => {
+    setDeleting(true)
+    setErr('')
+    try {
+      const r = await sbRpc<{ success: boolean; rows?: number; error?: string }>('blueprint_report_delete', {
+        p_pin: sessionStorage.getItem('bp_pin') || pin,
+        p_report_id: reportId,
+      })
+      if (!r.success) { setErr('تعذّر الحذف: ' + (r.error || '')); return }
+      setDone(`حُذف التقرير ${reportId} (${r.rows} فاصل)`)
+      await loadSegLog()
+    } catch {
+      setErr('تعذّر الحذف — هل طُبّق ترحيل 0012؟')
+    } finally {
+      setDeleting(false)
+      setConfirmDel(null)
+    }
+  }
 
   const login = async () => {
     setErr('')
@@ -214,8 +267,15 @@ export default function ReportPanel() {
               <>
                 <div className="mt-4 flex items-baseline justify-between">
                   <span className="text-[10px] uppercase tracking-[.25em] text-slate-500">القطاع المنجز</span>
-                  <span className="text-[10px] text-slate-500">اضغط أول وآخر فاصل — هنا أو على الخريطة</span>
+                  <button
+                    type="button"
+                    onClick={() => { setDone(''); selectAllReportSegments() }}
+                    className="border border-slate-700 px-2 py-0.5 text-[10px] text-slate-300 hover:border-cyan-400/60 hover:text-cyan-200"
+                  >
+                    كامل الشارع
+                  </button>
                 </div>
+                <div className="mt-0.5 text-[10px] text-slate-600">اضغط أول وآخر فاصل — هنا أو على الخريطة</div>
                 <div className="mt-2 flex flex-wrap gap-[3px]">
                   {unitSegs.map((f) => {
                     const id = f.properties.id
@@ -313,6 +373,62 @@ export default function ReportPanel() {
                 {done && <div className="mt-2 text-[11px] text-emerald-400">{done}</div>}
               </>
             )}
+
+            {/* delete feedback must show even with no street picked */}
+            {!unit && err && <div className="mt-2 text-[11px] text-red-400">{err}</div>}
+            {!unit && done && <div className="mt-2 text-[11px] text-emerald-400">{done}</div>}
+
+            {/* saved reports — corrections are delete + re-enter */}
+            <div className="mt-5 border-t border-slate-800 pt-3">
+              <button
+                type="button"
+                onClick={() => setShowMine((v) => !v)}
+                className="flex w-full items-baseline justify-between text-right"
+              >
+                <span className="text-[10px] uppercase tracking-[.25em] text-slate-500">
+                  التقارير المحفوظة ({myReports.length})
+                </span>
+                <span className="text-[10px] text-slate-600">{showMine ? '▲' : '▼'}</span>
+              </button>
+              {showMine && (
+                <div className="mt-2 max-h-56 overflow-y-auto">
+                  {!myReports.length && (
+                    <div className="py-1 text-[11px] text-slate-600">لا تقارير محفوظة بعد</div>
+                  )}
+                  {myReports.map((g) => (
+                    <div key={g.report_id} className="flex items-center gap-2 border-b border-slate-800/70 py-1.5 text-[11px]">
+                      <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: stageColor(STAGE_INDEX[g.stage]) }} />
+                      <span className="min-w-0 flex-1 truncate text-slate-300" title={`${g.label} · ${g.report_id}`}>
+                        {g.label}
+                        <span className="text-slate-600"> · {g.n} فاصل{g.frac < 1 ? ` · ${fracLabel(g.frac)} العرض` : ''}</span>
+                      </span>
+                      <span className="shrink-0 text-slate-500">{g.date}</span>
+                      {g.by === name && (
+                        confirmDel === g.report_id ? (
+                          <button
+                            type="button"
+                            disabled={deleting}
+                            onClick={() => deleteReport(g.report_id)}
+                            className="shrink-0 border border-red-500/60 bg-red-500/10 px-1.5 py-0.5 text-[10px] font-bold text-red-300 disabled:opacity-40"
+                          >
+                            {deleting ? '…' : 'تأكيد الحذف'}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDel(g.report_id)}
+                            className="shrink-0 px-1 text-slate-600 hover:text-red-400"
+                            title="حذف التقرير"
+                          >
+                            🗑
+                          </button>
+                        )
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </aside>

@@ -10,6 +10,7 @@ import snapshot from './data/real/dispatch-snapshot.json'
 // The single app store — no context providers.
 interface AppState {
   worklog: WorkLogEntry[]
+  segLog: WorkLogEntry[] // segment-level work reports (blueprint_worklog)
   segments: SegmentCollection | null
   blocks: SegmentCollection | null
   offMap: [string, number][] // dispatch locations with no geometry (key, rows)
@@ -21,6 +22,7 @@ interface AppState {
   selectedId: string | null
   filters: Filters
   loadData: () => Promise<void>
+  loadSegLog: () => Promise<void>
   setAsOfDate: (date: string) => void
   setHovered: (id: string | null) => void
   setSelected: (id: string | null) => void
@@ -30,8 +32,20 @@ interface AppState {
 
 const today = new Date().toISOString().slice(0, 10)
 
+interface SegLogRow {
+  id: number
+  report_id: string
+  segment_id: string
+  unit: string
+  stage: string
+  work_date: string
+  by_name: string
+  note: string
+}
+
 export const useApp = create<AppState>((set, get) => ({
   worklog: [],
+  segLog: [],
   segments: null,
   blocks: null,
   offMap: [],
@@ -75,6 +89,29 @@ export const useApp = create<AppState>((set, get) => ({
       maxDate,
       asOfDate: maxDate,
     })
+    await get().loadSegLog()
+  },
+  // Segment-level reports (0009). Tolerates the table not existing yet.
+  loadSegLog: async () => {
+    try {
+      const rows = await sbGet<SegLogRow[]>(
+        'blueprint_worklog?select=id,report_id,segment_id,unit,stage,work_date,by_name,note&order=work_date.asc&limit=20000',
+      )
+      set({
+        segLog: rows.map((r) => ({
+          id: `blr-${r.id}`,
+          report_id: r.report_id,
+          segment_id: r.segment_id,
+          unit: r.unit,
+          stage: r.stage as WorkLogEntry['stage'],
+          date: r.work_date,
+          crew: r.by_name,
+          note: r.note || undefined,
+        })),
+      })
+    } catch {
+      /* migration 0009 not applied yet — dispatch-only mode */
+    }
   },
   setAsOfDate: (date) => set({ asOfDate: date }),
   setHovered: (id) => set({ hoveredId: id }),

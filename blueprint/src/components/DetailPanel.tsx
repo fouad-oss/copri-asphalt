@@ -14,6 +14,7 @@ export default function DetailPanel() {
   const setSelected = useApp((s) => s.setSelected)
   const segments = useApp((s) => s.segments)
   const worklog = useApp((s) => s.worklog)
+  const segLog = useApp((s) => s.segLog)
   const asOfDate = useApp((s) => s.asOfDate)
 
   // Keep the last shown feature so content stays put during slide-out.
@@ -172,6 +173,29 @@ export default function DetailPanel() {
                 </div>
               </div>
             )}
+
+            {/* segment-level work reports for THIS 100 m piece */}
+            {(() => {
+              const reps = segLog
+                .filter((r) => r.segment_id === p.id && r.date <= asOfDate)
+                .sort((a, b) => (a.date < b.date ? 1 : -1))
+              if (!reps.length) return null
+              return (
+                <div className="mt-4">
+                  <div className="text-[10px] uppercase tracking-[.25em] text-slate-500">
+                    تقارير هذه القطعة ({reps.length})
+                  </div>
+                  {reps.map((r) => (
+                    <div key={r.id} className="flex items-center gap-2 border-b border-slate-800/70 py-1.5 text-[11px]">
+                      <span className="inline-block h-2 w-2 rounded-full" style={{ background: stageColor(STAGE_INDEX[r.stage]) }} />
+                      <span className="font-bold text-slate-200">{STAGES[STAGE_INDEX[r.stage]].label}</span>
+                      <span className="text-slate-500">{r.crew}</span>
+                      <span className="ml-auto text-slate-400">{r.date}</span>
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
 
             {/* dispatch history for the whole street, newest first */}
             <div className="mt-4 text-[10px] uppercase tracking-[.25em] text-slate-500">

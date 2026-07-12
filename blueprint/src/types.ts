@@ -36,7 +36,8 @@ export interface SegmentCollection {
 export interface WorkLogEntry {
   id: string
   report_id: string
-  segment_id: string // unit key
+  segment_id: string // unit key (dispatch log) or real segment id (reports)
+  unit?: string // street unit key, always set on segment-level report rows
   stage: StageKey
   date: string // ISO8601 (yyyy-mm-dd, Kuwait day)
   reported_qty?: number

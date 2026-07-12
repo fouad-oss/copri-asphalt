@@ -42,6 +42,7 @@ export default function MapView() {
   const segments = useApp((s) => s.segments)
   const blocks = useApp((s) => s.blocks)
   const worklog = useApp((s) => s.worklog)
+  const segLog = useApp((s) => s.segLog)
   const asOfDate = useApp((s) => s.asOfDate)
   const filters = useApp((s) => s.filters)
   const selectedId = useApp((s) => s.selectedId)
@@ -52,19 +53,28 @@ export default function MapView() {
   const activeUnits = useMemo(() => new Set(worklog.map((r) => r.segment_id)), [worklog])
 
   // Derive stage_idx + filter dim flag per feature for the current date.
+  // Units with segment-level reports color per SEGMENT (the reports say
+  // where); everything else colors street-wide from dispatch.
   const derived = useMemo(() => {
     if (!segments || !blocks) return null
     const ins = segmentInsights(worklog, asOfDate)
+    const segIns = segmentInsights(segLog, asOfDate)
+    const reportedUnits = new Set(segLog.filter((r) => r.date <= asOfDate && r.unit).map((r) => r.unit as string))
     const segFC = {
       type: 'FeatureCollection' as const,
       features: segments.features.map((f) => {
-        const i = (f.properties.unit && ins.get(f.properties.unit)) || NO_WORK
+        const unit = f.properties.unit
+        const unitIns = (unit && ins.get(unit)) || NO_WORK
+        const i =
+          unit && reportedUnits.has(unit)
+            ? segIns.get(f.properties.id) || NO_WORK
+            : unitIns
         return {
           ...f,
           properties: {
             ...f.properties,
             stage_idx: i.stageIdx,
-            dim: matchesFilters(f, i, filters) ? 0 : 1,
+            dim: matchesFilters(f, unitIns, filters) ? 0 : 1,
           },
         }
       }),
@@ -78,7 +88,7 @@ export default function MapView() {
       }),
     }
     return { segFC, blockFC }
-  }, [segments, blocks, worklog, asOfDate, filters])
+  }, [segments, blocks, worklog, segLog, asOfDate, filters])
 
   // Init map once.
   useEffect(() => {

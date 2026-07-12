@@ -1228,7 +1228,7 @@ function materialRowToUI(r) {
     project: r.project || "", site: r.site || "", workOrder: r.work_order || "",
     block: r.block || "", street: r.street || "", category: r.category || "",
     material: r.material || "", quantity: r.quantity == null ? "" : r.quantity,
-    unit: r.unit || "", rate: r.rate == null ? "" : r.rate, amount: r.amount == null ? "" : r.amount,
+    unit: r.unit || "",
     supplier: r.supplier || "", subcontractor: r.subcontractor || "",
     photoUrl: r.photo_url || "", remarks: r.remarks || "",
   };
@@ -3618,7 +3618,6 @@ async function dbSubmitMaterialReceipt(p) {
     site: p.site || "", work_order: p.workOrder || "", block: p.block || "",
     street: p.street || "", category: p.category || "", material: p.material || "",
     quantity: parseFloat(p.quantity) || null, unit: p.unit || "",
-    rate: parseFloat(p.rate) || null, amount: parseFloat(p.amount) || null,
     supplier: p.supplier || "", subcontractor: p.subcontractor || "",
     photo_url: photoUrl, remarks: p.remarks || "",
   });
@@ -3731,8 +3730,6 @@ function matReceiptCard(rec) {
   card.appendChild(fieldRow("المادة", rec.material));
   card.appendChild(fieldRow("الفئة", rec.category));
   card.appendChild(fieldRow("الكمية", [rec.quantity, rec.unit].filter(Boolean).join(" ")));
-  if (rec.rate)   card.appendChild(fieldRow("السعر", rec.rate));
-  if (rec.amount) card.appendChild(fieldRow("القيمة", rec.amount));
   card.appendChild(fieldRow("المورد", rec.supplier));
   card.appendChild(fieldRow("المقاول من الباطن", rec.subcontractor));
   card.appendChild(fieldRow("المشروع", rec.project));
@@ -3859,21 +3856,10 @@ function renderMaterialReceiptForm(name, onDone) {
   unitInput.readOnly = true; unitInput.style.background = "var(--surface-2)";
   qtyRow.appendChild(gQty); qtyRow.appendChild(gUnit); card.appendChild(qtyRow);
 
-  // Rate + amount (amount = quantity × rate, read-only)
-  const rateRow = el("div", "field-row-2");
-  const { group: gRate, input: rateInput } = fieldGroup("السعر (د.ك)", input("number", "0.000", "decimal"), false); rateInput.step = "0.001"; rateInput.min = "0";
-  const { group: gAmt, input: amtInput } = fieldGroup("القيمة (د.ك)", input("text", "—"), false);
-  amtInput.readOnly = true; amtInput.style.background = "var(--surface-2)"; amtInput.style.fontWeight = "700";
-  rateRow.appendChild(gRate); rateRow.appendChild(gAmt); card.appendChild(rateRow);
+  // Rate/amount deliberately absent — pricing returns later with billing.
 
   function refreshUnit() { const cat = matCatByName(catInput.value); unitInput.value = cat ? cat.unit : ""; }
-  function refreshAmount() {
-    const q = parseFloat(qtyInput.value), r = parseFloat(rateInput.value);
-    amtInput.value = (isFinite(q) && isFinite(r)) ? (q * r).toFixed(3) : "";
-  }
   catInput.addEventListener("change", () => { buildMat(); refreshUnit(); });
-  qtyInput.addEventListener("input", refreshAmount);
-  rateInput.addEventListener("input", refreshAmount);
 
   // Supplier + subcontractor
   const { group: gSup, input: supInput } = fieldGroup("المورد", select(CONFIG.materialSuppliers || [], "اختر المورد"), true);
@@ -3917,7 +3903,6 @@ function renderMaterialReceiptForm(name, onDone) {
       block: loc.block, street: loc.street,
       category: catInput.value, material: matInput ? matInput.value : "",
       quantity: qtyInput.value.trim(), unit: unitInput.value,
-      rate: rateInput.value.trim(), amount: amtInput.value,
       supplier: supInput.value, subcontractor: subInput.value,
       receiverName: name, remarks: remInput.value.trim(),
     };
@@ -4605,17 +4590,14 @@ function _dashProject(main, data, projName) {
 
   // Materials section.
   if (mats.length) {
-    const useAmt = _sum(mats, (m) => m.amt) > 0;
-    const val = (m) => (useAmt ? m.amt : 1);
-    const fmt = useAmt ? _kdFmt : _numFmt;
     _dashKpis(main, [
       ["استلامات المواد", _numFmt(mats.length), "إيصال"],
-      ["قيمة المواد", useAmt ? _kdFmt(_sum(mats, (m) => m.amt)) : "—", useAmt ? "" : "لا أسعار مسجلة"],
+      ["أصناف موردة", _numFmt(new Set(mats.map((m) => m.item).filter(Boolean)).size), "بند"],
     ]);
-    _dashCard(main, "المواد حسب الفئة" + (useAmt ? " (بالقيمة)" : " (بالعدد)"), _dashBars(_aggBy(mats, (m) => m.cat, val).slice(0, 8), fmt));
-    _dashCard(main, "المواد حسب المقاول من الباطن", _dashBars(_aggBy(mats, (m) => m.sub, val).slice(0, 8), fmt));
-    _dashCard(main, "المواد حسب المستلم", _dashBars(_aggBy(mats, (m) => m.rec, val).slice(0, 8), fmt));
-    _dashCard(main, "المواد حسب الموقع", _dashBars(_aggBy(mats, (m) => m.s, val).slice(0, 8), fmt));
+    _dashCard(main, "المواد حسب الفئة (استلامات)", _dashBars(_aggBy(mats, (m) => m.cat).slice(0, 8), _numFmt));
+    _dashCard(main, "المواد حسب المقاول من الباطن", _dashBars(_aggBy(mats, (m) => m.sub).slice(0, 8), _numFmt));
+    _dashCard(main, "المواد حسب المستلم", _dashBars(_aggBy(mats, (m) => m.rec).slice(0, 8), _numFmt));
+    _dashCard(main, "المواد حسب الموقع", _dashBars(_aggBy(mats, (m) => m.s).slice(0, 8), _numFmt));
   } else {
     const c = el("div", "card"); const ib = el("div", "info-box");
     ib.textContent = "لا توجد استلامات مواد في هذه الفترة";
@@ -4648,13 +4630,9 @@ async function _dashAcct(main, projName) {
     loading.remove();
   }
   const rows = _dashWindow(all);
-  const totalVal = _sum(rows, (r) => r.amount);
-  const useAmt = totalVal > 0;
-  const val = (r) => (useAmt ? (r.amount || 0) : 1);
-  const fmt = useAmt ? _kdFmt : _numFmt;
   _dashKpis(main, [
     ["استلامات المواد", _numFmt(rows.length), "إيصال"],
-    ["قيمة المواد", useAmt ? _kdFmt(totalVal) : "—", useAmt ? "" : "لا أسعار مسجلة"],
+    ["أصناف موردة", _numFmt(new Set(rows.map((r) => r.material).filter(Boolean)).size), "بند"],
     ["مقاولون من الباطن", _numFmt(new Set(rows.map((r) => r.subcontractor).filter(Boolean)).size), ""],
     ["موردون", _numFmt(new Set(rows.map((r) => r.supplier).filter(Boolean)).size), ""],
   ]);
@@ -4681,14 +4659,12 @@ async function _dashAcct(main, projName) {
     const loc = `${esc(r.site)}${r.block ? " ق" + esc(r.block) : ""}${r.street ? " ش" + esc(r.street) : ""}`;
     const links = [];
     if (r.receipt_id) links.push(esc(r.receipt_id));
-    if (r.rate != null) links.push(`سعر الوحدة: ${esc(r.rate)} د.ك`);
     if (r.photo_url) links.push(`<a href="${esc(r.photo_url)}" target="_blank" rel="noopener">🧾 صورة الإيصال</a>`);
     if (r.remarks) links.push(esc(r.remarks));
     row.innerHTML = `
       <div class="trip-main">
         <span class="trip-note">${esc(r.material) || "—"}</span>
         <span class="mat-qty">${r.quantity == null ? "—" : esc(r.quantity)} ${esc(r.unit)}</span>
-        ${r.amount != null ? `<span class="trip-tons">${_kdFmt(r.amount)}</span>` : ""}
       </div>
       <div class="trip-sub">${esc(fmtKW(r.ts))} · ${esc(r.category) || "—"} · ${loc}</div>
       <div class="trip-sub">المورد: ${esc(r.supplier) || "—"} · المقاول: ${esc(r.subcontractor) || "—"} · المستلم: ${esc(r.receiver) || "—"}</div>
@@ -4705,12 +4681,12 @@ async function _dashAcct(main, projName) {
   renderChunk();
   _dashCard(main, `سجل التوريدات (${_numFmt(rows.length)})`, listBody);
 
-  _dashCard(main, "المواد حسب الفئة" + (useAmt ? " (بالقيمة)" : " (بالعدد)"), _dashBars(_aggBy(rows, (r) => r.category, val).slice(0, 10), fmt));
-  _dashCard(main, "حسب المقاول من الباطن" + (useAmt ? " (بالقيمة)" : " (بالعدد)"), _dashBars(_aggBy(rows, (r) => r.subcontractor, val).slice(0, 10), fmt));
-  _dashCard(main, "حسب المورد" + (useAmt ? " (بالقيمة)" : " (بالعدد)"), _dashBars(_aggBy(rows, (r) => r.supplier, val).slice(0, 10), fmt));
+  _dashCard(main, "المواد حسب الفئة (استلامات)", _dashBars(_aggBy(rows, (r) => r.category).slice(0, 10), _numFmt));
+  _dashCard(main, "حسب المقاول من الباطن (استلامات)", _dashBars(_aggBy(rows, (r) => r.subcontractor).slice(0, 10), _numFmt));
+  _dashCard(main, "حسب المورد (استلامات)", _dashBars(_aggBy(rows, (r) => r.supplier).slice(0, 10), _numFmt));
   _dashCard(main, "الكميات حسب البند", _dashBars(
     _aggBy(rows, (r) => (r.material || "—") + (r.unit ? " (" + r.unit + ")" : ""), (r) => r.quantity || 0).slice(0, 12), _numFmt));
-  _dashCard(main, "حسب المستلم" + (useAmt ? " (بالقيمة)" : " (بالعدد)"), _dashBars(_aggBy(rows, (r) => r.receiver, val).slice(0, 10), fmt));
+  _dashCard(main, "حسب المستلم (استلامات)", _dashBars(_aggBy(rows, (r) => r.receiver).slice(0, 10), _numFmt));
 }
 
 // Print-ready itemized materials statement for the accountant —
@@ -4720,21 +4696,18 @@ function _openMatReport(projName, rows) {
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
   const days = rows.map((r) => r.d);
   const from = days.reduce((a, b) => (a < b ? a : b)), to = days.reduce((a, b) => (a > b ? a : b));
-  const totalVal = _sum(rows, (r) => r.amount);
-  const useAmt = totalVal > 0;
   const kpi = (v, l) => `<div class="rk"><div class="v">${v}</div><div class="l">${l}</div></div>`;
   const ordered = rows.slice().sort((a, b) => (a.ts < b.ts ? -1 : 1));
   const detail = ordered.map((r) => `<tr>
     <td>${esc(fmtKW(r.ts))}</td><td>${esc(r.receipt_id)}</td><td>${esc(r.category)}</td><td>${esc(r.material)}</td>
     <td>${r.quantity == null ? "—" : esc(r.quantity)}</td><td>${esc(r.unit)}</td>
-    <td>${r.rate == null ? "—" : esc(r.rate)}</td><td>${r.amount == null ? "—" : esc(r.amount)}</td>
     <td>${esc(r.supplier)}</td><td>${esc(r.subcontractor)}</td><td>${esc(r.receiver)}</td>
     <td>${esc(r.site)}${r.block ? " ق" + esc(r.block) : ""}${r.street ? " ش" + esc(r.street) : ""}</td>
   </tr>`).join("");
   const agg = (title, keyFn) => {
-    const ag = _aggBy(rows, keyFn, (r) => (useAmt ? (r.amount || 0) : 1)).slice(0, 30);
+    const ag = _aggBy(rows, keyFn).slice(0, 30);
     if (!ag.length) return "";
-    return `<h2>${title}${useAmt ? " (بالقيمة د.ك)" : " (بالعدد)"}</h2><table><thead><tr><th>البند</th><th>${useAmt ? "القيمة (د.ك)" : "العدد"}</th></tr></thead><tbody>${
+    return `<h2>${title} (بالعدد)</h2><table><thead><tr><th>البند</th><th>العدد</th></tr></thead><tbody>${
       ag.map((x) => `<tr><td>${esc(x.name)}</td><td>${_numFmt(x.value)}</td></tr>`).join("")}</tbody></table>`;
   };
   const html = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>كشف توريدات المواد</title><style>
@@ -4765,16 +4738,15 @@ function _openMatReport(projName, rows) {
   </div>
   <div class="rks">
     ${kpi(_numFmt(rows.length), "استلامات المواد")}
-    ${kpi(useAmt ? _kdFmt(totalVal) : "—", "قيمة المواد")}
+    ${kpi(_numFmt(new Set(rows.map((r) => r.material).filter(Boolean)).size), "أصناف موردة")}
     ${kpi(_numFmt(new Set(rows.map((r) => r.subcontractor).filter(Boolean)).size), "مقاولون من الباطن")}
     ${kpi(_numFmt(new Set(rows.map((r) => r.supplier).filter(Boolean)).size), "موردون")}
   </div>
   <h2>تفاصيل التوريدات (${_numFmt(rows.length)})</h2>
   <table><thead><tr>
     <th>التاريخ</th><th>رقم الإيصال</th><th>الفئة</th><th>البند</th><th>الكمية</th><th>الوحدة</th>
-    <th>السعر (د.ك)</th><th>القيمة (د.ك)</th><th>المورد</th><th>المقاول من الباطن</th><th>المستلم</th><th>الموقع</th>
-  </tr></thead><tbody>${detail}</tbody>
-  ${useAmt ? `<tfoot><tr><td colspan="7">الإجمالي</td><td>${_numFmt(totalVal)}</td><td colspan="4"></td></tr></tfoot>` : ""}</table>
+    <th>المورد</th><th>المقاول من الباطن</th><th>المستلم</th><th>الموقع</th>
+  </tr></thead><tbody>${detail}</tbody></table>
   ${agg("الإجمالي حسب الفئة", (r) => r.category)}
   ${agg("الإجمالي حسب المقاول من الباطن", (r) => r.subcontractor)}
   ${agg("الإجمالي حسب المورد", (r) => r.supplier)}
@@ -4824,8 +4796,8 @@ function _dashExec(main, data) {
   ].forEach((s) => { const d2 = el("div", "dash-stat"); d2.innerHTML = `<div class="v">${s[0]}</div><div class="l">${s[1]}</div>`; sr.appendChild(d2); });
   qBody.appendChild(sr);
   _dashCard(main, "جودة التسليم (الاستلامات المؤكدة)", qBody);
-  if (mats.length && _sum(mats, (m) => m.amt) > 0) {
-    _dashCard(main, "قيمة المواد حسب المشروع", _dashBars(_aggBy(mats, (m) => m.p, (m) => m.amt).slice(0, 8), _kdFmt));
+  if (mats.length) {
+    _dashCard(main, "استلامات المواد حسب المشروع", _dashBars(_aggBy(mats, (m) => m.p).slice(0, 8), _numFmt));
   }
   _dashFooter(main, data);
 }

@@ -670,6 +670,13 @@
     .wo-res-line { display: flex; align-items: center; gap: .45rem; flex-wrap: wrap; font-size: .85rem; padding: .35rem 0; }
     .wo-res-none { color: var(--text-3); }
     .wo-res-warn { font-size: .74rem; color: var(--amber); font-weight: 600; margin: .1rem 0 .3rem; }
+    .wo-starwrap { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .6rem; }
+    .wo-starchip { font-size: .76rem; font-weight: 700; color: var(--green-dark); background: rgba(0,166,81,.08);
+      border: 1px dashed var(--green); border-radius: 999px; padding: .3rem .7rem; cursor: pointer; }
+    .wo-starchip:hover { background: rgba(0,166,81,.16); }
+    .wo-mapchk { display: flex; align-items: center; gap: .5rem; font-size: .82rem; font-weight: 600;
+      color: var(--text-1); margin: .2rem 0 .8rem; cursor: pointer; }
+    .wo-mapchk input { width: auto; }
     .hbars { display: flex; flex-direction: column; gap: .55rem; }
     .hbar { display: flex; align-items: center; gap: .5rem; position: relative; border-radius: 6px; transition: background .15s ease; }
     .hbar:hover { background: rgba(0,166,81,.05); }
@@ -5443,6 +5450,29 @@ function woDiscChip(d) {
   return s;
 }
 const woActive = (w) => !w.status || /جاري|active/i.test(w.status);
+const WO_GENERAL = "عام — كل المواقع";
+const WO_DISC_OPTS = [["أعمال أسفلت", "asphalt"], ["أعمال مدنية", "civil"], ["أسفلت + مدني", "both"]];
+
+// Distinct locations still logged under the '*' placeholder ("no order
+// issued yet") — grouped by block (street sub-numbers collapse into it)
+// or by street name. Dispatch named-street rows keep the name in `block`.
+async function woStarLocations(project) {
+  const [dl, mr] = await Promise.all([
+    sbGet(`dispatch_loads?select=site,block,street,loc_type&work_order=${sbEq("*")}&project=${sbEq(project)}&limit=1000`).catch(() => []),
+    sbGet(`material_receipts?select=site,block,street&work_order=${sbEq("*")}&project=${sbEq(project)}&limit=1000`).catch(() => []),
+  ]);
+  const map = {};
+  const add = (site, block, street, kind) => {
+    const b = normSp(block), s = b ? "" : normSp(street);
+    if (!site || (!b && !s)) return;
+    const k = [site, b, s].join("|");
+    const e = map[k] = map[k] || { site, block: b, street: s, disp: 0, mat: 0 };
+    e[kind]++;
+  };
+  dl.forEach((r) => { const named = r.loc_type === "اسم الشارع"; add(r.site, named ? "" : r.block, named ? r.block : "", "disp"); });
+  mr.forEach((r) => add(r.site, r.block, r.street, "mat"));
+  return Object.values(map).sort((a, b) => (b.disp + b.mat) - (a.disp + a.mat));
+}
 const woCoverText = (w) => (w.block ? "قطعة " + w.block : w.street ? "شارع " + w.street : w.site ? "عام — كامل الموقع" : "عام — كل المواقع");
 
 // All ACTIVE orders covering a location for a discipline — same matching
@@ -5537,6 +5567,110 @@ function _woPortalPage(main, allRows) {
     streetIn.addEventListener("input", refreshLookup);
     refreshLookup();
     bodyWrap.appendChild(lk);
+
+    // ── Add a new order (work_order_add RPC, migration 0008) ──
+    const addCard = el("div", "card");
+    const addBtn = el("button", "btn-secondary"); addBtn.type = "button";
+    addBtn.textContent = "➕ إضافة أمر عمل جديد";
+    addCard.appendChild(addBtn);
+    const formWrap = el("div"); formWrap.style.display = "none"; formWrap.style.marginTop = ".7rem";
+    addCard.appendChild(formWrap);
+    let formBuilt = false;
+    addBtn.addEventListener("click", () => {
+      formWrap.style.display = formWrap.style.display === "none" ? "" : "none";
+      if (!formBuilt) { formBuilt = true; buildAddForm(); }
+    });
+    bodyWrap.appendChild(addCard);
+
+    function buildAddForm() {
+      // Site options = the project's registered sites (same source as the
+      // dispatch/materials forms), not just sites that already have orders.
+      const ctx = _refProjectCtx(project);
+      const appSites = (ctx && ctx.project.sites && ctx.project.sites.length) ? ctx.project.sites : sites;
+      const { group: gWo, input: woIn } = fieldGroup("رقم أمر العمل", input("text", "مثال: 69", "numeric"), true);
+      formWrap.appendChild(gWo);
+      const { group: gDisc, input: discSel } = fieldGroup("نوع العمل", select(WO_DISC_OPTS.map((d) => d[0]), "اختر نوع العمل"), true);
+      formWrap.appendChild(gDisc);
+      const { group: gSite, input: aSiteSel } = fieldGroup("الموقع", select([...appSites, WO_GENERAL], "اختر الموقع"), true);
+      formWrap.appendChild(gSite);
+      const locRow = el("div", "rep-row");
+      const aBlock = input("text", "القطعة", "numeric"); aBlock.style.maxWidth = "110px";
+      const aStreet = input("text", "الشارع / اسم الشارع");
+      locRow.appendChild(aBlock); locRow.appendChild(aStreet);
+      formWrap.appendChild(locRow);
+      const locHint = el("div", "field-hint");
+      locHint.textContent = "أدخل القطعة أو اسم الشارع — أو اتركهما فارغين لأمر عام على كامل الموقع";
+      formWrap.appendChild(locHint);
+      const { group: gDesc, input: descIn } = fieldGroup("وصف أمر العمل", input("text", "مثال: بيان قطعة 3 - أعمال مدنية"), true);
+      formWrap.appendChild(gDesc);
+
+      // Locations already logged under '*' — one tap maps the new order to them.
+      const starHead = el("div", "prog-day-head"); starHead.textContent = "⭐ مواقع مسجلة بدون أمر عمل ( * )";
+      formWrap.appendChild(starHead);
+      const starWrap = el("div", "wo-starwrap");
+      starWrap.innerHTML = `<div class="field-hint">جارٍ التحميل…</div>`;
+      formWrap.appendChild(starWrap);
+      const mapRow = el("label", "wo-mapchk");
+      const mapChk = input("checkbox", ""); mapChk.disabled = true;
+      const mapTxt = el("span"); mapTxt.textContent = "ربط سجلات * المطابقة لهذا الموقع بالأمر الجديد";
+      mapRow.appendChild(mapChk); mapRow.appendChild(mapTxt);
+      formWrap.appendChild(mapRow);
+      const refreshMapChk = () => {
+        const ok = aSiteSel.value && aSiteSel.value !== WO_GENERAL && (aBlock.value.trim() || aStreet.value.trim());
+        mapChk.disabled = !ok; if (!ok) mapChk.checked = false;
+      };
+      aSiteSel.addEventListener("change", refreshMapChk);
+      aBlock.addEventListener("input", refreshMapChk);
+      aStreet.addEventListener("input", refreshMapChk);
+      woStarLocations(project).then((locs) => {
+        starWrap.innerHTML = "";
+        if (!locs.length) { starWrap.innerHTML = `<div class="field-hint">لا توجد سجلات على أمر * حالياً</div>`; return; }
+        locs.forEach((L) => {
+          const chip = el("button", "wo-starchip"); chip.type = "button";
+          const counts = [L.disp ? `${_numFmt(L.disp)} أسفلت` : "", L.mat ? `${_numFmt(L.mat)} مواد` : ""].filter(Boolean).join(" · ");
+          chip.textContent = `${L.site} — ${L.block ? "قطعة " + L.block : "شارع " + L.street} (${counts})`;
+          chip.addEventListener("click", () => {
+            aSiteSel.value = L.site; aBlock.value = L.block; aStreet.value = L.street;
+            refreshMapChk(); if (!mapChk.disabled) mapChk.checked = true;
+          });
+          starWrap.appendChild(chip);
+        });
+      });
+
+      const addErr = el("div", "error-msg"); addErr.style.display = "none"; formWrap.appendChild(addErr);
+      const saveBtn = el("button", "btn-primary"); saveBtn.type = "button"; saveBtn.textContent = "حفظ أمر العمل";
+      formWrap.appendChild(saveBtn);
+      saveBtn.addEventListener("click", async () => {
+        const disc = (WO_DISC_OPTS.find((d) => d[0] === discSel.value) || [])[1] || "";
+        const general = aSiteSel.value === WO_GENERAL;
+        const err = (m) => { addErr.textContent = m; addErr.style.display = "block"; };
+        if (!woIn.value.trim()) return err("يرجى إدخال رقم أمر العمل");
+        if (!disc) return err("يرجى اختيار نوع العمل");
+        if (!aSiteSel.value) return err("يرجى اختيار الموقع");
+        if (!descIn.value.trim()) return err("يرجى إدخال وصف أمر العمل");
+        addErr.style.display = "none"; saveBtn.disabled = true; saveBtn.textContent = "جارٍ الحفظ…";
+        try {
+          const r = await sbRpc("work_order_add", {
+            p_project: project, p_site: general ? "" : aSiteSel.value,
+            p_block: general ? "" : aBlock.value.trim(), p_street: general ? "" : aStreet.value.trim(),
+            p_discipline: disc, p_wo: woIn.value.trim(), p_description: descIn.value.trim(),
+            p_map_star: !mapChk.disabled && mapChk.checked,
+          });
+          if (!r.success) {
+            saveBtn.disabled = false; saveBtn.textContent = "حفظ أمر العمل";
+            return err(r.error === "duplicate" ? "يوجد أمر مطابق مسجّل مسبقاً" : "تعذّر الحفظ: " + (r.error || ""));
+          }
+          const mapped = (r.mapped_dispatch || 0) + (r.mapped_materials || 0);
+          alert(`تم حفظ أمر العمل ${woIn.value.trim()}` + (mapped ? ` — وربط ${mapped} سجل كان على أمر *` : ""));
+          // Refresh the app reference (forms' auto-fill) + this portal.
+          try { const fresh = await fetchReference(8000); if (fresh) applyReferenceData(fresh); } catch (e) {}
+          _woRows = null; renderWoPortal();
+        } catch (e) {
+          saveBtn.disabled = false; saveBtn.textContent = "حفظ أمر العمل";
+          err("تعذّر الحفظ — تحقق من الاتصال، وتأكد من تطبيق ترحيل 0008 على قاعدة البيانات");
+        }
+      });
+    }
 
     // ── KPIs ──
     const nA = active.filter((w) => ["asphalt", "both"].includes(woDiscKind(w.discipline))).length;

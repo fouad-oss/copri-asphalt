@@ -143,7 +143,7 @@ export default function DetailPanel() {
               <div className="mt-4">
                 <div className="flex items-baseline justify-between">
                   <span className="text-[10px] uppercase tracking-[.25em] text-slate-500">
-                    الكميات المفرودة
+                    الكميات المفروشة
                   </span>
                   <span className="text-[10px] text-slate-500">
                     مساحة الشارع ≈ {Math.round(derived.streetArea).toLocaleString('en')} م²
@@ -183,7 +183,7 @@ export default function DetailPanel() {
               return (
                 <div className="mt-4">
                   <div className="text-[10px] uppercase tracking-[.25em] text-slate-500">
-                    تقارير هذه القطعة ({reps.length})
+                    تقارير هذا الفاصل ({reps.length})
                   </div>
                   {reps.map((r) => (
                     <div key={r.id} className="flex items-center gap-2 border-b border-slate-800/70 py-1.5 text-[11px]">

@@ -135,7 +135,7 @@ export default function ReportPanel() {
         },
       )
       if (!r.success) { setErr('تعذّر الحفظ: ' + (r.error || '')); return }
-      setDone(`تم الحفظ — ${r.rows} قطعة (${r.report_id})`)
+      setDone(`تم الحفظ — ${r.rows} فاصل (${r.report_id})`)
       clearReportSelection()
       setNote('')
       await loadSegLog()
@@ -219,7 +219,7 @@ export default function ReportPanel() {
               <>
                 <div className="mt-4 flex items-baseline justify-between">
                   <span className="text-[10px] uppercase tracking-[.25em] text-slate-500">القطاع المنجز</span>
-                  <span className="text-[10px] text-slate-500">اضغط أول وآخر قطعة — هنا أو على الخريطة</span>
+                  <span className="text-[10px] text-slate-500">اضغط أول وآخر فاصل — هنا أو على الخريطة</span>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-[3px]">
                   {unitSegs.map((f) => {
@@ -245,10 +245,10 @@ export default function ReportPanel() {
                 </div>
                 <div className="mt-1.5 text-[10px] text-slate-500">
                   {selection.length
-                    ? `المحدد: ${selectedLen} م (${selection.length} قطعة)`
+                    ? `المحدد: ${selectedLen} م (${selection.length} فاصل)`
                     : anchor !== null
-                      ? 'حدد آخر قطعة…'
-                      : `${unitSegs.length} قطعة — ${unitSegs.reduce((a, f) => a + f.properties.length_m, 0)} م`}
+                      ? 'حدد آخر فاصل…'
+                      : `${unitSegs.length} فاصل — ${unitSegs.reduce((a, f) => a + f.properties.length_m, 0)} م`}
                 </div>
 
                 <div className="mt-3 text-[10px] uppercase tracking-[.25em] text-slate-500">الطبقة</div>

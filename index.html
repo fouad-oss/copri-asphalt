@@ -2072,12 +2072,37 @@ function renderDispatch(ctx) {
   function applyProgram(p) {
     ensureSiteOption(p.site);
     if (p.site) { siteInput.value = p.site; siteInput.dispatchEvent(new Event("change", { bubbles: true })); }
-    // blocks-mode inputs sit in locContainer as [block, street]
-    const ins = locContainer ? locContainer.querySelectorAll("input") : [];
-    if (ins.length >= 2) {
-      if (p.block)  ins[0].value = p.block;
-      if (p.street) ins[1].value = p.street;
-      if (p.block || p.street) ins[1].dispatchEvent(new Event("change", { bubbles: true }));
+
+    // A street with no block is a NAMED-street location (e.g. مشرف ش57):
+    // filling the blocks-mode street field would leave the mandatory قطعة
+    // empty and dead-end the clerk at validation. Flip the address-type
+    // toggle to اسم الشارع and fill the name instead.
+    if (!p.block && p.street && project.allowNamedStreet) {
+      const namedTab = [...card.querySelectorAll("button.history-tab")]
+        .find((b) => b.textContent === "اسم الشارع");
+      if (namedTab) namedTab.click();   // rebuilds the location inputs in named mode
+      const field = locContainer ? locContainer.querySelector("select, input") : null;
+      if (field) {
+        if (field.tagName === "SELECT" && ![...field.options].some((o) => o.value === p.street)) {
+          const o = document.createElement("option"); o.value = o.textContent = p.street;
+          field.appendChild(o);
+        }
+        field.value = p.street;
+        field.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    } else {
+      // Block+street program: make sure the form is in قطعة وشارع mode
+      // (a previous chip may have flipped it to named).
+      const blocksTab = [...card.querySelectorAll("button.history-tab")]
+        .find((b) => b.textContent === "قطعة وشارع");
+      if (blocksTab && !blocksTab.classList.contains("active")) blocksTab.click();
+      // blocks-mode inputs sit in locContainer as [block, street]
+      const ins = locContainer ? locContainer.querySelectorAll("input") : [];
+      if (ins.length >= 2) {
+        if (p.block)  ins[0].value = p.block;
+        if (p.street) ins[1].value = p.street;
+        if (p.block || p.street) ins[1].dispatchEvent(new Event("change", { bubbles: true }));
+      }
     }
     if (p.mix && [...mixInput.options].some((o) => o.value === p.mix)) mixInput.value = p.mix;
   }

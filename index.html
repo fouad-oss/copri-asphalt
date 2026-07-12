@@ -662,6 +662,8 @@
     .rep-row input { flex: 1; min-width: 125px; max-width: 185px; }
     .rep-go { width: auto !important; flex: 0 0 auto; min-width: 0; padding: .5rem .95rem; font-size: .82rem; }
     .rep-sep { font-size: .74rem; color: var(--text-3); }
+    .mat-qty { font-size: .76rem; font-weight: 700; color: var(--green-dark); background: rgba(0,166,81,.08); border-radius: 6px; padding: .15rem .5rem; white-space: nowrap; }
+    .trip-sub a { color: var(--green-dark); font-weight: 600; text-decoration: none; }
     .hbars { display: flex; flex-direction: column; gap: .55rem; }
     .hbar { display: flex; align-items: center; gap: .5rem; position: relative; border-radius: 6px; transition: background .15s ease; }
     .hbar:hover { background: rgba(0,166,81,.05); }
@@ -4396,6 +4398,8 @@ function _dashTripsToggle(anchor, day) {
 // ── Entry: fetch once, then route to a page ──
 function renderDashboard(page, projName) {
   const main = renderShell("لوحة المعلومات");
+  // Accountant board reads material_receipts itself — no slim payload needed.
+  if (page === "acct" && projName) { _dashAcct(main, projName); return; }
   if (_dashCache) { _dashRoute(main, _dashCache, page, projName); return; }
   const loading = el("div", "card");
   loading.innerHTML = `<div class="info-box">جارٍ تحميل البيانات…</div>`;
@@ -4540,6 +4544,7 @@ function _dashHome(main) {
   mk("الإدارة العامة", "نظرة شاملة — كل الوحدات والمشاريع", () => renderDashboard("exec"));
   mk("المصنع", "الإرساليات حسب الشركة والموقع والخلطة", () => renderDashboard("plant"));
   _refCopriProjectNames().forEach((pn) => mk(pn, "استلامات الأسفلت والمواد للمشروع", () => renderDashboard("project", pn)));
+  _refCopriProjectNames().forEach((pn) => mk("محاسبة المواد — " + pn, "كشف توريدات المواد بالتفصيل — للمحاسب", () => renderDashboard("acct", pn)));
   const soon = el("div", "field-hint"); soon.style.textAlign = "center"; soon.style.marginTop = ".6rem";
   soon.textContent = "لوحة القشط — قريباً";
   card.appendChild(soon);
@@ -4617,6 +4622,168 @@ function _dashProject(main, data, projName) {
     c.appendChild(ib); main.appendChild(c);
   }
   _dashFooter(main, data);
+}
+
+// ── Accountant board: itemized material deliveries for one project.
+// Built for the project accountant — reads material_receipts directly
+// (the slim dash payload drops rate, receipt id, photo and remarks,
+// all of which the accountant needs for audit). ──
+let _matAcctCache = {};   // project → receipt rows (+d Kuwait-day key)
+async function _dashAcct(main, projName) {
+  const rerender = () => { main.innerHTML = ""; _dashAcct(main, projName); };
+  _dashPageHead(main, "محاسبة المواد — " + projName, rerender);
+  let all = _matAcctCache[projName];
+  if (!all) {
+    const loading = el("div", "card");
+    loading.innerHTML = `<div class="info-box">جارٍ تحميل التوريدات…</div>`;
+    main.appendChild(loading);
+    try {
+      const raw = await sbGet(`material_receipts?project=${sbEq(projName)}&order=ts.desc&limit=2000`);
+      all = raw.map((r) => ({ ...r, d: fmtKW(r.ts).slice(0, 10) }));
+      _matAcctCache[projName] = all;
+    } catch (e) {
+      loading.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل التوريدات — تحقق من الاتصال</div>`;
+      return;
+    }
+    loading.remove();
+  }
+  const rows = _dashWindow(all);
+  const totalVal = _sum(rows, (r) => r.amount);
+  const useAmt = totalVal > 0;
+  const val = (r) => (useAmt ? (r.amount || 0) : 1);
+  const fmt = useAmt ? _kdFmt : _numFmt;
+  _dashKpis(main, [
+    ["استلامات المواد", _numFmt(rows.length), "إيصال"],
+    ["قيمة المواد", useAmt ? _kdFmt(totalVal) : "—", useAmt ? "" : "لا أسعار مسجلة"],
+    ["مقاولون من الباطن", _numFmt(new Set(rows.map((r) => r.subcontractor).filter(Boolean)).size), ""],
+    ["موردون", _numFmt(new Set(rows.map((r) => r.supplier).filter(Boolean)).size), ""],
+  ]);
+
+  // The core: the delivery-by-delivery record, newest first, with the
+  // paper-receipt photo link for audit.
+  const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const listBody = el("div");
+  const printBtn = el("button", "btn-secondary rep-go"); printBtn.type = "button";
+  printBtn.textContent = "🖨️ طباعة كشف";
+  printBtn.style.marginBottom = ".5rem";
+  printBtn.addEventListener("click", () => _openMatReport(projName, rows));
+  listBody.appendChild(printBtn);
+  if (!rows.length) {
+    const ib = el("div", "info-box"); ib.textContent = "لا توجد توريدات مواد في هذه الفترة";
+    listBody.appendChild(ib);
+  }
+  const moreBtn = el("button", "btn-secondary"); moreBtn.type = "button";
+  moreBtn.style.marginTop = ".6rem";
+  let shown = 0;
+  const CHUNK = 60;
+  const matRow = (r) => {
+    const row = el("div", "trip-row");
+    const loc = `${esc(r.site)}${r.block ? " ق" + esc(r.block) : ""}${r.street ? " ش" + esc(r.street) : ""}`;
+    const links = [];
+    if (r.receipt_id) links.push(esc(r.receipt_id));
+    if (r.rate != null) links.push(`سعر الوحدة: ${esc(r.rate)} د.ك`);
+    if (r.photo_url) links.push(`<a href="${esc(r.photo_url)}" target="_blank" rel="noopener">🧾 صورة الإيصال</a>`);
+    if (r.remarks) links.push(esc(r.remarks));
+    row.innerHTML = `
+      <div class="trip-main">
+        <span class="trip-note">${esc(r.material) || "—"}</span>
+        <span class="mat-qty">${r.quantity == null ? "—" : esc(r.quantity)} ${esc(r.unit)}</span>
+        ${r.amount != null ? `<span class="trip-tons">${_kdFmt(r.amount)}</span>` : ""}
+      </div>
+      <div class="trip-sub">${esc(fmtKW(r.ts))} · ${esc(r.category) || "—"} · ${loc}</div>
+      <div class="trip-sub">المورد: ${esc(r.supplier) || "—"} · المقاول: ${esc(r.subcontractor) || "—"} · المستلم: ${esc(r.receiver) || "—"}</div>
+      ${links.length ? `<div class="trip-sub">${links.join(" · ")}</div>` : ""}`;
+    return row;
+  };
+  const renderChunk = () => {
+    rows.slice(shown, shown + CHUNK).forEach((r) => listBody.insertBefore(matRow(r), moreBtn));
+    shown = Math.min(rows.length, shown + CHUNK);
+    moreBtn.style.display = shown < rows.length ? "" : "none";
+    moreBtn.textContent = `عرض المزيد (${_numFmt(rows.length - shown)})`;
+  };
+  listBody.appendChild(moreBtn);
+  renderChunk();
+  _dashCard(main, `سجل التوريدات (${_numFmt(rows.length)})`, listBody);
+
+  _dashCard(main, "المواد حسب الفئة" + (useAmt ? " (بالقيمة)" : " (بالعدد)"), _dashBars(_aggBy(rows, (r) => r.category, val).slice(0, 10), fmt));
+  _dashCard(main, "حسب المقاول من الباطن" + (useAmt ? " (بالقيمة)" : " (بالعدد)"), _dashBars(_aggBy(rows, (r) => r.subcontractor, val).slice(0, 10), fmt));
+  _dashCard(main, "حسب المورد" + (useAmt ? " (بالقيمة)" : " (بالعدد)"), _dashBars(_aggBy(rows, (r) => r.supplier, val).slice(0, 10), fmt));
+  _dashCard(main, "الكميات حسب البند", _dashBars(
+    _aggBy(rows, (r) => (r.material || "—") + (r.unit ? " (" + r.unit + ")" : ""), (r) => r.quantity || 0).slice(0, 12), _numFmt));
+  _dashCard(main, "حسب المستلم" + (useAmt ? " (بالقيمة)" : " (بالعدد)"), _dashBars(_aggBy(rows, (r) => r.receiver, val).slice(0, 10), fmt));
+}
+
+// Print-ready itemized materials statement for the accountant —
+// same window→print/PDF flow as the dispatch reports.
+function _openMatReport(projName, rows) {
+  if (!rows.length) { alert("لا توجد توريدات في هذه الفترة"); return; }
+  const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const days = rows.map((r) => r.d);
+  const from = days.reduce((a, b) => (a < b ? a : b)), to = days.reduce((a, b) => (a > b ? a : b));
+  const totalVal = _sum(rows, (r) => r.amount);
+  const useAmt = totalVal > 0;
+  const kpi = (v, l) => `<div class="rk"><div class="v">${v}</div><div class="l">${l}</div></div>`;
+  const ordered = rows.slice().sort((a, b) => (a.ts < b.ts ? -1 : 1));
+  const detail = ordered.map((r) => `<tr>
+    <td>${esc(fmtKW(r.ts))}</td><td>${esc(r.receipt_id)}</td><td>${esc(r.category)}</td><td>${esc(r.material)}</td>
+    <td>${r.quantity == null ? "—" : esc(r.quantity)}</td><td>${esc(r.unit)}</td>
+    <td>${r.rate == null ? "—" : esc(r.rate)}</td><td>${r.amount == null ? "—" : esc(r.amount)}</td>
+    <td>${esc(r.supplier)}</td><td>${esc(r.subcontractor)}</td><td>${esc(r.receiver)}</td>
+    <td>${esc(r.site)}${r.block ? " ق" + esc(r.block) : ""}${r.street ? " ش" + esc(r.street) : ""}</td>
+  </tr>`).join("");
+  const agg = (title, keyFn) => {
+    const ag = _aggBy(rows, keyFn, (r) => (useAmt ? (r.amount || 0) : 1)).slice(0, 30);
+    if (!ag.length) return "";
+    return `<h2>${title}${useAmt ? " (بالقيمة د.ك)" : " (بالعدد)"}</h2><table><thead><tr><th>البند</th><th>${useAmt ? "القيمة (د.ك)" : "العدد"}</th></tr></thead><tbody>${
+      ag.map((x) => `<tr><td>${esc(x.name)}</td><td>${_numFmt(x.value)}</td></tr>`).join("")}</tbody></table>`;
+  };
+  const html = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>كشف توريدات المواد</title><style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  @page { size: A4 landscape; margin: 10mm; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 9.5pt; color: #1a1a1a; direction: rtl; padding: 8px; }
+  .head { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #00A651; padding-bottom: 8px; margin-bottom: 12px; }
+  .head img { height: 44px; }
+  .head .t1 { font-size: 14pt; font-weight: 800; }
+  .head .t2 { font-size: 9pt; color: #555; margin-top: 2px; }
+  .rks { display: flex; gap: 8px; margin-bottom: 12px; }
+  .rk { flex: 1; border: 1px solid #ddd; border-radius: 8px; padding: 8px 10px; text-align: center; }
+  .rk .v { font-size: 13pt; font-weight: 800; color: #007A3D; }
+  .rk .l { font-size: 7.5pt; color: #555; margin-top: 2px; }
+  h2 { font-size: 10.5pt; margin: 12px 0 5px; color: #007A3D; }
+  table { width: 100%; border-collapse: collapse; font-size: 8pt; }
+  th { background: #f0f6f2; border: 1px solid #cfe0d6; padding: 4px 5px; font-weight: 700; text-align: right; }
+  td { border: 1px solid #e2e2e2; padding: 3.5px 5px; }
+  tr:nth-child(even) td { background: #fafaf8; }
+  tfoot td { font-weight: 800; background: #f0f6f2; }
+  .foot { margin-top: 12px; border-top: 1px solid #ddd; padding-top: 6px; font-size: 7.5pt; color: #999; text-align: center; }
+  @media screen { body { max-width: 1050px; margin: auto; } }
+  </style></head><body>
+  <div class="head">
+    <div><div class="t1">كشف توريدات المواد — ${esc(projName)}</div>
+    <div class="t2">${from === to ? "يوم " + from : "من " + from + " إلى " + to} · أُنشئ ${esc(fmtKW(new Date().toISOString()))}</div></div>
+    <img src="${COPRI_LOGO}" alt="COPRI"/>
+  </div>
+  <div class="rks">
+    ${kpi(_numFmt(rows.length), "استلامات المواد")}
+    ${kpi(useAmt ? _kdFmt(totalVal) : "—", "قيمة المواد")}
+    ${kpi(_numFmt(new Set(rows.map((r) => r.subcontractor).filter(Boolean)).size), "مقاولون من الباطن")}
+    ${kpi(_numFmt(new Set(rows.map((r) => r.supplier).filter(Boolean)).size), "موردون")}
+  </div>
+  <h2>تفاصيل التوريدات (${_numFmt(rows.length)})</h2>
+  <table><thead><tr>
+    <th>التاريخ</th><th>رقم الإيصال</th><th>الفئة</th><th>البند</th><th>الكمية</th><th>الوحدة</th>
+    <th>السعر (د.ك)</th><th>القيمة (د.ك)</th><th>المورد</th><th>المقاول من الباطن</th><th>المستلم</th><th>الموقع</th>
+  </tr></thead><tbody>${detail}</tbody>
+  ${useAmt ? `<tfoot><tr><td colspan="7">الإجمالي</td><td>${_numFmt(totalVal)}</td><td colspan="4"></td></tr></tfoot>` : ""}</table>
+  ${agg("الإجمالي حسب الفئة", (r) => r.category)}
+  ${agg("الإجمالي حسب المقاول من الباطن", (r) => r.subcontractor)}
+  ${agg("الإجمالي حسب المورد", (r) => r.supplier)}
+  <div class="foot">شركة كوبري للمشاريع الإنشائية — طُبع من منظومة التتبع الرقمي</div>
+  </body></html>`;
+  const w = window.open("", "_blank", "width=1100,height=700");
+  if (!w) { alert("يرجى السماح بالنوافذ المنبثقة لإنشاء الكشف"); return; }
+  w.document.write(html); w.document.close();
+  setTimeout(() => { try { w.focus(); w.print(); } catch (e) {} }, 500);
 }
 
 // ── Exec board: top-level management view across all units ──
@@ -5285,7 +5452,7 @@ if (millingReport) {
   // Standalone (no PIN) for now — a dedicated management PIN gate comes later,
   // driven by a new top-management reference file the user will create.
   const dv = _mparams.get("dash"), dp = _mparams.get("dp");
-  renderDashboard(["plant", "exec", "project"].includes(dv) ? dv : null, dp || null);
+  renderDashboard(["plant", "exec", "project", "acct"].includes(dv) ? dv : null, dp || null);
 } else if (millingRole === "engineer") {
   const session = getEngineerSession();
   if (session) renderMillingEngineerHome(session.name);

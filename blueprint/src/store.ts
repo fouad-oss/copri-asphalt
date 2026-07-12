@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { SegmentCollection, WorkLogEntry } from './types'
+import { NO_FILTERS, type Filters } from './lib/insights'
 import worklogJson from './data/worklog.json'
 import segmentsUrl from './data/segments.geojson?url'
 
@@ -12,10 +13,13 @@ interface AppState {
   maxDate: string // … through today (so "now" is a valid position)
   hoveredId: string | null
   selectedId: string | null
+  filters: Filters
   loadSegments: () => Promise<void>
   setAsOfDate: (date: string) => void
   setHovered: (id: string | null) => void
   setSelected: (id: string | null) => void
+  setFilters: (patch: Partial<Filters>) => void
+  clearFilters: () => void
 }
 
 const worklog = worklogJson as WorkLogEntry[]
@@ -37,7 +41,10 @@ export const useApp = create<AppState>((set, get) => ({
     const fc: SegmentCollection = await fetch(segmentsUrl).then((r) => r.json())
     set({ segments: fc })
   },
+  filters: NO_FILTERS,
   setAsOfDate: (date) => set({ asOfDate: date }),
   setHovered: (id) => set({ hoveredId: id }),
   setSelected: (id) => set({ selectedId: id }),
+  setFilters: (patch) => set({ filters: { ...get().filters, ...patch } }),
+  clearFilters: () => set({ filters: NO_FILTERS }),
 }))

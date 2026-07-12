@@ -54,6 +54,10 @@ const lineWidth = lineWidthExpr()
 
 const stageIdx: ExpressionSpecification = ['get', 'stage_idx'] as unknown as ExpressionSpecification
 
+// Filtered-out segments stay as a faint ghost of the network.
+const dimmable = (normal: number): ExpressionSpecification =>
+  ['case', ['==', ['get', 'dim'], 1], 0.08, normal] as unknown as ExpressionSpecification
+
 // Butt caps keep the 100 m segment boundaries crisp — a main street must
 // read as a chain of adjacent, independently colored segments.
 export function segmentLayers(): LayerSpecification[] {
@@ -79,7 +83,7 @@ export function segmentLayers(): LayerSpecification[] {
       source: SOURCE_ID,
       filter: ['==', stageIdx, 0],
       layout: { 'line-cap': 'butt' },
-      paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.85 },
+      paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': dimmable(0.85) },
     },
     {
       // in progress (stages 1..complete-1) — dashed
@@ -92,6 +96,7 @@ export function segmentLayers(): LayerSpecification[] {
         'line-color': lineColor,
         'line-width': lineWidth,
         'line-dasharray': [2.2, 1.4],
+        'line-opacity': dimmable(1),
       },
     },
     {
@@ -101,7 +106,7 @@ export function segmentLayers(): LayerSpecification[] {
       source: SOURCE_ID,
       filter: ['==', stageIdx, COMPLETE_INDEX],
       layout: { 'line-cap': 'butt' },
-      paint: { 'line-color': lineColor, 'line-width': lineWidth },
+      paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': dimmable(1) },
     },
   ]
 }

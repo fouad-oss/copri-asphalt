@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import MapView from './components/MapView'
 import DetailPanel from './components/DetailPanel'
 import TimeSlider from './components/TimeSlider'
+import InsightStrip from './components/InsightStrip'
+import FilterBar from './components/FilterBar'
 import { STAGES, COMPLETE_INDEX, stageColor } from './config/stages'
 import { useApp } from './store'
 
@@ -42,6 +44,8 @@ function App() {
         </p>
       </header>
       <Legend />
+      <FilterBar />
+      <InsightStrip />
       <TimeSlider />
       <DetailPanel />
     </div>

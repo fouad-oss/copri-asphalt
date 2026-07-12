@@ -2,10 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { useApp } from '../store'
 import { STAGES, STAGE_INDEX, COMPLETE_INDEX, stageColor } from '../config/stages'
 import { currentStage, stageDates, daysBetween } from '../lib/derive'
+import { STALL_DAYS } from '../lib/insights'
 import ProgressRail from './ProgressRail'
 import type { SegmentFeature } from '../types'
-
-const STALL_DAYS = 14
 
 // Right-hand detail panel; slides in when a segment is selected. All
 // facts are derived from the worklog at the store's asOfDate.

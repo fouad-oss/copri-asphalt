@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useApp } from '../store'
-import { currentStage } from '../lib/derive'
+import { segmentInsights, matchesFilters, NO_WORK } from '../lib/insights'
 import { STAGES } from '../config/stages'
 import { BASE_STYLE, SOURCE_ID, SEGMENT_LAYER_IDS, segmentLayers } from '../lib/mapStyle'
 import type { SegmentProps } from '../types'
@@ -29,24 +29,30 @@ export default function MapView() {
   const segments = useApp((s) => s.segments)
   const worklog = useApp((s) => s.worklog)
   const asOfDate = useApp((s) => s.asOfDate)
+  const filters = useApp((s) => s.filters)
   const selectedId = useApp((s) => s.selectedId)
   const setSelected = useApp((s) => s.setSelected)
   const setHovered = useApp((s) => s.setHovered)
 
-  // Derive stage_idx per feature for the current date.
+  // Derive stage_idx + filter dim flag per feature for the current date.
   const enriched = useMemo(() => {
     if (!segments) return null
+    const ins = segmentInsights(worklog, asOfDate)
     return {
       type: 'FeatureCollection' as const,
-      features: segments.features.map((f) => ({
-        ...f,
-        properties: {
-          ...f.properties,
-          stage_idx: currentStage(worklog, f.properties.id, asOfDate),
-        },
-      })),
+      features: segments.features.map((f) => {
+        const i = ins.get(f.properties.id) ?? NO_WORK
+        return {
+          ...f,
+          properties: {
+            ...f.properties,
+            stage_idx: i.stageIdx,
+            dim: matchesFilters(f, i, filters) ? 0 : 1,
+          },
+        }
+      }),
     }
-  }, [segments, worklog, asOfDate])
+  }, [segments, worklog, asOfDate, filters])
 
   // Init map once.
   useEffect(() => {

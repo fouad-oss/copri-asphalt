@@ -43,3 +43,7 @@ export function stageDates(
 export function daysBetween(fromISO: string, toISO: string): number {
   return Math.round((Date.parse(toISO) - Date.parse(fromISO)) / 86400000)
 }
+
+export function addDays(iso: string, n: number): string {
+  return new Date(Date.parse(iso) + n * 86400000).toISOString().slice(0, 10)
+}

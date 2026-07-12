@@ -4,22 +4,32 @@ import worklogJson from './data/worklog.json'
 import segmentsUrl from './data/segments.geojson?url'
 
 // The single app store — no context providers.
-// asOfDate is pinned to today until the time slider lands (step 4).
 interface AppState {
   worklog: WorkLogEntry[]
   segments: SegmentCollection | null
-  asOfDate: string
+  asOfDate: string // the time slider's position — everything derives from it
+  minDate: string // slider range: first worklog date …
+  maxDate: string // … through today (so "now" is a valid position)
   hoveredId: string | null
   selectedId: string | null
   loadSegments: () => Promise<void>
+  setAsOfDate: (date: string) => void
   setHovered: (id: string | null) => void
   setSelected: (id: string | null) => void
 }
 
+const worklog = worklogJson as WorkLogEntry[]
+const today = new Date().toISOString().slice(0, 10)
+const logDates = worklog.map((r) => r.date)
+const minDate = logDates.reduce((a, b) => (a < b ? a : b), today)
+const maxDate = logDates.reduce((a, b) => (a > b ? a : b), today)
+
 export const useApp = create<AppState>((set, get) => ({
-  worklog: worklogJson as WorkLogEntry[],
+  worklog,
   segments: null,
-  asOfDate: new Date().toISOString().slice(0, 10),
+  asOfDate: maxDate,
+  minDate,
+  maxDate,
   hoveredId: null,
   selectedId: null,
   loadSegments: async () => {
@@ -27,6 +37,7 @@ export const useApp = create<AppState>((set, get) => ({
     const fc: SegmentCollection = await fetch(segmentsUrl).then((r) => r.json())
     set({ segments: fc })
   },
+  setAsOfDate: (date) => set({ asOfDate: date }),
   setHovered: (id) => set({ hoveredId: id }),
   setSelected: (id) => set({ selectedId: id }),
 }))

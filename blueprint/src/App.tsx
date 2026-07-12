@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import MapView from './components/MapView'
 import DetailPanel from './components/DetailPanel'
+import TimeSlider from './components/TimeSlider'
 import { STAGES, COMPLETE_INDEX, stageColor } from './config/stages'
 import { useApp } from './store'
 
@@ -41,6 +42,7 @@ function App() {
         </p>
       </header>
       <Legend />
+      <TimeSlider />
       <DetailPanel />
     </div>
   )

@@ -644,6 +644,18 @@
     .dash-card h3 { font-size: .95rem; font-weight: 700; color: var(--text-1); margin: 0 0 .85rem; }
     .dash-daypick { margin: -.4rem 0 1rem; }
     .dash-daypick input { max-width: 220px; }
+    .dash-rangepick { display: flex; align-items: center; gap: .45rem; flex-wrap: wrap; }
+    .dash-rangepick input { max-width: 165px; }
+    .dash-rangepick span { font-size: .78rem; color: var(--text-2); font-weight: 600; }
+    .kpi-click { cursor: pointer; }
+    .kpi-click .kpi-sub { color: var(--green-dark); font-weight: 700; }
+    .dash-trips .trip-row { padding: .55rem .1rem; border-bottom: 1px solid var(--border); }
+    .dash-trips .trip-row:last-child { border-bottom: none; }
+    .trip-main { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+    .trip-note { font-weight: 800; color: var(--green-dark); font-size: .9rem; }
+    .trip-time { font-size: .74rem; color: var(--text-2); direction: ltr; }
+    .trip-tons { margin-inline-start: auto; font-size: .78rem; font-weight: 700; background: var(--surface-2); border-radius: 6px; padding: .15rem .5rem; white-space: nowrap; }
+    .trip-sub { font-size: .74rem; color: var(--text-2); margin-top: .15rem; }
     .hbars { display: flex; flex-direction: column; gap: .55rem; }
     .hbar { display: flex; align-items: center; gap: .5rem; position: relative; border-radius: 6px; transition: background .15s ease; }
     .hbar:hover { background: rgba(0,166,81,.05); }
@@ -4211,25 +4223,35 @@ function _dashTrend(days, key, fmt) {
 
 // ── Dashboard state, filters, aggregation ──
 let _dashCache = null;                       // fetched slim-row payload
-let _dashRange = "month";                    // today | week | month | all | day
+let _dashRange = "today";                    // today | day | range | all
 let _dashDay = null;                         // yyyy-mm-dd when _dashRange === "day"
-const DASH_RANGES = [["today", "اليوم"], ["week", "٧ أيام"], ["month", "٣٠ يوماً"], ["all", "الكل"], ["day", "📅 يوم محدد"]];
+let _dashFrom = null, _dashTo = null;        // yyyy-mm-dd pair when _dashRange === "range"
+const DASH_RANGES = [["today", "اليوم"], ["day", "📅 يوم محدد"], ["range", "📆 فترة"], ["all", "الكل"]];
 const _kdFmt = (n) => new Intl.NumberFormat("en", { maximumFractionDigits: 0 }).format(n) + " د.ك";
 
 function _dashDayStr(dt) { const p = (n) => String(n).padStart(2, "0"); return dt.getFullYear() + "-" + p(dt.getMonth() + 1) + "-" + p(dt.getDate()); }
-function _dashCutoff() {
-  const days = { today: 1, week: 7, month: 30 }[_dashRange];
-  return days ? _dashDayStr(new Date(Date.now() - (days - 1) * 86400000)) : null;
+// Day-to-day range bounds, defaulting to the last 7 days; tolerates a
+// reversed pair (user picks from > to) by swapping.
+function _dashRangeBounds() {
+  if (!_dashTo) _dashTo = _dashDayStr(new Date());
+  if (!_dashFrom) _dashFrom = _dashDayStr(new Date(Date.now() - 6 * 864e5));
+  return _dashFrom <= _dashTo ? [_dashFrom, _dashTo] : [_dashTo, _dashFrom];
 }
 // Single-day views (today / picked day) — the daily-quantities trend is
 // meaningless with one point, so boards skip it.
 const _dashSingleDay = () => _dashRange === "today" || _dashRange === "day";
+// The calendar day a single-day view is looking at.
+const _dashCurrentDay = () => (_dashRange === "day" ? (_dashDay || (_dashDay = _dashDayStr(new Date()))) : _dashDayStr(new Date()));
 function _dashWindow(rows) {
-  if (_dashRange === "day") {
-    const d = _dashDay || (_dashDay = _dashDayStr(new Date()));
+  if (_dashSingleDay()) {
+    const d = _dashCurrentDay();
     return (rows || []).filter((r) => r.d === d);
   }
-  const cut = _dashCutoff(); return cut ? (rows || []).filter((r) => r.d >= cut) : (rows || []);
+  if (_dashRange === "range") {
+    const [f, t] = _dashRangeBounds();
+    return (rows || []).filter((r) => r.d >= f && r.d <= t);
+  }
+  return rows || [];
 }
 function _aggBy(rows, keyFn, valFn) {
   const map = {};
@@ -4247,12 +4269,14 @@ const _sum = (rows, f) => rows.reduce((a, r) => a + (f(r) || 0), 0);
 function _dashKpis(main, items) {
   const k = el("div", "dash-kpis");
   items.forEach((x, i) => {
-    const c = el("div", "kpi");
+    const c = el("div", "kpi" + (x[3] ? " kpi-click" : ""));
     c.style.animationDelay = (i * 60) + "ms";   // staggered entrance
     c.innerHTML = `<div class="kpi-val">${x[1]}</div><div class="kpi-lbl">${x[0]}</div><div class="kpi-sub">${x[2] || ""}</div>`;
+    if (x[3]) c.addEventListener("click", x[3]);   // optional drill-down
     k.appendChild(c);
   });
   main.appendChild(k);
+  return k;
 }
 function _dashCard(main, title, body) {
   const c = el("div", "card dash-card"); const h = el("h3"); h.textContent = title;
@@ -4285,6 +4309,23 @@ function _dashPageHead(main, title, onChange) {
     dp.appendChild(di);
     head.appendChild(dp);
   }
+  // Day-to-day range picker: from / to calendar days (inclusive).
+  if (_dashRange === "range") {
+    bar.style.marginBottom = ".55rem";
+    const [f, t] = _dashRangeBounds();
+    const dp = el("div", "dash-daypick dash-rangepick");
+    const mk = (val, set) => {
+      const di = input("date", "");
+      di.value = val; di.max = _dashDayStr(new Date());
+      di.addEventListener("change", () => { if (!di.value) return; set(di.value); onChange(); });
+      return di;
+    };
+    const l1 = el("span"); l1.textContent = "من";
+    const l2 = el("span"); l2.textContent = "إلى";
+    dp.appendChild(l1); dp.appendChild(mk(f, (v) => { _dashFrom = v; }));
+    dp.appendChild(l2); dp.appendChild(mk(t, (v) => { _dashTo = v; }));
+    head.appendChild(dp);
+  }
   main.appendChild(head);
 }
 function _dashFooter(main, D) {
@@ -4305,6 +4346,45 @@ function _dashStatusBars(rows) {
   ], _numFmt));
   const legend = el("div", "dash-legend"); legend.innerHTML = _stLegend; body.appendChild(legend);
   return body;
+}
+
+// Trip-by-trip drill-down for single-day views: clicking the عدد الدروب KPI
+// toggles a card listing every dispatch of that day. Fetched straight from
+// dispatch_loads (the slim dash payload carries no note numbers or times).
+function _dashTripsToggle(anchor, day) {
+  const open = anchor.parentNode.querySelector(".dash-trips");
+  if (open) { open.remove(); return; }
+  const card = el("div", "card dash-card dash-trips");
+  const h = el("h3"); h.textContent = "تفاصيل الدروب — " + day;
+  card.appendChild(h);
+  const body = el("div");
+  body.innerHTML = `<div class="info-box">جارٍ تحميل التفاصيل…</div>`;
+  card.appendChild(body);
+  anchor.after(card);
+  dbReportDayLoads(day)
+    .then((loads) => {
+      body.innerHTML = "";
+      if (!loads || !loads.length) {
+        body.innerHTML = `<div class="info-box">لا توجد دروب في هذا اليوم</div>`;
+        return;
+      }
+      const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+      loads.forEach((d) => {
+        const st = d.status || "";
+        const stCls = st === "مرفوض" ? "badge-rejected" : st === "مقبول" ? "badge-accepted" : "badge-transit";
+        const r = el("div", "trip-row");
+        r.innerHTML = `
+          <div class="trip-main">
+            <span class="trip-note">${esc(d.note)}</span>
+            <span class="trip-time">${esc(fmtKW(d.ts).slice(11))}</span>
+            ${st ? `<span class="badge ${stCls}">${esc(st)}</span>` : ""}
+            <span class="trip-tons">${d.weight == null ? "—" : esc(d.weight)} طن</span>
+          </div>
+          <div class="trip-sub">${esc(d.company)} — ${esc(d.project)} · ${esc(d.site)}${d.block ? " ق" + esc(d.block) : ""}${d.street ? " ش" + esc(d.street) : ""} · ${esc(d.mix)}${d.plant ? " · " + esc(d.plant) : ""}</div>`;
+        body.appendChild(r);
+      });
+    })
+    .catch(() => { body.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل التفاصيل — حاول مجدداً</div>`; });
 }
 
 // ── Entry: fetch once, then route to a page ──
@@ -4459,8 +4539,10 @@ function _dashPlant(main, data) {
   const rows = _dashWindow(data.dispatch);
   const tons = _sum(rows, (r) => r.t);
   const clients = new Set(rows.map((r) => r.c).filter(Boolean)).size;
-  _dashKpis(main, [
-    ["عدد الدروب", _numFmt(rows.length), "درب"],
+  // Single-day views only: the trips KPI drills down to a per-dispatch list.
+  const kgrid = _dashKpis(main, [
+    ["عدد الدروب", _numFmt(rows.length), _dashSingleDay() ? "درب · اضغط للتفاصيل ▾" : "درب",
+      _dashSingleDay() ? () => _dashTripsToggle(kgrid, _dashCurrentDay()) : null],
     ["الكميات الصادرة (طن)", _numFmt(Math.round(tons)), ""],
     ["شركات مخدومة", _numFmt(clients), "عميل"],
     ["متوسط الحمولة", rows.length ? (tons / rows.length).toFixed(1) : "0", "طن / درب"],

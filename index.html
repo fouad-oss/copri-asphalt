@@ -664,6 +664,12 @@
     .rep-sep { font-size: .74rem; color: var(--text-3); }
     .mat-qty { font-size: .76rem; font-weight: 700; color: var(--green-dark); background: rgba(0,166,81,.08); border-radius: 6px; padding: .15rem .5rem; white-space: nowrap; }
     .trip-sub a { color: var(--green-dark); font-weight: 600; text-decoration: none; }
+    .wo-badge { font-size: .78rem; font-weight: 800; color: #fff; background: var(--green-dark); border-radius: 8px; padding: .18rem .55rem; white-space: nowrap; }
+    .wo-cover { font-size: .76rem; font-weight: 700; color: var(--text-1); background: var(--surface-2); border-radius: 6px; padding: .15rem .5rem; }
+    .wo-res { margin-top: .5rem; }
+    .wo-res-line { display: flex; align-items: center; gap: .45rem; flex-wrap: wrap; font-size: .85rem; padding: .35rem 0; }
+    .wo-res-none { color: var(--text-3); }
+    .wo-res-warn { font-size: .74rem; color: var(--amber); font-weight: 600; margin: .1rem 0 .3rem; }
     .hbars { display: flex; flex-direction: column; gap: .55rem; }
     .hbar { display: flex; align-items: center; gap: .5rem; position: relative; border-radius: 6px; transition: background .15s ease; }
     .hbar:hover { background: rgba(0,166,81,.05); }
@@ -4530,6 +4536,7 @@ function _dashHome(main) {
   mk("المصنع", "الإرساليات حسب الشركة والموقع والخلطة", () => renderDashboard("plant"));
   _refCopriProjectNames().forEach((pn) => mk(pn, "استلامات الأسفلت والمواد للمشروع", () => renderDashboard("project", pn)));
   _refCopriProjectNames().forEach((pn) => mk("محاسبة المواد — " + pn, "كشف توريدات المواد بالتفصيل — للمحاسب", () => renderDashboard("acct", pn)));
+  mk("أوامر العمل", "دليل أوامر العمل — المواقع والأوصاف (أسفلت / مدني)", () => renderWoPortal());
   const soon = el("div", "field-hint"); soon.style.textAlign = "center"; soon.style.marginTop = ".6rem";
   soon.textContent = "لوحة القشط — قريباً";
   card.appendChild(soon);
@@ -5408,6 +5415,201 @@ async function renderFinanceHome(who) {
   }
 }
 
+// ════════════════════════════════════════════════════════
+// ── WORK-ORDERS PORTAL (?wo) ──
+// Reference desk for the contract work orders: which order covers
+// which site (block or named street), segmented asphalt vs civil,
+// with the ministry description. Reads rpc/ref_payload (work_orders
+// table) — the exact source the forms' locked auto-fill uses, so
+// what this portal shows is what the forms will pick.
+// ════════════════════════════════════════════════════════
+let _woRows = null;   // ref workOrders rows, fetched once per load
+
+function woDiscKind(d) {
+  d = String(d || "").toLowerCase();
+  if (/both|كلا/.test(d)) return "both";
+  if (/asphalt|أسفلت/.test(d)) return "asphalt";
+  if (/civil|مدني/.test(d)) return "civil";
+  return "";
+}
+function woDiscChip(d) {
+  const kind = woDiscKind(d);
+  const map = { asphalt: ["rgba(0,166,81,.12)", "var(--green-dark)", "أسفلت"],
+                civil:   ["rgba(21,101,192,.12)", "#1565C0", "أعمال مدنية"],
+                both:    ["rgba(111,66,193,.12)", "#6f42c1", "أسفلت + مدني"] };
+  const [bg, fg, label] = map[kind] || ["var(--surface-2)", "var(--text-2)", d || "—"];
+  const s = el("span", "plant-chip"); s.textContent = label;
+  s.style.background = bg; s.style.color = fg;
+  return s;
+}
+const woActive = (w) => !w.status || /جاري|active/i.test(w.status);
+const woCoverText = (w) => (w.block ? "قطعة " + w.block : w.street ? "شارع " + w.street : w.site ? "عام — كامل الموقع" : "عام — كل المواقع");
+
+// All ACTIVE orders covering a location for a discipline — same matching
+// rules as autoWorkOrder, but returns every hit (the forms pick the first),
+// so double-covered blocks are visible here instead of silent.
+function woMatches(rows, project, site, block, street, disc) {
+  const b = normSp(block), st = normSp(street), siteKey = normSp(site);
+  const discOK = (d) => {
+    const k = woDiscKind(d);
+    return !k || k === "both" || k === disc;
+  };
+  return rows.filter((w) => {
+    if (!woActive(w)) return false;
+    if (w.project && w.project !== project) return false;
+    if (w.site && normSp(w.site) !== siteKey) return false;
+    if (!discOK(w.discipline)) return false;
+    const wb = normSp(w.block), ws = normSp(w.street);
+    if (b && wb) return wb === b && (!st || !ws || ws === st);
+    if (st && ws) return ws === st;
+    return false;
+  });
+}
+
+async function renderWoPortal() {
+  const main = renderShell("أوامر العمل");
+  if (_woRows) { _woPortalPage(main, _woRows); return; }
+  const loading = el("div", "card");
+  loading.innerHTML = `<div class="info-box">جارٍ تحميل أوامر العمل…</div>`;
+  main.appendChild(loading);
+  try {
+    const ref = await sbGet("rpc/ref_payload");
+    _woRows = (ref.workOrders || []).map((w) => ({ ...w, wo: String(w.wo) }));
+  } catch (e) {
+    loading.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل أوامر العمل — تحقق من الاتصال</div>`;
+    return;
+  }
+  loading.remove();
+  _woPortalPage(main, _woRows);
+}
+
+function _woPortalPage(main, allRows) {
+  const projects = [...new Set(allRows.map((w) => w.project).filter(Boolean))];
+  let project = projects[0] || "";
+  const bodyWrap = el("div");
+
+  const h = el("h2");
+  h.textContent = "دليل أوامر العمل — المواقع والأوصاف";
+  h.style.cssText = "font-size:1.05rem;font-weight:800;margin:0 0 .6rem;color:var(--text-1)";
+  main.appendChild(h);
+  if (projects.length > 1) {
+    const ps = select(projects, "اختر المشروع");
+    ps.value = project; ps.style.marginBottom = ".8rem";
+    ps.addEventListener("change", () => { if (ps.value) { project = ps.value; paint(); } });
+    main.appendChild(ps);
+  }
+  main.appendChild(bodyWrap);
+
+  function paint() {
+    bodyWrap.innerHTML = "";
+    const rows = allRows.filter((w) => !w.project || w.project === project)
+      .slice().sort((a, b) => (parseInt(a.wo, 10) || 0) - (parseInt(b.wo, 10) || 0));
+    const active = rows.filter(woActive);
+    const sites = [...new Set(active.map((w) => w.site).filter(Boolean))];
+
+    // ── Location → WO lookup (what the forms' auto-fill will pick) ──
+    const lk = el("div", "card");
+    lk.appendChild(sectionTitle("🔍 أي أمر عمل يغطي هذا الموقع؟"));
+    const lkRow = el("div", "rep-row");
+    const siteSel = select(sites, "الموقع");
+    const blockIn = input("text", "القطعة", "numeric"); blockIn.style.maxWidth = "110px";
+    const streetIn = input("text", "الشارع / اسم الشارع");
+    lkRow.appendChild(siteSel); lkRow.appendChild(blockIn); lkRow.appendChild(streetIn);
+    lk.appendChild(lkRow);
+    const res = el("div", "wo-res");
+    lk.appendChild(res);
+    const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    const refreshLookup = () => {
+      const site = siteSel.value, b = blockIn.value.trim(), st = streetIn.value.trim();
+      if (!site || (!b && !st)) { res.innerHTML = `<div class="field-hint">اختر الموقع ثم أدخل القطعة أو اسم الشارع</div>`; return; }
+      const line = (label, disc) => {
+        const hits = woMatches(rows, project, site, b, st, disc);
+        if (!hits.length) return `<div class="wo-res-line"><b>${label}:</b> <span class="wo-res-none">لم يصدر أمر عمل بعد</span></div>`;
+        const first = hits[0];
+        let out = `<div class="wo-res-line"><b>${label}:</b> <span class="wo-badge">أمر ${esc(first.wo)}</span> ${esc(first.description || woCoverText(first))}</div>`;
+        if (hits.length > 1) out += `<div class="wo-res-warn">⚠️ أوامر أخرى تغطي نفس الموقع: ${hits.slice(1).map((x) => "أمر " + esc(x.wo)).join("، ")} — النماذج تعتمد الأول تلقائياً</div>`;
+        return out;
+      };
+      res.innerHTML = line("أعمال الأسفلت", "asphalt") + line("الأعمال المدنية", "civil");
+    };
+    siteSel.addEventListener("change", refreshLookup);
+    blockIn.addEventListener("input", refreshLookup);
+    streetIn.addEventListener("input", refreshLookup);
+    refreshLookup();
+    bodyWrap.appendChild(lk);
+
+    // ── KPIs ──
+    const nA = active.filter((w) => ["asphalt", "both"].includes(woDiscKind(w.discipline))).length;
+    const nC = active.filter((w) => ["civil", "both"].includes(woDiscKind(w.discipline))).length;
+    _dashKpis(bodyWrap, [
+      ["أوامر جارية", _numFmt(active.length), "أمر عمل"],
+      ["أعمال أسفلت", _numFmt(nA), "يشمل المشتركة"],
+      ["أعمال مدنية", _numFmt(nC), "يشمل المشتركة"],
+      ["مواقع مغطاة", _numFmt(sites.length), ""],
+    ]);
+
+    // ── The full mapping, searchable, grouped by site ──
+    const listCard = el("div", "card");
+    listCard.appendChild(sectionTitle("قائمة أوامر العمل"));
+    const ctrls = el("div", "rep-row");
+    const qIn = input("search", "بحث — رقم الأمر، القطعة، الشارع، الوصف…");
+    ctrls.appendChild(qIn);
+    listCard.appendChild(ctrls);
+    const discBar = el("div", "history-tabs"); discBar.style.marginBottom = ".6rem";
+    let discF = "all";
+    [["all", "الكل"], ["asphalt", "أسفلت"], ["civil", "مدني"]].forEach(([k, label]) => {
+      const btn = el("button", "history-tab" + (k === discF ? " active" : "")); btn.type = "button"; btn.textContent = label;
+      btn.addEventListener("click", () => {
+        discF = k;
+        [...discBar.children].forEach((x) => x.classList.remove("active"));
+        btn.classList.add("active"); paintList();
+      });
+      discBar.appendChild(btn);
+    });
+    listCard.appendChild(discBar);
+    const groups = el("div");
+    listCard.appendChild(groups);
+
+    const woRow = (w) => {
+      const r = el("div", "trip-row");
+      const top = el("div", "trip-main");
+      const badge = el("span", "wo-badge"); badge.textContent = "أمر " + w.wo;
+      top.appendChild(badge);
+      top.appendChild(woDiscChip(w.discipline));
+      const cover = el("span", "wo-cover"); cover.textContent = woCoverText(w);
+      top.appendChild(cover);
+      if (!woActive(w)) top.appendChild(plantStatusChip(w.status));
+      r.appendChild(top);
+      if (w.description) { const d = el("div", "trip-sub"); d.textContent = w.description; r.appendChild(d); }
+      return r;
+    };
+    const paintList = () => {
+      groups.innerHTML = "";
+      const q = normSp(qIn.value).toLowerCase();
+      const match = (w) => {
+        if (discF !== "all") { const k = woDiscKind(w.discipline); if (k !== discF && k !== "both") return false; }
+        if (!q) return true;
+        return [w.wo, w.site, w.block, w.street, w.description, woCoverText(w)]
+          .some((f) => normSp(f).toLowerCase().includes(q));
+      };
+      const shown = rows.filter(match);
+      if (!shown.length) { groups.innerHTML = `<div class="info-box">لا توجد أوامر مطابقة</div>`; return; }
+      const bySite = {};
+      shown.forEach((w) => { const k = w.site || "عام — بدون موقع محدد"; (bySite[k] = bySite[k] || []).push(w); });
+      Object.keys(bySite).sort((a, b) => bySite[b].length - bySite[a].length).forEach((siteName) => {
+        const hd = el("div", "prog-day-head");
+        hd.textContent = `${siteName} (${_numFmt(bySite[siteName].length)})`;
+        groups.appendChild(hd);
+        bySite[siteName].forEach((w) => groups.appendChild(woRow(w)));
+      });
+    };
+    qIn.addEventListener("input", paintList);
+    paintList();
+    bodyWrap.appendChild(listCard);
+  }
+  paint();
+}
+
 // ── Router — runs after the cached reference overlay ──
 function runRouter() {
 const _mparams = new URLSearchParams(window.location.search);
@@ -5425,6 +5627,8 @@ if (millingReport) {
   // driven by a new top-management reference file the user will create.
   const dv = _mparams.get("dash"), dp = _mparams.get("dp");
   renderDashboard(["plant", "exec", "project", "acct"].includes(dv) ? dv : null, dp || null);
+} else if (_mparams.has("wo")) {
+  renderWoPortal();                                       // WO mapping reference, no PIN
 } else if (millingRole === "engineer") {
   const session = getEngineerSession();
   if (session) renderMillingEngineerHome(session.name);

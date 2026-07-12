@@ -3,7 +3,7 @@ import { useApp } from '../store'
 import { STAGES, STAGE_INDEX, COMPLETE_INDEX, stageColor } from '../config/stages'
 import { currentStage, stageDates, daysBetween } from '../lib/derive'
 import { STALL_DAYS } from '../lib/insights'
-import { PAVING, tonsToM2 } from '../config/paving'
+import { PAVING, tonsToM2, fracLabel } from '../config/paving'
 import ProgressRail from './ProgressRail'
 import type { SegmentFeature } from '../types'
 
@@ -16,6 +16,7 @@ export default function DetailPanel() {
   const worklog = useApp((s) => s.worklog)
   const segLog = useApp((s) => s.segLog)
   const asOfDate = useApp((s) => s.asOfDate)
+  const pavingRev = useApp((s) => s.pavingRev)
 
   // Keep the last shown feature so content stays put during slide-out.
   const [shown, setShown] = useState<SegmentFeature | null>(null)
@@ -67,7 +68,8 @@ export default function DetailPanel() {
       return { i, label: s.label, tons, m2, pct: streetArea ? m2 / streetArea : 0 }
     }).filter(Boolean) as { i: number; label: string; tons: number; m2: number; pct: number }[]
     return { cur, dates, rows, daysIn, stalled, outOfSeq, unitLen, streetArea, layers }
-  }, [p, worklog, asOfDate, segments])
+    // pavingRev: PAVING is a mutable singleton — re-derive when settings change
+  }, [p, worklog, asOfDate, segments, pavingRev]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <aside
@@ -169,7 +171,7 @@ export default function DetailPanel() {
                 ))}
                 <div className="mt-1.5 text-[9px] text-slate-600">
                   سماكات: I={PAVING.thickness_cm.type_i} · II={PAVING.thickness_cm.type_ii} · III=
-                  {PAVING.thickness_cm.type_iii} سم · كثافة {PAVING.density_t_m3} — قابلة للتعديل لاحقاً
+                  {PAVING.thickness_cm.type_iii} سم · كثافة {PAVING.density_t_m3} — تعديلها من ⚙
                 </div>
               </div>
             )}
@@ -189,6 +191,11 @@ export default function DetailPanel() {
                     <div key={r.id} className="flex items-center gap-2 border-b border-slate-800/70 py-1.5 text-[11px]">
                       <span className="inline-block h-2 w-2 rounded-full" style={{ background: stageColor(STAGE_INDEX[r.stage]) }} />
                       <span className="font-bold text-slate-200">{STAGES[STAGE_INDEX[r.stage]].label}</span>
+                      {r.width_frac != null && r.width_frac < 1 && (
+                        <span className="bg-cyan-500/15 px-1 text-[9px] font-bold text-cyan-300">
+                          {fracLabel(r.width_frac)} العرض
+                        </span>
+                      )}
                       <span className="text-slate-500">{r.crew}</span>
                       <span className="ml-auto text-slate-400">{r.date}</span>
                     </div>

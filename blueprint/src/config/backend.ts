@@ -11,3 +11,17 @@ export async function sbGet<T>(path: string): Promise<T> {
   if (!res.ok) throw new Error(`db read ${res.status}`)
   return res.json()
 }
+
+export async function sbRpc<T>(name: string, args: object): Promise<T> {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(args),
+  })
+  if (!res.ok) throw new Error(`rpc ${name} ${res.status}`)
+  return res.json()
+}

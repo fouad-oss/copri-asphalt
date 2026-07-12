@@ -54,6 +54,7 @@ export interface UnitIndex {
   bySiteNum: Map<string, string[]> // site|num → units (any block)
   bySiteName: Map<string, string[]> // site|norm → units
   blockUnits: Set<string> // site|block|* present in blocks.geojson
+  kmRanges: Map<string, { unit: string; from: number; to: number }[]> // motorway site → chainage pieces
 }
 
 export function buildUnitIndex(
@@ -63,13 +64,22 @@ export function buildUnitIndex(
   const byExact = new Map<string, string>()
   const bySiteNum = new Map<string, string[]>()
   const bySiteName = new Map<string, string[]>()
+  const kmRanges = new Map<string, { unit: string; from: number; to: number }[]>()
   const push = (m: Map<string, string[]>, k: string, v: string) => {
     const arr = m.get(k)
     if (arr) { if (!arr.includes(v)) arr.push(v) } else m.set(k, [v])
   }
   for (const f of segments.features) {
-    const p = f.properties as unknown as { site: string; block: string; street: string; street_num: string; unit: string | null }
+    const p = f.properties as unknown as { site: string; block: string; street: string; street_num: string; unit: string | null; from_ch: number; to_ch: number }
     if (!p.unit) continue
+    if (p.unit.includes('|km|')) {
+      // motorway piece — matched by chainage overlap, not by name
+      const arr = kmRanges.get(p.site)
+      const entry = { unit: p.unit, from: p.from_ch, to: p.to_ch }
+      if (arr) arr.push(entry)
+      else kmRanges.set(p.site, [entry])
+      continue
+    }
     byExact.set(p.unit, p.unit)
     if (p.street_num) push(bySiteNum, `${p.site}|${p.street_num}`, p.unit)
     if (p.street) push(bySiteName, `${p.site}|${normName(p.street)}`, p.unit)
@@ -77,12 +87,34 @@ export function buildUnitIndex(
   const blockUnits = new Set<string>(
     blocks.features.map((f) => (f.properties as unknown as { unit: string }).unit),
   )
-  return { byExact, bySiteNum, bySiteName, blockUnits }
+  return { byExact, bySiteNum, bySiteName, blockUnits, kmRanges }
+}
+
+// كيلومتر token → meters from the route origin. Clerks write these every
+// way: "39,50" = 39+050, "39100" = 39+100, "35" = km 35.
+function kmToMeters(tok: string): number | null {
+  const t = String(tok || '').replace(/[٠-٩]/g, (d) => AR_DIGITS[d]).trim()
+  const parts = t.split(/[,،+]/).map((s) => s.trim()).filter(Boolean)
+  if (!parts.length || parts.some((p) => !/^\d+$/.test(p))) return null
+  if (parts.length >= 2) return parseInt(parts[0], 10) * 1000 + parseInt(parts[1], 10)
+  const n = parseInt(parts[0], 10)
+  return n >= 1000 ? n : n * 1000
+}
+
+// A نطاق كيلومتر row keeps its from/to in the block/street columns.
+export function kmRange(block: string, street: string): [number, number] | null {
+  const a = kmToMeters(block)
+  const b = kmToMeters(street)
+  if (a === null && b === null) return null
+  const from = Math.min(a ?? b!, b ?? a!)
+  let to = Math.max(a ?? b!, b ?? a!)
+  if (to <= from) to = from + 100
+  return [from, to]
 }
 
 export interface DispatchConversion {
   worklog: WorkLogEntry[]
-  offMap: Map<string, number> // human location key → row count with no geometry
+  offMap: Map<string, { rows: number; tons: number }> // human location key → unmatched volume
 }
 
 // Dispatch rows → worklog entries keyed by street unit. One dispatch can
@@ -94,16 +126,26 @@ export function dispatchToWorklog(
   idx: UnitIndex,
 ): DispatchConversion {
   const worklog: WorkLogEntry[] = []
-  const offMap = new Map<string, number>()
+  const offMap = new Map<string, { rows: number; tons: number }>()
   let seq = 0
   for (const r of rows) {
     const stage = stageFromMix(r.mix)
     const date = kuwaitDay(r.ts)
     const named = r.loc_type === 'اسم الشارع'
+    const isKm = /كيلومتر/.test(r.loc_type)
     const site = canonicalSite(r.site)
     const units = new Set<string>()
     let human: string
-    if (named) {
+    if (isKm) {
+      // motorway km range → every chainage piece it overlaps
+      const range = kmRange(r.block, r.street)
+      human = `${r.site} — كم ${r.block}${r.street ? '–' + r.street : ''}`
+      if (range) {
+        for (const s of idx.kmRanges.get(site) || []) {
+          if (s.from < range[1] && s.to > range[0]) units.add(s.unit)
+        }
+      }
+    } else if (named) {
       // named rows keep the name in `block`
       const name = r.block || ''
       human = `${r.site} — ${name}`
@@ -135,7 +177,8 @@ export function dispatchToWorklog(
       }
     }
     if (!units.size) {
-      offMap.set(human, (offMap.get(human) || 0) + 1)
+      const cur = offMap.get(human) || { rows: 0, tons: 0 }
+      offMap.set(human, { rows: cur.rows + 1, tons: cur.tons + (r.weight || 0) })
       continue
     }
     for (const unit of units) {

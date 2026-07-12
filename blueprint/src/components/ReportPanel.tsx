@@ -1,26 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useApp } from '../store'
 import { STAGES, STAGE_INDEX, stageColor, type StageKey } from '../config/stages'
-import { PAVING, tonsToM2 } from '../config/paving'
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config/backend'
+import { PAVING, tonsToM2, fracLabel } from '../config/paving'
+import { sbRpc } from '../config/backend'
 import { currentStage } from '../lib/derive'
 import type { SegmentFeature } from '../types'
 
 const SESSION_KEY = 'bp_reporter'
 
-async function sbRpc<T>(name: string, args: object): Promise<T> {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
-    method: 'POST',
-    headers: {
-      apikey: SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(args),
-  })
-  if (!res.ok) throw new Error(`rpc ${name} ${res.status}`)
-  return res.json()
-}
+// Width-fraction choices for streets worked one lane at a time.
+const WIDTH_FRACS = [1, 0.5, 1 / 3, 2 / 3]
 
 // Segment work reports — admin-only for now (blueprint_reporters holds
 // one row). The report: pick a street that received asphalt, tap the
@@ -45,7 +34,9 @@ export default function ReportPanel() {
   const [err, setErr] = useState('')
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const [stage, setStage] = useState<StageKey>('type_ii')
+  const [frac, setFrac] = useState(1)
   const [note, setNote] = useState('')
+  const pavingRev = useApp((s) => s.pavingRev)
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState('')
 
@@ -88,7 +79,7 @@ export default function ReportPanel() {
   }, [segments, unit])
 
   // Physics hint: tons delivered to this street on the picked date, for
-  // the picked layer, converted to meters of street.
+  // the picked layer, converted to meters of street at the worked width.
   const hint = useMemo(() => {
     if (!unit) return null
     const tons = worklog
@@ -96,8 +87,9 @@ export default function ReportPanel() {
       .reduce((a, r) => a + (r.reported_qty || 0), 0)
     if (!tons) return null
     const m2 = tonsToM2(stage, tons) || 0
-    return { tons, meters: Math.round(m2 / PAVING.layingWidth_m) }
-  }, [unit, worklog, date, stage])
+    return { tons, meters: Math.round(m2 / (PAVING.layingWidth_m * frac)) }
+    // pavingRev: PAVING is a mutable singleton — re-derive on settings change
+  }, [unit, worklog, date, stage, frac, pavingRev]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedLen = useMemo(() => {
     if (!selection.length) return 0
@@ -132,6 +124,9 @@ export default function ReportPanel() {
           p_unit: unit,
           p_segment_ids: ids,
           p_note: note.trim(),
+          // PostgREST matches named args exactly — omitting the fraction at
+          // full width keeps saves working until migration 0011 is applied
+          ...(frac !== 1 ? { p_width_frac: frac } : {}),
         },
       )
       if (!r.success) { setErr('تعذّر الحفظ: ' + (r.error || '')); return }
@@ -268,6 +263,26 @@ export default function ReportPanel() {
                   ))}
                 </div>
 
+                {/* lane split: fraction of the street width this pass covered */}
+                <div className="mt-3 text-[10px] uppercase tracking-[.25em] text-slate-500">
+                  العرض المنجز <span className="normal-case tracking-normal text-slate-600">(مسار واحد = جزء من العرض)</span>
+                </div>
+                <div className="mt-1 flex gap-1.5">
+                  {WIDTH_FRACS.map((f) => (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => setFrac(f)}
+                      className={`flex-1 border px-1 py-1.5 text-[11px] ${
+                        frac === f ? 'border-cyan-400/70 text-cyan-200' : 'border-slate-700 text-slate-400'
+                      }`}
+                      style={frac === f ? { background: 'rgba(34,211,238,.08)' } : undefined}
+                    >
+                      {f === 1 ? 'كامل' : fracLabel(f)}
+                    </button>
+                  ))}
+                </div>
+
                 {hint && (
                   <div className={`mt-2 border px-2.5 py-1.5 text-[11px] ${
                     selection.length && Math.abs(selectedLen - hint.meters) / hint.meters > 0.25
@@ -275,7 +290,7 @@ export default function ReportPanel() {
                       : 'border-slate-800 text-slate-400'
                   }`}>
                     وصل هذا اليوم {Math.round(hint.tons)} طن {STAGES[STAGE_INDEX[stage]].label.split(' — ')[0]} ≈{' '}
-                    {hint.meters} م بعرض {PAVING.layingWidth_m} م
+                    {hint.meters} م بعرض {frac < 1 ? `${fracLabel(frac)} × ` : ''}{PAVING.layingWidth_m} م
                     {selection.length ? ` — حددت ${selectedLen} م` : ''}
                   </div>
                 )}

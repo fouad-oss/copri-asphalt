@@ -37,8 +37,19 @@ const NUM_ALIASES = [
   { site: 'مشرف', num: '59', match: /المرشود/ },
 ]
 
+// Motorways clerks dispatch to with كيلومتر ranges. Extracted Kuwait-wide
+// by ref and cut into 100 m segments whose chainage approximates the road
+// km posts (origin = the route's northern end, the Kuwait City side).
+// Each segment is its own unit (`site|km|<from_m>`) so a km range colors
+// exactly the pieces it covers. NOTE: like ش57/59, OSM renamed route 30
+// after a person (طريق الملك عبد العزيز…) — clerks still say الفحيحيل.
+const HIGHWAY_ROUTES = [
+  { site: 'طريق الفحيحيل', code: 'rt30', ref: '30', bbox: [28.6, 47.8, 29.45, 48.35] },
+  { site: 'طريق الملك فهد', code: 'rt40', ref: '40', bbox: [28.5, 47.5, 29.45, 48.35] },
+]
+
 const HIGHWAYS = 'residential|tertiary|secondary|primary|unclassified|living_street'
-const WIDTHS = { primary: 18, secondary: 15, tertiary: 12, residential: 8, unclassified: 8, living_street: 6 }
+const WIDTHS = { motorway: 22, trunk: 18, primary: 18, secondary: 15, tertiary: 12, residential: 8, unclassified: 8, living_street: 6 }
 const ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
@@ -151,6 +162,21 @@ async function main() {
       // boundary roads sit ON the suburb edge — accept within ~150 m
       return suburbRings.some((ring) => ring.some((rp) => dist(pt, rp) < 150))
     }
+    // Blocks lie fully INSIDE their suburb, so no edge tolerance — a single
+    // midpoint with the 150 m fallback let border blocks (سلوى ق7 sits on
+    // the مشرف line) be stolen or dropped. Majority vote over sampled ring
+    // points is robust to boundary imprecision both ways.
+    const ownsBlock = (ring) => {
+      if (!suburbRings.length) return true
+      const step = Math.max(1, Math.floor(ring.length / 9))
+      let inside = 0
+      let total = 0
+      for (let i = 0; i < ring.length; i += step) {
+        total++
+        if (suburbRings.some((r) => pointInRing(ring[i], r))) inside++
+      }
+      return inside > total / 2
+    }
 
     // blocks: relation outer rings, named "… قطعة N"
     const blocks = []
@@ -174,7 +200,7 @@ async function main() {
       // join member ways into one outer ring (greedy endpoint chaining)
       const ring = chainRings(rings)
       if (ring.length < 4) continue
-      if (!named && !owns(ring[Math.floor(ring.length / 2)])) continue // neighbour's — their query claims it
+      if (!named && !ownsBlock(ring)) continue // neighbour's — their query claims it
       seenBlockOsm.add(el.id)
       blocks.push({ num, ring })
       blockFeatures.push({
@@ -259,6 +285,54 @@ async function main() {
     console.log(`  ${area.site}: blocks ${blocks.length} · street groups ${groups.size} · segments +${areaSegs}`)
   }
 
+  // ── motorways dispatched by km range ──
+  for (const route of HIGHWAY_ROUTES) {
+    const [s, w, n, e] = route.bbox
+    const q = `[out:json][timeout:180];(
+      way["highway"~"^(motorway|trunk)$"]["ref"="${route.ref}"](${s},${w},${n},${e});
+    );out geom;`
+    console.log(`fetching ${route.site} (ref ${route.ref}) …`)
+    const data = await overpass(q, route.site)
+    await sleep(8000)
+    const ways = []
+    let name = ''
+    for (const el of data.elements) {
+      if (el.type !== 'way' || !el.geometry) continue
+      ways.push(el.geometry.map((g) => round6([g.lon, g.lat])))
+      if (!name) name = (el.tags['name:ar'] || el.tags.name || '').trim()
+    }
+    if (!ways.length) { console.log(`  ${route.site}: NO ways found — skipped`); continue }
+    // Chain each carriageway separately (motorway way geometry follows the
+    // travel direction, so net-southbound vs net-northbound splits them) —
+    // a generous tolerance must never glue the two directions into a
+    // U-shaped chain at the terminus, or chainage doubles back.
+    const south = ways.filter((w) => w[w.length - 1][1] <= w[0][1])
+    const north = ways.filter((w) => w[w.length - 1][1] > w[0][1])
+    // 300 m tolerance: interchanges break the carriageway ways apart
+    const chains = [...chainWays(south, 300), ...chainWays(north, 300)].filter((c) => chainLen(c) > 500)
+    // km 0 = the route's northern end (Kuwait City side)
+    let origin = chains[0][0]
+    for (const c of chains) for (const p of [c[0], c[c.length - 1]]) if (p[1] > origin[1]) origin = p
+    let routeSegs = 0
+    chains.forEach((chain, ci) => {
+      if (chain[0][1] < chain[chain.length - 1][1]) chain.reverse() // north → south
+      const startCh = Math.round(dist(origin, chain[0]) / 100) * 100 // straight-line offset for disjoint pieces
+      routeSegs += cutSegments(chain, {
+        site: route.site,
+        code: route.code,
+        block: '',
+        street: `${route.site} (${name})`,
+        street_num: '',
+        unit: null, // per-segment km units — set in cutSegments via kmUnits
+        kmUnits: true,
+        width: 22,
+        stok: `c${ci}`,
+        startCh,
+      }, segFeatures)
+    })
+    console.log(`  ${route.site}: ${chains.length} chains ("${name}") · segments +${routeSegs} · chainage تقريبي`)
+  }
+
   // dispatch snapshot (offline fallback for the app)
   console.log('fetching dispatch snapshot …')
   const disp = await fetch(
@@ -295,7 +369,7 @@ function chainRings(parts) {
 }
 
 // join same-street ways into continuous chains (may yield several)
-function chainWays(ways) {
+function chainWays(ways, tol = 20) {
   const pool = ways.map((w) => [...w])
   const chains = []
   while (pool.length) {
@@ -307,10 +381,10 @@ function chainWays(ways) {
         const p = pool[i]
         const head = chain[0]
         const tail = chain[chain.length - 1]
-        if (dist(tail, p[0]) < 20) { chain.push(...p.slice(1)); pool.splice(i, 1); grew = true; break }
-        if (dist(tail, p[p.length - 1]) < 20) { chain.push(...[...p].reverse().slice(1)); pool.splice(i, 1); grew = true; break }
-        if (dist(head, p[p.length - 1]) < 20) { chain.unshift(...p.slice(0, -1)); pool.splice(i, 1); grew = true; break }
-        if (dist(head, p[0]) < 20) { chain.unshift(...[...p].reverse().slice(0, -1)); pool.splice(i, 1); grew = true; break }
+        if (dist(tail, p[0]) < tol) { chain.push(...p.slice(1)); pool.splice(i, 1); grew = true; break }
+        if (dist(tail, p[p.length - 1]) < tol) { chain.push(...[...p].reverse().slice(1)); pool.splice(i, 1); grew = true; break }
+        if (dist(head, p[p.length - 1]) < tol) { chain.unshift(...p.slice(0, -1)); pool.splice(i, 1); grew = true; break }
+        if (dist(head, p[0]) < tol) { chain.unshift(...[...p].reverse().slice(0, -1)); pool.splice(i, 1); grew = true; break }
       }
     }
     chains.push(chain)
@@ -318,12 +392,22 @@ function chainWays(ways) {
   return chains
 }
 
-// cut a chain into 100 m segments; the tail keeps its true length
+function chainLen(chain) {
+  let len = 0
+  for (let i = 1; i < chain.length; i++) len += dist(chain[i - 1], chain[i])
+  return len
+}
+
+// cut a chain into 100 m segments; the tail keeps its true length.
+// meta.startCh offsets the chainage (disjoint motorway pieces);
+// meta.kmUnits gives each segment its own unit keyed by chainage, so a
+// كيلومتر dispatch range colors exactly the pieces it covers (both
+// carriageways at one chainage share the unit).
 function cutSegments(chain, meta, out) {
   const segLen = 100
   let segPts = [chain[0]]
   let acc = 0
-  let fromCh = 0
+  let fromCh = meta.startCh || 0
   let made = 0
   const emit = (to) => {
     const len = to - fromCh
@@ -338,12 +422,12 @@ function cutSegments(chain, meta, out) {
         governorate: '',
         street: meta.street,
         street_num: meta.street_num,
-        unit: meta.unit,
+        unit: meta.kmUnits ? `${meta.site}|km|${fromCh}` : meta.unit,
         from_ch: fromCh,
         to_ch: to,
         length_m: len,
         width_m: meta.width,
-        notes: '',
+        notes: meta.kmUnits ? 'كيلومتراج تقريبي من بداية الطريق' : '',
       },
     })
     made++

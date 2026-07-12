@@ -42,8 +42,11 @@ const lineColor: ExpressionSpecification = [
 // scaling (halo) multiplies the stop outputs instead of wrapping the whole
 // expression.
 const hoverBoost = ['case', ['boolean', ['feature-state', 'hover'], false], 1.4, 1]
+// Partial-width work (lane reports, width_frac < 1) draws proportionally
+// thinner — half the street paved reads as half the stroke.
+const partialFrac = ['coalesce', ['get', 'pfrac'], 1]
 function lineWidthExpr(scale = 1): ExpressionSpecification {
-  const at = (k: number) => ['*', k * scale, ['get', 'width_m'], hoverBoost]
+  const at = (k: number) => ['*', k * scale, ['get', 'width_m'], hoverBoost, partialFrac]
   return [
     'interpolate', ['linear'], ['zoom'],
     12, at(0.1),

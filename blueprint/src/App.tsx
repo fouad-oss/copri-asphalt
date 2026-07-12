@@ -5,6 +5,7 @@ import TimeSlider from './components/TimeSlider'
 import InsightStrip from './components/InsightStrip'
 import FilterBar from './components/FilterBar'
 import ReportPanel from './components/ReportPanel'
+import SettingsPanel from './components/SettingsPanel'
 import { STAGES, COMPLETE_INDEX, stageColor } from './config/stages'
 import { useApp } from './store'
 
@@ -61,6 +62,7 @@ function App() {
       <TimeSlider />
       <DetailPanel />
       <ReportPanel />
+      <SettingsPanel />
     </div>
   )
 }

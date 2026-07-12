@@ -58,7 +58,8 @@ export default function InsightStrip() {
 
   const tile = 'border border-slate-700/70 bg-[#0d1420]/92 px-3 py-1.5 text-center'
   const label = 'text-[8.5px] uppercase tracking-[.18em] text-slate-500'
-  const offMapRows = offMap.reduce((a, [, n]) => a + n, 0)
+  const offMapRows = offMap.reduce((a, e) => a + e.rows, 0)
+  const offMapTons = offMap.reduce((a, e) => a + e.tons, 0)
 
   return (
     <div className="relative">
@@ -154,11 +155,16 @@ export default function InsightStrip() {
       )}
       {openList === 'offmap' && (
         <div className="absolute right-0 top-full z-20 mt-1.5 min-w-[340px] border border-slate-700/70 bg-[#0d1420]/95 px-3 py-2 text-[11px]">
-          <div className="mb-1 text-slate-500">مواقع إرساليات بدون هندسة مطابقة على الخريطة:</div>
-          {offMap.slice(0, 14).map(([k, n]) => (
-            <div key={k} className="flex justify-between gap-4 py-0.5 text-slate-300">
-              <span>{k}</span>
-              <span className="text-slate-500">{n}</span>
+          <div className="mb-1 flex justify-between text-slate-500">
+            <span>مواقع إرساليات بدون هندسة مطابقة على الخريطة:</span>
+            <span>{Math.round(offMapTons).toLocaleString('en')} طن</span>
+          </div>
+          {offMap.slice(0, 14).map((e) => (
+            <div key={e.key} className="flex justify-between gap-4 py-0.5 text-slate-300">
+              <span>{e.key}</span>
+              <span className="text-slate-500">
+                {e.rows} · {Math.round(e.tons)} طن
+              </span>
             </div>
           ))}
           {offMap.length > 14 && <div className="text-slate-600">… +{offMap.length - 14}</div>}

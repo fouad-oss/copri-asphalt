@@ -3,7 +3,8 @@ import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useApp } from '../store'
 import { segmentInsights, matchesFilters, NO_WORK } from '../lib/insights'
-import { STAGES } from '../config/stages'
+import { STAGES, STAGE_INDEX } from '../config/stages'
+import { fracLabel } from '../config/paving'
 import {
   BASE_STYLE,
   SOURCE_ID,
@@ -60,20 +61,30 @@ export default function MapView() {
     const ins = segmentInsights(worklog, asOfDate)
     const segIns = segmentInsights(segLog, asOfDate)
     const reportedUnits = new Set(segLog.filter((r) => r.date <= asOfDate && r.unit).map((r) => r.unit as string))
+    // Width fraction at each reported segment's CURRENT stage — a later
+    // full-width pass clears the partial marker for that stage.
+    const fracBySeg = new Map<string, { stage: number; frac: number }>()
+    for (const r of segLog) {
+      if (r.date > asOfDate) continue
+      const stage = STAGE_INDEX[r.stage]
+      const frac = r.width_frac ?? 1
+      const cur = fracBySeg.get(r.segment_id)
+      if (!cur || stage > cur.stage) fracBySeg.set(r.segment_id, { stage, frac })
+      else if (stage === cur.stage && frac > cur.frac) cur.frac = frac
+    }
     const segFC = {
       type: 'FeatureCollection' as const,
       features: segments.features.map((f) => {
         const unit = f.properties.unit
         const unitIns = (unit && ins.get(unit)) || NO_WORK
-        const i =
-          unit && reportedUnits.has(unit)
-            ? segIns.get(f.properties.id) || NO_WORK
-            : unitIns
+        const reported = !!unit && reportedUnits.has(unit)
+        const i = reported ? segIns.get(f.properties.id) || NO_WORK : unitIns
         return {
           ...f,
           properties: {
             ...f.properties,
             stage_idx: i.stageIdx,
+            pfrac: (reported && i.stageIdx > 0 && fracBySeg.get(f.properties.id)?.frac) || 1,
             dim: matchesFilters(f, unitIns, filters) ? 0 : 1,
           },
         }
@@ -130,12 +141,16 @@ export default function MapView() {
       hoverIdRef.current = id
       setHovered(id)
       if (f) {
-        const p = f.properties as SegmentProps & { stage_idx: number }
+        const p = f.properties as SegmentProps & { stage_idx: number; pfrac?: number }
         setTip({
           x: e.point.x,
           y: e.point.y,
           title: `${p.street || 'شارع بدون اسم'} · ${p.site}${p.block ? ' ق' + p.block : ''}`,
-          sub: `ch ${String(p.from_ch).padStart(4, '0')}–${String(p.to_ch).padStart(4, '0')} · ${STAGES[p.stage_idx].label}`,
+          sub: `${
+            p.unit?.includes('|km|')
+              ? `كم ${(p.from_ch / 1000).toFixed(1)}–${(p.to_ch / 1000).toFixed(1)} تقريباً`
+              : `ch ${String(p.from_ch).padStart(4, '0')}–${String(p.to_ch).padStart(4, '0')}`
+          } · ${STAGES[p.stage_idx].label}${p.pfrac && p.pfrac < 1 ? ` · ${fracLabel(p.pfrac)} العرض` : ''}`,
         })
       } else {
         setTip(null)
@@ -182,8 +197,10 @@ export default function MapView() {
     map.addLayer(blocksLayer())
     segmentLayers().forEach((l) => map.addLayer(l))
     // Grid + fit around the ACTIVE network (where dispatches actually go).
+    // Motorway km pieces are excluded — fitting to them would zoom out to
+    // half the country; they're there when you pan/zoom out.
     const focus = derived.segFC.features.filter(
-      (f) => f.properties.unit && activeUnits.has(f.properties.unit),
+      (f) => f.properties.unit && !f.properties.unit.includes('|km|') && activeUnits.has(f.properties.unit),
     )
     const fitTo = focus.length ? focus : derived.segFC.features
     let minX = 180, minY = 90, maxX = -180, maxY = -90

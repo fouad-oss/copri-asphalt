@@ -40,6 +40,7 @@ export interface WorkLogEntry {
   unit?: string // street unit key, always set on segment-level report rows
   stage: StageKey
   date: string // ISO8601 (yyyy-mm-dd, Kuwait day)
+  width_frac?: number // fraction of street width covered (segment reports; 1 = full)
   reported_qty?: number
   crew?: string
   note?: string

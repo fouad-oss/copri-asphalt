@@ -3,6 +3,7 @@ import type { SegmentCollection, WorkLogEntry } from './types'
 import { NO_FILTERS, type Filters } from './lib/insights'
 import { buildUnitIndex, dispatchToWorklog, type DispatchRow } from './lib/asphalt'
 import { sbGet } from './config/backend'
+import { applyPavingSettings } from './config/paving'
 import segmentsUrl from './data/real/segments.geojson?url'
 import blocksUrl from './data/real/blocks.geojson?url'
 import snapshot from './data/real/dispatch-snapshot.json'
@@ -13,8 +14,9 @@ interface AppState {
   segLog: WorkLogEntry[] // segment-level work reports (blueprint_worklog)
   segments: SegmentCollection | null
   blocks: SegmentCollection | null
-  offMap: [string, number][] // dispatch locations with no geometry (key, rows)
+  offMap: { key: string; rows: number; tons: number }[] // dispatch locations with no geometry
   live: boolean // true = worklog built from a live Supabase read
+  pavingRev: number // bumped whenever the PAVING singleton changes — memo dep
   asOfDate: string
   minDate: string
   maxDate: string
@@ -28,6 +30,8 @@ interface AppState {
   reportSelection: string[] // ordered segment ids of the chosen range
   loadData: () => Promise<void>
   loadSegLog: () => Promise<void>
+  loadSettings: () => Promise<void>
+  applyPaving: (value: unknown) => void
   setAsOfDate: (date: string) => void
   setHovered: (id: string | null) => void
   setSelected: (id: string | null) => void
@@ -50,6 +54,7 @@ interface SegLogRow {
   work_date: string
   by_name: string
   note: string
+  width_frac?: number // pre-0011 rows / servers lack the column
 }
 
 export const useApp = create<AppState>((set, get) => ({
@@ -59,6 +64,7 @@ export const useApp = create<AppState>((set, get) => ({
   blocks: null,
   offMap: [],
   live: false,
+  pavingRev: 0,
   asOfDate: today,
   minDate: today,
   maxDate: today,
@@ -93,18 +99,21 @@ export const useApp = create<AppState>((set, get) => ({
       blocks,
       worklog,
       live,
-      offMap: [...offMap.entries()].sort((a, b) => b[1] - a[1]),
+      offMap: [...offMap.entries()]
+        .map(([key, v]) => ({ key, ...v }))
+        .sort((a, b) => b.rows - a.rows),
       minDate,
       maxDate,
       asOfDate: maxDate,
     })
-    await get().loadSegLog()
+    await Promise.all([get().loadSegLog(), get().loadSettings()])
   },
   // Segment-level reports (0009). Tolerates the table not existing yet.
   loadSegLog: async () => {
     try {
+      // select=* keeps this working with or without the 0011 width_frac column
       const rows = await sbGet<SegLogRow[]>(
-        'blueprint_worklog?select=id,report_id,segment_id,unit,stage,work_date,by_name,note&order=work_date.asc&limit=20000',
+        'blueprint_worklog?select=*&order=work_date.asc&limit=20000',
       )
       set({
         segLog: rows.map((r) => ({
@@ -114,6 +123,7 @@ export const useApp = create<AppState>((set, get) => ({
           unit: r.unit,
           stage: r.stage as WorkLogEntry['stage'],
           date: r.work_date,
+          width_frac: r.width_frac != null ? Number(r.width_frac) : 1,
           crew: r.by_name,
           note: r.note || undefined,
         })),
@@ -121,6 +131,18 @@ export const useApp = create<AppState>((set, get) => ({
     } catch {
       /* migration 0009 not applied yet — dispatch-only mode */
     }
+  },
+  // Office-adjustable paving factors (0011). Missing table/row = defaults.
+  loadSettings: async () => {
+    try {
+      const rows = await sbGet<{ value: unknown }[]>('blueprint_settings?select=value&key=eq.paving')
+      if (rows[0]) get().applyPaving(rows[0].value)
+    } catch {
+      /* migration 0011 not applied yet — bundled defaults */
+    }
+  },
+  applyPaving: (value) => {
+    if (applyPavingSettings(value)) set({ pavingRev: get().pavingRev + 1 })
   },
   setAsOfDate: (date) => set({ asOfDate: date }),
   setHovered: (id) => set({ hoveredId: id }),

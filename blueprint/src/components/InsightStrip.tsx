@@ -59,8 +59,8 @@ export default function InsightStrip() {
   const label = 'text-[8.5px] uppercase tracking-[.18em] text-slate-500'
 
   return (
-    <div className="absolute left-1/2 top-4 z-10 -translate-x-1/2">
-      <div className="flex items-stretch gap-1.5">
+    <div className="relative">
+      <div className="flex flex-wrap items-stretch justify-end gap-1.5">
         {/* stage mix — stacked bar */}
         <div className={tile}>
           <svg width="120" height="10" className="mt-1 block">
@@ -125,9 +125,9 @@ export default function InsightStrip() {
         </button>
       </div>
 
-      {/* dropdown lists */}
+      {/* dropdown lists — absolute so they never reflow the top row */}
       {openList === 'violations' && (
-        <div className="mt-1.5 border border-slate-700/70 bg-[#0d1420]/95 px-3 py-2 text-[11px]">
+        <div className="absolute right-0 top-full mt-1.5 min-w-[300px] border border-slate-700/70 bg-[#0d1420]/95 px-3 py-2 text-[11px]">
           {data.violationIds.length === 0 && <div className="text-slate-500">none in view</div>}
           {data.violationIds.map((id) => (
             <button
@@ -142,7 +142,7 @@ export default function InsightStrip() {
         </div>
       )}
       {openList === 'recon' && (
-        <div className="mt-1.5 border border-slate-700/70 bg-[#0d1420]/95 px-3 py-2 text-[11px]">
+        <div className="absolute right-0 top-full mt-1.5 min-w-[380px] border border-slate-700/70 bg-[#0d1420]/95 px-3 py-2 text-[11px]">
           {data.recon.length === 0 && <div className="text-slate-500">none in view</div>}
           {data.recon.map((r) => (
             <div key={r.reportId} className="flex gap-3 py-0.5 text-slate-300">

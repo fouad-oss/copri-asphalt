@@ -25,7 +25,7 @@ export default function FilterBar() {
     filters.stalledOnly !== NO_FILTERS.stalledOnly
 
   return (
-    <div className="absolute left-4 top-16 z-10 flex items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-1.5">
       <select
         className={selectCls}
         value={filters.block ?? ''}

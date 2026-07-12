@@ -37,15 +37,22 @@ function App() {
   return (
     <div className="relative h-screen w-screen overflow-hidden">
       <MapView />
-      <header className="pointer-events-none absolute left-4 top-4 z-10">
-        <h1 className="text-base font-bold tracking-[.35em] text-cyan-300">BLUEPRINT</h1>
-        <p className="mt-0.5 text-[11px] tracking-wider text-slate-400">
-          COPRI ROAD WORKS · AS OF {asOfDate} · FAKE DATA
-        </p>
-      </header>
+      {/* one wrapping top row — header, filters, insights can never overlap */}
+      <div className="pointer-events-none absolute inset-x-4 top-4 z-10 flex flex-wrap items-start gap-x-6 gap-y-2">
+        <header>
+          <h1 className="text-base font-bold tracking-[.35em] text-cyan-300">BLUEPRINT</h1>
+          <p className="mt-0.5 text-[11px] tracking-wider text-slate-400">
+            COPRI ROAD WORKS · AS OF {asOfDate} · FAKE DATA
+          </p>
+        </header>
+        <div className="pointer-events-auto mt-0.5">
+          <FilterBar />
+        </div>
+        <div className="pointer-events-auto ml-auto">
+          <InsightStrip />
+        </div>
+      </div>
       <Legend />
-      <FilterBar />
-      <InsightStrip />
       <TimeSlider />
       <DetailPanel />
     </div>

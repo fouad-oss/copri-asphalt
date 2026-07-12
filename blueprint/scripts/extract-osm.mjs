@@ -27,6 +27,16 @@ const AREAS = [
   { site: 'سلوى', code: 'salwa', match: /سلوى/, bbox: [29.266, 48.055, 29.313, 48.108] },
 ]
 
+// Number aliases for streets that were renamed after people in OSM while
+// clerks still dispatch by the old numbers. Identified via Google Maps
+// anchors 2026-07-12: "57 Rd" lands 23 m from شارع خالد يوسف أبو مطاوع,
+// "Road 59" lands 7 m from شارع سليمان ناصر المرشود. `match` runs against
+// the NORMALISED street name.
+const NUM_ALIASES = [
+  { site: 'مشرف', num: '57', match: /ابومطاوع/ },
+  { site: 'مشرف', num: '59', match: /المرشود/ },
+]
+
 const HIGHWAYS = 'residential|tertiary|secondary|primary|unclassified|living_street'
 const WIDTHS = { primary: 18, secondary: 15, tertiary: 12, residential: 8, unclassified: 8, living_street: 6 }
 const ENDPOINTS = [
@@ -174,8 +184,8 @@ async function main() {
       })
     }
 
-    // streets
-    const groups = new Map() // (block|normname|num) → ways
+    // streets — collect first so manual traces can name unnamed ways
+    const wayList = []
     for (const el of data.elements) {
       if (el.type !== 'way' || !el.tags?.highway || !el.geometry || seenWayIds.has(el.id)) continue
       const coords = el.geometry.map((g) => round6([g.lon, g.lat]))
@@ -183,23 +193,46 @@ async function main() {
       const mid = coords[Math.floor(coords.length / 2)]
       if (!owns(mid)) continue // neighbouring suburb's street — its query claims it
       seenWayIds.add(el.id)
+      wayList.push({
+        id: el.id,
+        coords,
+        mid,
+        highway: el.tags.highway,
+        rawName: (el.tags['name:ar'] || el.tags.name || '').trim(),
+      })
+    }
+    const groups = new Map() // (block|normname|num) → ways
+    for (const w of wayList) {
+      const { coords, mid, rawName } = w
       const blk = blocks.find((b) => pointInRing(mid, b.ring))
-      const rawName = (el.tags['name:ar'] || el.tags.name || '').trim()
       const num = streetNum(rawName)
       const nn = rawName ? normName(rawName) : ''
-      const key = `${blk ? blk.num : ''}|${num || nn || 'w' + el.id}`
+      const key = `${blk ? blk.num : ''}|${num || nn || 'w' + w.id}`
       const g = groups.get(key) || {
         block: blk ? blk.num : '',
         name: rawName,
         num,
         norm: nn,
-        width: WIDTHS[el.tags.highway] || 8,
+        width: WIDTHS[w.highway] || 8,
         ways: [],
       }
-      g.width = Math.max(g.width, WIDTHS[el.tags.highway] || 8)
+      g.width = Math.max(g.width, WIDTHS[w.highway] || 8)
       if (!g.name && rawName) g.name = rawName
       g.ways.push(coords)
       groups.set(key, g)
+    }
+
+    // apply number aliases (renamed streets clerks know by number)
+    for (const ov of NUM_ALIASES.filter((o) => o.site === area.site)) {
+      let hits = 0
+      for (const g of groups.values()) {
+        if (g.name && ov.match.test(normName(g.name))) {
+          g.num = ov.num
+          g.name = `${g.name} (${ov.num})`
+          hits++
+        }
+      }
+      console.log(`  alias شارع ${ov.num} → ${hits} street group(s)`)
     }
 
     let areaSegs = 0

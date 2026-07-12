@@ -1,0 +1,2588 @@
+[
+ {
+  "id": "wl-0191",
+  "report_id": "RPT-0074",
+  "segment_id": "arterial-r40-0000",
+  "stage": "excavation",
+  "date": "2026-03-27",
+  "reported_qty": 400,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0192",
+  "report_id": "RPT-0074",
+  "segment_id": "arterial-r40-0100",
+  "stage": "excavation",
+  "date": "2026-03-27",
+  "reported_qty": 400,
+  "crew": "Crew D",
+  "note": "night shift"
+ },
+ {
+  "id": "wl-0193",
+  "report_id": "RPT-0074",
+  "segment_id": "arterial-r40-0200",
+  "stage": "excavation",
+  "date": "2026-03-27",
+  "reported_qty": 400,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0194",
+  "report_id": "RPT-0074",
+  "segment_id": "arterial-r40-0300",
+  "stage": "excavation",
+  "date": "2026-03-27",
+  "reported_qty": 400,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0195",
+  "report_id": "RPT-0075",
+  "segment_id": "arterial-r40-0000",
+  "stage": "pipelaying",
+  "date": "2026-04-12",
+  "reported_qty": 400,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0196",
+  "report_id": "RPT-0075",
+  "segment_id": "arterial-r40-0100",
+  "stage": "pipelaying",
+  "date": "2026-04-12",
+  "reported_qty": 400,
+  "crew": "Crew C",
+  "note": "partial lane closure"
+ },
+ {
+  "id": "wl-0197",
+  "report_id": "RPT-0075",
+  "segment_id": "arterial-r40-0200",
+  "stage": "pipelaying",
+  "date": "2026-04-12",
+  "reported_qty": 400,
+  "crew": "Crew C",
+  "note": "night shift"
+ },
+ {
+  "id": "wl-0198",
+  "report_id": "RPT-0075",
+  "segment_id": "arterial-r40-0300",
+  "stage": "pipelaying",
+  "date": "2026-04-12",
+  "reported_qty": 400,
+  "crew": "Crew C",
+  "note": "partial lane closure"
+ },
+ {
+  "id": "wl-0001",
+  "report_id": "RPT-0001",
+  "segment_id": "bayan-3-st11-0000",
+  "stage": "excavation",
+  "date": "2026-04-21",
+  "reported_qty": 300,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0002",
+  "report_id": "RPT-0001",
+  "segment_id": "bayan-3-st11-0100",
+  "stage": "excavation",
+  "date": "2026-04-21",
+  "reported_qty": 300,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0003",
+  "report_id": "RPT-0001",
+  "segment_id": "bayan-3-st11-0200",
+  "stage": "excavation",
+  "date": "2026-04-21",
+  "reported_qty": 300,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0004",
+  "report_id": "RPT-0002",
+  "segment_id": "bayan-3-st11-0300",
+  "stage": "excavation",
+  "date": "2026-04-21",
+  "reported_qty": 120,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0005",
+  "report_id": "RPT-0002",
+  "segment_id": "bayan-3-st11-0400",
+  "stage": "excavation",
+  "date": "2026-04-21",
+  "reported_qty": 120,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0199",
+  "report_id": "RPT-0076",
+  "segment_id": "arterial-r40-0000",
+  "stage": "backfill",
+  "date": "2026-04-28",
+  "reported_qty": 200,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0200",
+  "report_id": "RPT-0076",
+  "segment_id": "arterial-r40-0100",
+  "stage": "backfill",
+  "date": "2026-04-28",
+  "reported_qty": 200,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0201",
+  "report_id": "RPT-0077",
+  "segment_id": "arterial-r40-0200",
+  "stage": "backfill",
+  "date": "2026-04-28",
+  "reported_qty": 200,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0202",
+  "report_id": "RPT-0077",
+  "segment_id": "arterial-r40-0300",
+  "stage": "backfill",
+  "date": "2026-04-28",
+  "reported_qty": 200,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0223",
+  "report_id": "RPT-0085",
+  "segment_id": "arterial-r40-0400",
+  "stage": "excavation",
+  "date": "2026-04-28",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0224",
+  "report_id": "RPT-0085",
+  "segment_id": "arterial-r40-0500",
+  "stage": "excavation",
+  "date": "2026-04-28",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0225",
+  "report_id": "RPT-0085",
+  "segment_id": "arterial-r40-0600",
+  "stage": "excavation",
+  "date": "2026-04-28",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0226",
+  "report_id": "RPT-0085",
+  "segment_id": "arterial-r40-0700",
+  "stage": "excavation",
+  "date": "2026-04-28",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0006",
+  "report_id": "RPT-0003",
+  "segment_id": "bayan-3-st11-0000",
+  "stage": "pipelaying",
+  "date": "2026-04-29",
+  "reported_qty": 300,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0007",
+  "report_id": "RPT-0003",
+  "segment_id": "bayan-3-st11-0100",
+  "stage": "pipelaying",
+  "date": "2026-04-29",
+  "reported_qty": 300,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0008",
+  "report_id": "RPT-0003",
+  "segment_id": "bayan-3-st11-0200",
+  "stage": "pipelaying",
+  "date": "2026-04-29",
+  "reported_qty": 300,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0009",
+  "report_id": "RPT-0004",
+  "segment_id": "bayan-3-st11-0300",
+  "stage": "pipelaying",
+  "date": "2026-04-29",
+  "reported_qty": 162,
+  "crew": "Crew D",
+  "note": "MEW clearance received"
+ },
+ {
+  "id": "wl-0010",
+  "report_id": "RPT-0004",
+  "segment_id": "bayan-3-st11-0400",
+  "stage": "pipelaying",
+  "date": "2026-04-29",
+  "reported_qty": 162,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0227",
+  "report_id": "RPT-0086",
+  "segment_id": "arterial-r40-0400",
+  "stage": "pipelaying",
+  "date": "2026-05-03",
+  "reported_qty": 200,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0228",
+  "report_id": "RPT-0086",
+  "segment_id": "arterial-r40-0500",
+  "stage": "pipelaying",
+  "date": "2026-05-03",
+  "reported_qty": 200,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0229",
+  "report_id": "RPT-0087",
+  "segment_id": "arterial-r40-0600",
+  "stage": "pipelaying",
+  "date": "2026-05-03",
+  "reported_qty": 200,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0230",
+  "report_id": "RPT-0087",
+  "segment_id": "arterial-r40-0700",
+  "stage": "pipelaying",
+  "date": "2026-05-03",
+  "reported_qty": 200,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0011",
+  "report_id": "RPT-0005",
+  "segment_id": "bayan-3-st11-0000",
+  "stage": "backfill",
+  "date": "2026-05-04",
+  "reported_qty": 200,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0012",
+  "report_id": "RPT-0005",
+  "segment_id": "bayan-3-st11-0100",
+  "stage": "backfill",
+  "date": "2026-05-04",
+  "reported_qty": 200,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0013",
+  "report_id": "RPT-0006",
+  "segment_id": "bayan-3-st11-0200",
+  "stage": "backfill",
+  "date": "2026-05-04",
+  "reported_qty": 220,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0014",
+  "report_id": "RPT-0006",
+  "segment_id": "bayan-3-st11-0300",
+  "stage": "backfill",
+  "date": "2026-05-04",
+  "reported_qty": 220,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0015",
+  "report_id": "RPT-0006",
+  "segment_id": "bayan-3-st11-0400",
+  "stage": "backfill",
+  "date": "2026-05-04",
+  "reported_qty": 220,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0203",
+  "report_id": "RPT-0078",
+  "segment_id": "arterial-r40-0000",
+  "stage": "temporary_asphalt",
+  "date": "2026-05-06",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0204",
+  "report_id": "RPT-0078",
+  "segment_id": "arterial-r40-0100",
+  "stage": "temporary_asphalt",
+  "date": "2026-05-06",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0205",
+  "report_id": "RPT-0078",
+  "segment_id": "arterial-r40-0200",
+  "stage": "temporary_asphalt",
+  "date": "2026-05-06",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0206",
+  "report_id": "RPT-0078",
+  "segment_id": "arterial-r40-0300",
+  "stage": "temporary_asphalt",
+  "date": "2026-05-06",
+  "reported_qty": 400,
+  "crew": "Crew B",
+  "note": "weather delay recovered"
+ },
+ {
+  "id": "wl-0176",
+  "report_id": "RPT-0069",
+  "segment_id": "bayan-9-st33-0000",
+  "stage": "excavation",
+  "date": "2026-05-08",
+  "reported_qty": 260,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0177",
+  "report_id": "RPT-0069",
+  "segment_id": "bayan-9-st33-0100",
+  "stage": "excavation",
+  "date": "2026-05-08",
+  "reported_qty": 260,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0178",
+  "report_id": "RPT-0069",
+  "segment_id": "bayan-9-st33-0200",
+  "stage": "excavation",
+  "date": "2026-05-08",
+  "reported_qty": 260,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0016",
+  "report_id": "RPT-0007",
+  "segment_id": "bayan-3-st11-0000",
+  "stage": "temporary_asphalt",
+  "date": "2026-05-14",
+  "reported_qty": 200,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0017",
+  "report_id": "RPT-0007",
+  "segment_id": "bayan-3-st11-0100",
+  "stage": "temporary_asphalt",
+  "date": "2026-05-14",
+  "reported_qty": 200,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0018",
+  "report_id": "RPT-0008",
+  "segment_id": "bayan-3-st11-0200",
+  "stage": "temporary_asphalt",
+  "date": "2026-05-14",
+  "reported_qty": 220,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0019",
+  "report_id": "RPT-0008",
+  "segment_id": "bayan-3-st11-0300",
+  "stage": "temporary_asphalt",
+  "date": "2026-05-14",
+  "reported_qty": 220,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0020",
+  "report_id": "RPT-0008",
+  "segment_id": "bayan-3-st11-0400",
+  "stage": "temporary_asphalt",
+  "date": "2026-05-14",
+  "reported_qty": 220,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0207",
+  "report_id": "RPT-0079",
+  "segment_id": "arterial-r40-0000",
+  "stage": "milling",
+  "date": "2026-05-14",
+  "reported_qty": 300,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0208",
+  "report_id": "RPT-0079",
+  "segment_id": "arterial-r40-0100",
+  "stage": "milling",
+  "date": "2026-05-14",
+  "reported_qty": 300,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0209",
+  "report_id": "RPT-0079",
+  "segment_id": "arterial-r40-0200",
+  "stage": "milling",
+  "date": "2026-05-14",
+  "reported_qty": 300,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0210",
+  "report_id": "RPT-0080",
+  "segment_id": "arterial-r40-0300",
+  "stage": "milling",
+  "date": "2026-05-14",
+  "reported_qty": 100,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0179",
+  "report_id": "RPT-0070",
+  "segment_id": "bayan-9-st33-0000",
+  "stage": "pipelaying",
+  "date": "2026-05-16",
+  "reported_qty": 260,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0180",
+  "report_id": "RPT-0070",
+  "segment_id": "bayan-9-st33-0100",
+  "stage": "pipelaying",
+  "date": "2026-05-16",
+  "reported_qty": 260,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0181",
+  "report_id": "RPT-0070",
+  "segment_id": "bayan-9-st33-0200",
+  "stage": "pipelaying",
+  "date": "2026-05-16",
+  "reported_qty": 260,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0231",
+  "report_id": "RPT-0088",
+  "segment_id": "arterial-r40-0400",
+  "stage": "backfill",
+  "date": "2026-05-17",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0232",
+  "report_id": "RPT-0088",
+  "segment_id": "arterial-r40-0500",
+  "stage": "backfill",
+  "date": "2026-05-17",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0233",
+  "report_id": "RPT-0088",
+  "segment_id": "arterial-r40-0600",
+  "stage": "backfill",
+  "date": "2026-05-17",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0234",
+  "report_id": "RPT-0088",
+  "segment_id": "arterial-r40-0700",
+  "stage": "backfill",
+  "date": "2026-05-17",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0021",
+  "report_id": "RPT-0009",
+  "segment_id": "bayan-3-st11-0000",
+  "stage": "milling",
+  "date": "2026-05-19",
+  "reported_qty": 420,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0023",
+  "report_id": "RPT-0009",
+  "segment_id": "bayan-3-st11-0200",
+  "stage": "milling",
+  "date": "2026-05-19",
+  "reported_qty": 420,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0024",
+  "report_id": "RPT-0009",
+  "segment_id": "bayan-3-st11-0300",
+  "stage": "milling",
+  "date": "2026-05-19",
+  "reported_qty": 420,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0025",
+  "report_id": "RPT-0009",
+  "segment_id": "bayan-3-st11-0400",
+  "stage": "milling",
+  "date": "2026-05-19",
+  "reported_qty": 420,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0032",
+  "report_id": "RPT-0012",
+  "segment_id": "bayan-3-st11-0100",
+  "stage": "type_ii",
+  "date": "2026-05-19",
+  "reported_qty": 400,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0041",
+  "report_id": "RPT-0016",
+  "segment_id": "bayan-3-st12-0000",
+  "stage": "excavation",
+  "date": "2026-05-19",
+  "reported_qty": 380,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0042",
+  "report_id": "RPT-0016",
+  "segment_id": "bayan-3-st12-0100",
+  "stage": "excavation",
+  "date": "2026-05-19",
+  "reported_qty": 380,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0043",
+  "report_id": "RPT-0016",
+  "segment_id": "bayan-3-st12-0200",
+  "stage": "excavation",
+  "date": "2026-05-19",
+  "reported_qty": 380,
+  "crew": "Crew B",
+  "note": "weather delay recovered"
+ },
+ {
+  "id": "wl-0044",
+  "report_id": "RPT-0016",
+  "segment_id": "bayan-3-st12-0300",
+  "stage": "excavation",
+  "date": "2026-05-19",
+  "reported_qty": 380,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0211",
+  "report_id": "RPT-0081",
+  "segment_id": "arterial-r40-0000",
+  "stage": "type_i",
+  "date": "2026-05-21",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0212",
+  "report_id": "RPT-0081",
+  "segment_id": "arterial-r40-0100",
+  "stage": "type_i",
+  "date": "2026-05-21",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0213",
+  "report_id": "RPT-0081",
+  "segment_id": "arterial-r40-0200",
+  "stage": "type_i",
+  "date": "2026-05-21",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0214",
+  "report_id": "RPT-0081",
+  "segment_id": "arterial-r40-0300",
+  "stage": "type_i",
+  "date": "2026-05-21",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0182",
+  "report_id": "RPT-0071",
+  "segment_id": "bayan-9-st33-0000",
+  "stage": "backfill",
+  "date": "2026-05-23",
+  "reported_qty": 260,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0183",
+  "report_id": "RPT-0071",
+  "segment_id": "bayan-9-st33-0100",
+  "stage": "backfill",
+  "date": "2026-05-23",
+  "reported_qty": 260,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0184",
+  "report_id": "RPT-0071",
+  "segment_id": "bayan-9-st33-0200",
+  "stage": "backfill",
+  "date": "2026-05-23",
+  "reported_qty": 260,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0111",
+  "report_id": "RPT-0042",
+  "segment_id": "bayan-5-st22-0000",
+  "stage": "excavation",
+  "date": "2026-05-24",
+  "reported_qty": 200,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0112",
+  "report_id": "RPT-0042",
+  "segment_id": "bayan-5-st22-0100",
+  "stage": "excavation",
+  "date": "2026-05-24",
+  "reported_qty": 200,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0113",
+  "report_id": "RPT-0043",
+  "segment_id": "bayan-5-st22-0200",
+  "stage": "excavation",
+  "date": "2026-05-24",
+  "reported_qty": 200,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0114",
+  "report_id": "RPT-0043",
+  "segment_id": "bayan-5-st22-0300",
+  "stage": "excavation",
+  "date": "2026-05-24",
+  "reported_qty": 200,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0115",
+  "report_id": "RPT-0044",
+  "segment_id": "bayan-5-st22-0400",
+  "stage": "excavation",
+  "date": "2026-05-24",
+  "reported_qty": 50,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0215",
+  "report_id": "RPT-0082",
+  "segment_id": "arterial-r40-0000",
+  "stage": "type_ii",
+  "date": "2026-05-25",
+  "reported_qty": 300,
+  "crew": "Crew D",
+  "note": "MEW clearance received"
+ },
+ {
+  "id": "wl-0216",
+  "report_id": "RPT-0082",
+  "segment_id": "arterial-r40-0100",
+  "stage": "type_ii",
+  "date": "2026-05-25",
+  "reported_qty": 300,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0217",
+  "report_id": "RPT-0082",
+  "segment_id": "arterial-r40-0200",
+  "stage": "type_ii",
+  "date": "2026-05-25",
+  "reported_qty": 300,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0218",
+  "report_id": "RPT-0083",
+  "segment_id": "arterial-r40-0300",
+  "stage": "type_ii",
+  "date": "2026-05-25",
+  "reported_qty": 100,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0045",
+  "report_id": "RPT-0017",
+  "segment_id": "bayan-3-st12-0000",
+  "stage": "pipelaying",
+  "date": "2026-05-26",
+  "reported_qty": 200,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0046",
+  "report_id": "RPT-0017",
+  "segment_id": "bayan-3-st12-0100",
+  "stage": "pipelaying",
+  "date": "2026-05-26",
+  "reported_qty": 200,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0047",
+  "report_id": "RPT-0018",
+  "segment_id": "bayan-3-st12-0200",
+  "stage": "pipelaying",
+  "date": "2026-05-26",
+  "reported_qty": 180,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0048",
+  "report_id": "RPT-0018",
+  "segment_id": "bayan-3-st12-0300",
+  "stage": "pipelaying",
+  "date": "2026-05-26",
+  "reported_qty": 180,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0143",
+  "report_id": "RPT-0057",
+  "segment_id": "bayan-9-st31-0000",
+  "stage": "excavation",
+  "date": "2026-05-27",
+  "reported_qty": 430,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0144",
+  "report_id": "RPT-0057",
+  "segment_id": "bayan-9-st31-0100",
+  "stage": "excavation",
+  "date": "2026-05-27",
+  "reported_qty": 430,
+  "crew": "Crew D",
+  "note": "MEW clearance received"
+ },
+ {
+  "id": "wl-0145",
+  "report_id": "RPT-0057",
+  "segment_id": "bayan-9-st31-0200",
+  "stage": "excavation",
+  "date": "2026-05-27",
+  "reported_qty": 430,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0146",
+  "report_id": "RPT-0057",
+  "segment_id": "bayan-9-st31-0300",
+  "stage": "excavation",
+  "date": "2026-05-27",
+  "reported_qty": 430,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0147",
+  "report_id": "RPT-0057",
+  "segment_id": "bayan-9-st31-0400",
+  "stage": "excavation",
+  "date": "2026-05-27",
+  "reported_qty": 430,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0061",
+  "report_id": "RPT-0024",
+  "segment_id": "bayan-3-st13-0000",
+  "stage": "excavation",
+  "date": "2026-05-29",
+  "reported_qty": 350,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0062",
+  "report_id": "RPT-0024",
+  "segment_id": "bayan-3-st13-0100",
+  "stage": "excavation",
+  "date": "2026-05-29",
+  "reported_qty": 350,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0063",
+  "report_id": "RPT-0024",
+  "segment_id": "bayan-3-st13-0200",
+  "stage": "excavation",
+  "date": "2026-05-29",
+  "reported_qty": 350,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0064",
+  "report_id": "RPT-0024",
+  "segment_id": "bayan-3-st13-0300",
+  "stage": "excavation",
+  "date": "2026-05-29",
+  "reported_qty": 350,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0026",
+  "report_id": "RPT-0010",
+  "segment_id": "bayan-3-st11-0000",
+  "stage": "type_i",
+  "date": "2026-06-01",
+  "reported_qty": 300,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0027",
+  "report_id": "RPT-0010",
+  "segment_id": "bayan-3-st11-0100",
+  "stage": "type_i",
+  "date": "2026-06-01",
+  "reported_qty": 300,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0028",
+  "report_id": "RPT-0010",
+  "segment_id": "bayan-3-st11-0200",
+  "stage": "type_i",
+  "date": "2026-06-01",
+  "reported_qty": 300,
+  "crew": "Crew A",
+  "note": "MEW clearance received"
+ },
+ {
+  "id": "wl-0029",
+  "report_id": "RPT-0011",
+  "segment_id": "bayan-3-st11-0300",
+  "stage": "type_i",
+  "date": "2026-06-01",
+  "reported_qty": 120,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0030",
+  "report_id": "RPT-0011",
+  "segment_id": "bayan-3-st11-0400",
+  "stage": "type_i",
+  "date": "2026-06-01",
+  "reported_qty": 120,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0049",
+  "report_id": "RPT-0019",
+  "segment_id": "bayan-3-st12-0000",
+  "stage": "backfill",
+  "date": "2026-06-02",
+  "reported_qty": 300,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0050",
+  "report_id": "RPT-0019",
+  "segment_id": "bayan-3-st12-0100",
+  "stage": "backfill",
+  "date": "2026-06-02",
+  "reported_qty": 300,
+  "crew": "Crew A",
+  "note": "MEW clearance received"
+ },
+ {
+  "id": "wl-0051",
+  "report_id": "RPT-0019",
+  "segment_id": "bayan-3-st12-0200",
+  "stage": "backfill",
+  "date": "2026-06-02",
+  "reported_qty": 300,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0052",
+  "report_id": "RPT-0020",
+  "segment_id": "bayan-3-st12-0300",
+  "stage": "backfill",
+  "date": "2026-06-02",
+  "reported_qty": 80,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0235",
+  "report_id": "RPT-0089",
+  "segment_id": "arterial-r40-0400",
+  "stage": "temporary_asphalt",
+  "date": "2026-06-02",
+  "reported_qty": 400,
+  "crew": "Crew D",
+  "note": "partial lane closure"
+ },
+ {
+  "id": "wl-0236",
+  "report_id": "RPT-0089",
+  "segment_id": "arterial-r40-0500",
+  "stage": "temporary_asphalt",
+  "date": "2026-06-02",
+  "reported_qty": 400,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0237",
+  "report_id": "RPT-0089",
+  "segment_id": "arterial-r40-0600",
+  "stage": "temporary_asphalt",
+  "date": "2026-06-02",
+  "reported_qty": 400,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0238",
+  "report_id": "RPT-0089",
+  "segment_id": "arterial-r40-0700",
+  "stage": "temporary_asphalt",
+  "date": "2026-06-02",
+  "reported_qty": 400,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0081",
+  "report_id": "RPT-0031",
+  "segment_id": "bayan-5-st21-0000",
+  "stage": "excavation",
+  "date": "2026-06-03",
+  "reported_qty": 500,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0082",
+  "report_id": "RPT-0031",
+  "segment_id": "bayan-5-st21-0100",
+  "stage": "excavation",
+  "date": "2026-06-03",
+  "reported_qty": 500,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0083",
+  "report_id": "RPT-0031",
+  "segment_id": "bayan-5-st21-0200",
+  "stage": "excavation",
+  "date": "2026-06-03",
+  "reported_qty": 500,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0084",
+  "report_id": "RPT-0031",
+  "segment_id": "bayan-5-st21-0300",
+  "stage": "excavation",
+  "date": "2026-06-03",
+  "reported_qty": 500,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0085",
+  "report_id": "RPT-0031",
+  "segment_id": "bayan-5-st21-0400",
+  "stage": "excavation",
+  "date": "2026-06-03",
+  "reported_qty": 500,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0086",
+  "report_id": "RPT-0032",
+  "segment_id": "bayan-5-st21-0500",
+  "stage": "excavation",
+  "date": "2026-06-03",
+  "reported_qty": 20,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0148",
+  "report_id": "RPT-0058",
+  "segment_id": "bayan-9-st31-0000",
+  "stage": "pipelaying",
+  "date": "2026-06-04",
+  "reported_qty": 430,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0149",
+  "report_id": "RPT-0058",
+  "segment_id": "bayan-9-st31-0100",
+  "stage": "pipelaying",
+  "date": "2026-06-04",
+  "reported_qty": 430,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0150",
+  "report_id": "RPT-0058",
+  "segment_id": "bayan-9-st31-0200",
+  "stage": "pipelaying",
+  "date": "2026-06-04",
+  "reported_qty": 430,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0151",
+  "report_id": "RPT-0058",
+  "segment_id": "bayan-9-st31-0300",
+  "stage": "pipelaying",
+  "date": "2026-06-04",
+  "reported_qty": 430,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0152",
+  "report_id": "RPT-0058",
+  "segment_id": "bayan-9-st31-0400",
+  "stage": "pipelaying",
+  "date": "2026-06-04",
+  "reported_qty": 430,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0219",
+  "report_id": "RPT-0084",
+  "segment_id": "arterial-r40-0000",
+  "stage": "type_iii",
+  "date": "2026-06-05",
+  "reported_qty": 400,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0220",
+  "report_id": "RPT-0084",
+  "segment_id": "arterial-r40-0100",
+  "stage": "type_iii",
+  "date": "2026-06-05",
+  "reported_qty": 400,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0221",
+  "report_id": "RPT-0084",
+  "segment_id": "arterial-r40-0200",
+  "stage": "type_iii",
+  "date": "2026-06-05",
+  "reported_qty": 400,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0222",
+  "report_id": "RPT-0084",
+  "segment_id": "arterial-r40-0300",
+  "stage": "type_iii",
+  "date": "2026-06-05",
+  "reported_qty": 400,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0065",
+  "report_id": "RPT-0025",
+  "segment_id": "bayan-3-st13-0000",
+  "stage": "pipelaying",
+  "date": "2026-06-06",
+  "reported_qty": 300,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0066",
+  "report_id": "RPT-0025",
+  "segment_id": "bayan-3-st13-0100",
+  "stage": "pipelaying",
+  "date": "2026-06-06",
+  "reported_qty": 300,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0067",
+  "report_id": "RPT-0025",
+  "segment_id": "bayan-3-st13-0200",
+  "stage": "pipelaying",
+  "date": "2026-06-06",
+  "reported_qty": 300,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0068",
+  "report_id": "RPT-0026",
+  "segment_id": "bayan-3-st13-0300",
+  "stage": "pipelaying",
+  "date": "2026-06-06",
+  "reported_qty": 50,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0131",
+  "report_id": "RPT-0051",
+  "segment_id": "bayan-5-st23-0000",
+  "stage": "excavation",
+  "date": "2026-06-06",
+  "reported_qty": 300,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0132",
+  "report_id": "RPT-0051",
+  "segment_id": "bayan-5-st23-0100",
+  "stage": "excavation",
+  "date": "2026-06-06",
+  "reported_qty": 300,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0133",
+  "report_id": "RPT-0051",
+  "segment_id": "bayan-5-st23-0200",
+  "stage": "excavation",
+  "date": "2026-06-06",
+  "reported_qty": 300,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0134",
+  "report_id": "RPT-0052",
+  "segment_id": "bayan-5-st23-0300",
+  "stage": "excavation",
+  "date": "2026-06-06",
+  "reported_qty": 100,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0185",
+  "report_id": "RPT-0072",
+  "segment_id": "bayan-9-st33-0000",
+  "stage": "temporary_asphalt",
+  "date": "2026-06-08",
+  "reported_qty": 260,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0186",
+  "report_id": "RPT-0072",
+  "segment_id": "bayan-9-st33-0100",
+  "stage": "temporary_asphalt",
+  "date": "2026-06-08",
+  "reported_qty": 260,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0187",
+  "report_id": "RPT-0072",
+  "segment_id": "bayan-9-st33-0200",
+  "stage": "temporary_asphalt",
+  "date": "2026-06-08",
+  "reported_qty": 260,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0116",
+  "report_id": "RPT-0045",
+  "segment_id": "bayan-5-st22-0000",
+  "stage": "pipelaying",
+  "date": "2026-06-09",
+  "reported_qty": 300,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0117",
+  "report_id": "RPT-0045",
+  "segment_id": "bayan-5-st22-0100",
+  "stage": "pipelaying",
+  "date": "2026-06-09",
+  "reported_qty": 300,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0118",
+  "report_id": "RPT-0045",
+  "segment_id": "bayan-5-st22-0200",
+  "stage": "pipelaying",
+  "date": "2026-06-09",
+  "reported_qty": 300,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0119",
+  "report_id": "RPT-0046",
+  "segment_id": "bayan-5-st22-0300",
+  "stage": "pipelaying",
+  "date": "2026-06-09",
+  "reported_qty": 150,
+  "crew": "Crew D",
+  "note": "weather delay recovered"
+ },
+ {
+  "id": "wl-0120",
+  "report_id": "RPT-0046",
+  "segment_id": "bayan-5-st22-0400",
+  "stage": "pipelaying",
+  "date": "2026-06-09",
+  "reported_qty": 150,
+  "crew": "Crew D",
+  "note": "MEW clearance received"
+ },
+ {
+  "id": "wl-0251",
+  "report_id": "RPT-0094",
+  "segment_id": "arterial-r40-0800",
+  "stage": "excavation",
+  "date": "2026-06-09",
+  "reported_qty": 400,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0252",
+  "report_id": "RPT-0094",
+  "segment_id": "arterial-r40-0900",
+  "stage": "excavation",
+  "date": "2026-06-09",
+  "reported_qty": 400,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0253",
+  "report_id": "RPT-0094",
+  "segment_id": "arterial-r40-1000",
+  "stage": "excavation",
+  "date": "2026-06-09",
+  "reported_qty": 400,
+  "crew": "Crew C",
+  "note": "partial lane closure"
+ },
+ {
+  "id": "wl-0254",
+  "report_id": "RPT-0094",
+  "segment_id": "arterial-r40-1100",
+  "stage": "excavation",
+  "date": "2026-06-09",
+  "reported_qty": 400,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0240",
+  "report_id": "RPT-0090",
+  "segment_id": "arterial-r40-0500",
+  "stage": "milling",
+  "date": "2026-06-13",
+  "reported_qty": 400,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0241",
+  "report_id": "RPT-0090",
+  "segment_id": "arterial-r40-0600",
+  "stage": "milling",
+  "date": "2026-06-13",
+  "reported_qty": 400,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0242",
+  "report_id": "RPT-0090",
+  "segment_id": "arterial-r40-0700",
+  "stage": "milling",
+  "date": "2026-06-13",
+  "reported_qty": 400,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0247",
+  "report_id": "RPT-0093",
+  "segment_id": "arterial-r40-0400",
+  "stage": "type_ii",
+  "date": "2026-06-13",
+  "reported_qty": 400,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0087",
+  "report_id": "RPT-0033",
+  "segment_id": "bayan-5-st21-0000",
+  "stage": "pipelaying",
+  "date": "2026-06-14",
+  "reported_qty": 300,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0088",
+  "report_id": "RPT-0033",
+  "segment_id": "bayan-5-st21-0100",
+  "stage": "pipelaying",
+  "date": "2026-06-14",
+  "reported_qty": 300,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0089",
+  "report_id": "RPT-0033",
+  "segment_id": "bayan-5-st21-0200",
+  "stage": "pipelaying",
+  "date": "2026-06-14",
+  "reported_qty": 300,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0090",
+  "report_id": "RPT-0034",
+  "segment_id": "bayan-5-st21-0300",
+  "stage": "pipelaying",
+  "date": "2026-06-14",
+  "reported_qty": 220,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0091",
+  "report_id": "RPT-0034",
+  "segment_id": "bayan-5-st21-0400",
+  "stage": "pipelaying",
+  "date": "2026-06-14",
+  "reported_qty": 220,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0092",
+  "report_id": "RPT-0034",
+  "segment_id": "bayan-5-st21-0500",
+  "stage": "pipelaying",
+  "date": "2026-06-14",
+  "reported_qty": 220,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0153",
+  "report_id": "RPT-0059",
+  "segment_id": "bayan-9-st31-0000",
+  "stage": "backfill",
+  "date": "2026-06-14",
+  "reported_qty": 300,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0154",
+  "report_id": "RPT-0059",
+  "segment_id": "bayan-9-st31-0100",
+  "stage": "backfill",
+  "date": "2026-06-14",
+  "reported_qty": 300,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0155",
+  "report_id": "RPT-0059",
+  "segment_id": "bayan-9-st31-0200",
+  "stage": "backfill",
+  "date": "2026-06-14",
+  "reported_qty": 300,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0156",
+  "report_id": "RPT-0060",
+  "segment_id": "bayan-9-st31-0300",
+  "stage": "backfill",
+  "date": "2026-06-14",
+  "reported_qty": 130,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0157",
+  "report_id": "RPT-0060",
+  "segment_id": "bayan-9-st31-0400",
+  "stage": "backfill",
+  "date": "2026-06-14",
+  "reported_qty": 130,
+  "crew": "Crew B",
+  "note": "night shift"
+ },
+ {
+  "id": "wl-0255",
+  "report_id": "RPT-0095",
+  "segment_id": "arterial-r40-0800",
+  "stage": "pipelaying",
+  "date": "2026-06-14",
+  "reported_qty": 400,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0256",
+  "report_id": "RPT-0095",
+  "segment_id": "arterial-r40-0900",
+  "stage": "pipelaying",
+  "date": "2026-06-14",
+  "reported_qty": 400,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0257",
+  "report_id": "RPT-0095",
+  "segment_id": "arterial-r40-1000",
+  "stage": "pipelaying",
+  "date": "2026-06-14",
+  "reported_qty": 400,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0258",
+  "report_id": "RPT-0095",
+  "segment_id": "arterial-r40-1100",
+  "stage": "pipelaying",
+  "date": "2026-06-14",
+  "reported_qty": 400,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0022",
+  "report_id": "RPT-0009",
+  "segment_id": "bayan-3-st11-0100",
+  "stage": "milling",
+  "date": "2026-06-15",
+  "reported_qty": 420,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0031",
+  "report_id": "RPT-0012",
+  "segment_id": "bayan-3-st11-0000",
+  "stage": "type_ii",
+  "date": "2026-06-15",
+  "reported_qty": 400,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0033",
+  "report_id": "RPT-0012",
+  "segment_id": "bayan-3-st11-0200",
+  "stage": "type_ii",
+  "date": "2026-06-15",
+  "reported_qty": 400,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0034",
+  "report_id": "RPT-0012",
+  "segment_id": "bayan-3-st11-0300",
+  "stage": "type_ii",
+  "date": "2026-06-15",
+  "reported_qty": 400,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0035",
+  "report_id": "RPT-0013",
+  "segment_id": "bayan-3-st11-0400",
+  "stage": "type_ii",
+  "date": "2026-06-15",
+  "reported_qty": 20,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0053",
+  "report_id": "RPT-0021",
+  "segment_id": "bayan-3-st12-0000",
+  "stage": "temporary_asphalt",
+  "date": "2026-06-17",
+  "reported_qty": 380,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0054",
+  "report_id": "RPT-0021",
+  "segment_id": "bayan-3-st12-0100",
+  "stage": "temporary_asphalt",
+  "date": "2026-06-17",
+  "reported_qty": 380,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0055",
+  "report_id": "RPT-0021",
+  "segment_id": "bayan-3-st12-0200",
+  "stage": "temporary_asphalt",
+  "date": "2026-06-17",
+  "reported_qty": 380,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0056",
+  "report_id": "RPT-0021",
+  "segment_id": "bayan-3-st12-0300",
+  "stage": "temporary_asphalt",
+  "date": "2026-06-17",
+  "reported_qty": 380,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0135",
+  "report_id": "RPT-0053",
+  "segment_id": "bayan-5-st23-0000",
+  "stage": "pipelaying",
+  "date": "2026-06-19",
+  "reported_qty": 165,
+  "crew": "Crew C",
+  "note": "MEW clearance received"
+ },
+ {
+  "id": "wl-0136",
+  "report_id": "RPT-0053",
+  "segment_id": "bayan-5-st23-0100",
+  "stage": "pipelaying",
+  "date": "2026-06-19",
+  "reported_qty": 165,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0137",
+  "report_id": "RPT-0053",
+  "segment_id": "bayan-5-st23-0200",
+  "stage": "pipelaying",
+  "date": "2026-06-19",
+  "reported_qty": 165,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0138",
+  "report_id": "RPT-0054",
+  "segment_id": "bayan-5-st23-0300",
+  "stage": "pipelaying",
+  "date": "2026-06-19",
+  "reported_qty": 100,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0158",
+  "report_id": "RPT-0061",
+  "segment_id": "bayan-9-st31-0000",
+  "stage": "temporary_asphalt",
+  "date": "2026-06-19",
+  "reported_qty": 300,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0159",
+  "report_id": "RPT-0061",
+  "segment_id": "bayan-9-st31-0100",
+  "stage": "temporary_asphalt",
+  "date": "2026-06-19",
+  "reported_qty": 300,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0160",
+  "report_id": "RPT-0061",
+  "segment_id": "bayan-9-st31-0200",
+  "stage": "temporary_asphalt",
+  "date": "2026-06-19",
+  "reported_qty": 300,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0161",
+  "report_id": "RPT-0062",
+  "segment_id": "bayan-9-st31-0300",
+  "stage": "temporary_asphalt",
+  "date": "2026-06-19",
+  "reported_qty": 130,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0162",
+  "report_id": "RPT-0062",
+  "segment_id": "bayan-9-st31-0400",
+  "stage": "temporary_asphalt",
+  "date": "2026-06-19",
+  "reported_qty": 130,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0188",
+  "report_id": "RPT-0073",
+  "segment_id": "bayan-9-st33-0000",
+  "stage": "milling",
+  "date": "2026-06-20",
+  "reported_qty": 260,
+  "crew": "Crew D",
+  "note": "on hold — service clash"
+ },
+ {
+  "id": "wl-0189",
+  "report_id": "RPT-0073",
+  "segment_id": "bayan-9-st33-0100",
+  "stage": "milling",
+  "date": "2026-06-20",
+  "reported_qty": 260,
+  "crew": "Crew D",
+  "note": "on hold — service clash"
+ },
+ {
+  "id": "wl-0190",
+  "report_id": "RPT-0073",
+  "segment_id": "bayan-9-st33-0200",
+  "stage": "milling",
+  "date": "2026-06-20",
+  "reported_qty": 260,
+  "crew": "Crew D",
+  "note": "on hold — service clash"
+ },
+ {
+  "id": "wl-0259",
+  "report_id": "RPT-0096",
+  "segment_id": "arterial-r40-0800",
+  "stage": "backfill",
+  "date": "2026-06-20",
+  "reported_qty": 200,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0260",
+  "report_id": "RPT-0096",
+  "segment_id": "arterial-r40-0900",
+  "stage": "backfill",
+  "date": "2026-06-20",
+  "reported_qty": 200,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0261",
+  "report_id": "RPT-0097",
+  "segment_id": "arterial-r40-1000",
+  "stage": "backfill",
+  "date": "2026-06-20",
+  "reported_qty": 200,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0262",
+  "report_id": "RPT-0097",
+  "segment_id": "arterial-r40-1100",
+  "stage": "backfill",
+  "date": "2026-06-20",
+  "reported_qty": 200,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0093",
+  "report_id": "RPT-0035",
+  "segment_id": "bayan-5-st21-0000",
+  "stage": "backfill",
+  "date": "2026-06-21",
+  "reported_qty": 400,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0094",
+  "report_id": "RPT-0035",
+  "segment_id": "bayan-5-st21-0100",
+  "stage": "backfill",
+  "date": "2026-06-21",
+  "reported_qty": 400,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0095",
+  "report_id": "RPT-0035",
+  "segment_id": "bayan-5-st21-0200",
+  "stage": "backfill",
+  "date": "2026-06-21",
+  "reported_qty": 400,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0096",
+  "report_id": "RPT-0035",
+  "segment_id": "bayan-5-st21-0300",
+  "stage": "backfill",
+  "date": "2026-06-21",
+  "reported_qty": 400,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0097",
+  "report_id": "RPT-0036",
+  "segment_id": "bayan-5-st21-0400",
+  "stage": "backfill",
+  "date": "2026-06-21",
+  "reported_qty": 120,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0098",
+  "report_id": "RPT-0036",
+  "segment_id": "bayan-5-st21-0500",
+  "stage": "backfill",
+  "date": "2026-06-21",
+  "reported_qty": 120,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0069",
+  "report_id": "RPT-0027",
+  "segment_id": "bayan-3-st13-0000",
+  "stage": "backfill",
+  "date": "2026-06-22",
+  "reported_qty": 200,
+  "crew": "Crew B",
+  "note": "on hold — service clash"
+ },
+ {
+  "id": "wl-0070",
+  "report_id": "RPT-0027",
+  "segment_id": "bayan-3-st13-0100",
+  "stage": "backfill",
+  "date": "2026-06-22",
+  "reported_qty": 200,
+  "crew": "Crew B",
+  "note": "on hold — service clash"
+ },
+ {
+  "id": "wl-0071",
+  "report_id": "RPT-0028",
+  "segment_id": "bayan-3-st13-0200",
+  "stage": "backfill",
+  "date": "2026-06-22",
+  "reported_qty": 150,
+  "crew": "Crew A",
+  "note": "on hold — service clash"
+ },
+ {
+  "id": "wl-0072",
+  "report_id": "RPT-0028",
+  "segment_id": "bayan-3-st13-0300",
+  "stage": "backfill",
+  "date": "2026-06-22",
+  "reported_qty": 150,
+  "crew": "Crew A",
+  "note": "on hold — service clash"
+ },
+ {
+  "id": "wl-0243",
+  "report_id": "RPT-0091",
+  "segment_id": "arterial-r40-0400",
+  "stage": "type_i",
+  "date": "2026-06-22",
+  "reported_qty": 200,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0244",
+  "report_id": "RPT-0091",
+  "segment_id": "arterial-r40-0500",
+  "stage": "type_i",
+  "date": "2026-06-22",
+  "reported_qty": 200,
+  "crew": "Crew A",
+  "note": "partial lane closure"
+ },
+ {
+  "id": "wl-0245",
+  "report_id": "RPT-0092",
+  "segment_id": "arterial-r40-0600",
+  "stage": "type_i",
+  "date": "2026-06-22",
+  "reported_qty": 200,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0246",
+  "report_id": "RPT-0092",
+  "segment_id": "arterial-r40-0700",
+  "stage": "type_i",
+  "date": "2026-06-22",
+  "reported_qty": 200,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0271",
+  "report_id": "RPT-0100",
+  "segment_id": "arterial-r40-1200",
+  "stage": "excavation",
+  "date": "2026-06-23",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0272",
+  "report_id": "RPT-0100",
+  "segment_id": "arterial-r40-1300",
+  "stage": "excavation",
+  "date": "2026-06-23",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0273",
+  "report_id": "RPT-0100",
+  "segment_id": "arterial-r40-1400",
+  "stage": "excavation",
+  "date": "2026-06-23",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0274",
+  "report_id": "RPT-0100",
+  "segment_id": "arterial-r40-1500",
+  "stage": "excavation",
+  "date": "2026-06-23",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0121",
+  "report_id": "RPT-0047",
+  "segment_id": "bayan-5-st22-0000",
+  "stage": "backfill",
+  "date": "2026-06-24",
+  "reported_qty": 300,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0122",
+  "report_id": "RPT-0047",
+  "segment_id": "bayan-5-st22-0100",
+  "stage": "backfill",
+  "date": "2026-06-24",
+  "reported_qty": 300,
+  "crew": "Crew A",
+  "note": "weather delay recovered"
+ },
+ {
+  "id": "wl-0123",
+  "report_id": "RPT-0047",
+  "segment_id": "bayan-5-st22-0200",
+  "stage": "backfill",
+  "date": "2026-06-24",
+  "reported_qty": 300,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0124",
+  "report_id": "RPT-0048",
+  "segment_id": "bayan-5-st22-0300",
+  "stage": "backfill",
+  "date": "2026-06-24",
+  "reported_qty": 150,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0125",
+  "report_id": "RPT-0048",
+  "segment_id": "bayan-5-st22-0400",
+  "stage": "backfill",
+  "date": "2026-06-24",
+  "reported_qty": 150,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0073",
+  "report_id": "RPT-0029",
+  "segment_id": "bayan-3-st14-0000",
+  "stage": "excavation",
+  "date": "2026-06-26",
+  "reported_qty": 310,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0074",
+  "report_id": "RPT-0029",
+  "segment_id": "bayan-3-st14-0100",
+  "stage": "excavation",
+  "date": "2026-06-26",
+  "reported_qty": 310,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0075",
+  "report_id": "RPT-0029",
+  "segment_id": "bayan-3-st14-0200",
+  "stage": "excavation",
+  "date": "2026-06-26",
+  "reported_qty": 310,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0076",
+  "report_id": "RPT-0029",
+  "segment_id": "bayan-3-st14-0300",
+  "stage": "excavation",
+  "date": "2026-06-26",
+  "reported_qty": 310,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0283",
+  "report_id": "RPT-0103",
+  "segment_id": "arterial-r40-1600",
+  "stage": "excavation",
+  "date": "2026-06-26",
+  "reported_qty": 50,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0036",
+  "report_id": "RPT-0014",
+  "segment_id": "bayan-3-st11-0000",
+  "stage": "type_iii",
+  "date": "2026-06-27",
+  "reported_qty": 400,
+  "crew": "Crew B",
+  "note": "partial lane closure"
+ },
+ {
+  "id": "wl-0037",
+  "report_id": "RPT-0014",
+  "segment_id": "bayan-3-st11-0100",
+  "stage": "type_iii",
+  "date": "2026-06-27",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0038",
+  "report_id": "RPT-0014",
+  "segment_id": "bayan-3-st11-0200",
+  "stage": "type_iii",
+  "date": "2026-06-27",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0039",
+  "report_id": "RPT-0014",
+  "segment_id": "bayan-3-st11-0300",
+  "stage": "type_iii",
+  "date": "2026-06-27",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0040",
+  "report_id": "RPT-0015",
+  "segment_id": "bayan-3-st11-0400",
+  "stage": "type_iii",
+  "date": "2026-06-27",
+  "reported_qty": 20,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0163",
+  "report_id": "RPT-0063",
+  "segment_id": "bayan-9-st31-0000",
+  "stage": "milling",
+  "date": "2026-06-30",
+  "reported_qty": 400,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0164",
+  "report_id": "RPT-0063",
+  "segment_id": "bayan-9-st31-0100",
+  "stage": "milling",
+  "date": "2026-06-30",
+  "reported_qty": 400,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0165",
+  "report_id": "RPT-0063",
+  "segment_id": "bayan-9-st31-0200",
+  "stage": "milling",
+  "date": "2026-06-30",
+  "reported_qty": 400,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0166",
+  "report_id": "RPT-0063",
+  "segment_id": "bayan-9-st31-0300",
+  "stage": "milling",
+  "date": "2026-06-30",
+  "reported_qty": 400,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0167",
+  "report_id": "RPT-0064",
+  "segment_id": "bayan-9-st31-0400",
+  "stage": "milling",
+  "date": "2026-06-30",
+  "reported_qty": 30,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0275",
+  "report_id": "RPT-0101",
+  "segment_id": "arterial-r40-1200",
+  "stage": "pipelaying",
+  "date": "2026-06-30",
+  "reported_qty": 480,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0276",
+  "report_id": "RPT-0101",
+  "segment_id": "arterial-r40-1300",
+  "stage": "pipelaying",
+  "date": "2026-06-30",
+  "reported_qty": 480,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0277",
+  "report_id": "RPT-0101",
+  "segment_id": "arterial-r40-1400",
+  "stage": "pipelaying",
+  "date": "2026-06-30",
+  "reported_qty": 480,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0278",
+  "report_id": "RPT-0101",
+  "segment_id": "arterial-r40-1500",
+  "stage": "pipelaying",
+  "date": "2026-06-30",
+  "reported_qty": 480,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0139",
+  "report_id": "RPT-0055",
+  "segment_id": "bayan-5-st23-0000",
+  "stage": "backfill",
+  "date": "2026-07-02",
+  "reported_qty": 300,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0140",
+  "report_id": "RPT-0055",
+  "segment_id": "bayan-5-st23-0100",
+  "stage": "backfill",
+  "date": "2026-07-02",
+  "reported_qty": 300,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0141",
+  "report_id": "RPT-0055",
+  "segment_id": "bayan-5-st23-0200",
+  "stage": "backfill",
+  "date": "2026-07-02",
+  "reported_qty": 300,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0142",
+  "report_id": "RPT-0056",
+  "segment_id": "bayan-5-st23-0300",
+  "stage": "backfill",
+  "date": "2026-07-02",
+  "reported_qty": 100,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0173",
+  "report_id": "RPT-0067",
+  "segment_id": "bayan-9-st32-0000",
+  "stage": "excavation",
+  "date": "2026-07-02",
+  "reported_qty": 200,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0174",
+  "report_id": "RPT-0067",
+  "segment_id": "bayan-9-st32-0100",
+  "stage": "excavation",
+  "date": "2026-07-02",
+  "reported_qty": 200,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0175",
+  "report_id": "RPT-0068",
+  "segment_id": "bayan-9-st32-0200",
+  "stage": "excavation",
+  "date": "2026-07-02",
+  "reported_qty": 100,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0263",
+  "report_id": "RPT-0098",
+  "segment_id": "arterial-r40-0800",
+  "stage": "temporary_asphalt",
+  "date": "2026-07-02",
+  "reported_qty": 400,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0264",
+  "report_id": "RPT-0098",
+  "segment_id": "arterial-r40-0900",
+  "stage": "temporary_asphalt",
+  "date": "2026-07-02",
+  "reported_qty": 400,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0265",
+  "report_id": "RPT-0098",
+  "segment_id": "arterial-r40-1000",
+  "stage": "temporary_asphalt",
+  "date": "2026-07-02",
+  "reported_qty": 400,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0266",
+  "report_id": "RPT-0098",
+  "segment_id": "arterial-r40-1100",
+  "stage": "temporary_asphalt",
+  "date": "2026-07-02",
+  "reported_qty": 400,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0057",
+  "report_id": "RPT-0022",
+  "segment_id": "bayan-3-st12-0000",
+  "stage": "milling",
+  "date": "2026-07-03",
+  "reported_qty": 200,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0058",
+  "report_id": "RPT-0022",
+  "segment_id": "bayan-3-st12-0100",
+  "stage": "milling",
+  "date": "2026-07-03",
+  "reported_qty": 200,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0059",
+  "report_id": "RPT-0023",
+  "segment_id": "bayan-3-st12-0200",
+  "stage": "milling",
+  "date": "2026-07-03",
+  "reported_qty": 180,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0060",
+  "report_id": "RPT-0023",
+  "segment_id": "bayan-3-st12-0300",
+  "stage": "milling",
+  "date": "2026-07-03",
+  "reported_qty": 180,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0239",
+  "report_id": "RPT-0090",
+  "segment_id": "arterial-r40-0400",
+  "stage": "milling",
+  "date": "2026-07-03",
+  "reported_qty": 400,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0248",
+  "report_id": "RPT-0093",
+  "segment_id": "arterial-r40-0500",
+  "stage": "type_ii",
+  "date": "2026-07-03",
+  "reported_qty": 400,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0249",
+  "report_id": "RPT-0093",
+  "segment_id": "arterial-r40-0600",
+  "stage": "type_ii",
+  "date": "2026-07-03",
+  "reported_qty": 400,
+  "crew": "Crew C",
+  "note": "MEW clearance received"
+ },
+ {
+  "id": "wl-0250",
+  "report_id": "RPT-0093",
+  "segment_id": "arterial-r40-0700",
+  "stage": "type_ii",
+  "date": "2026-07-03",
+  "reported_qty": 400,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0279",
+  "report_id": "RPT-0102",
+  "segment_id": "arterial-r40-1200",
+  "stage": "backfill",
+  "date": "2026-07-04",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0280",
+  "report_id": "RPT-0102",
+  "segment_id": "arterial-r40-1300",
+  "stage": "backfill",
+  "date": "2026-07-04",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0281",
+  "report_id": "RPT-0102",
+  "segment_id": "arterial-r40-1400",
+  "stage": "backfill",
+  "date": "2026-07-04",
+  "reported_qty": 400,
+  "crew": "Crew B",
+  "note": "MEW clearance received"
+ },
+ {
+  "id": "wl-0282",
+  "report_id": "RPT-0102",
+  "segment_id": "arterial-r40-1500",
+  "stage": "backfill",
+  "date": "2026-07-04",
+  "reported_qty": 400,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0284",
+  "report_id": "RPT-0104",
+  "segment_id": "arterial-r40-1600",
+  "stage": "pipelaying",
+  "date": "2026-07-04",
+  "reported_qty": 50,
+  "crew": "Crew C",
+  "note": "partial lane closure"
+ },
+ {
+  "id": "wl-0099",
+  "report_id": "RPT-0037",
+  "segment_id": "bayan-5-st21-0000",
+  "stage": "temporary_asphalt",
+  "date": "2026-07-06",
+  "reported_qty": 200,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0100",
+  "report_id": "RPT-0037",
+  "segment_id": "bayan-5-st21-0100",
+  "stage": "temporary_asphalt",
+  "date": "2026-07-06",
+  "reported_qty": 200,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0101",
+  "report_id": "RPT-0038",
+  "segment_id": "bayan-5-st21-0200",
+  "stage": "temporary_asphalt",
+  "date": "2026-07-06",
+  "reported_qty": 320,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0102",
+  "report_id": "RPT-0038",
+  "segment_id": "bayan-5-st21-0300",
+  "stage": "temporary_asphalt",
+  "date": "2026-07-06",
+  "reported_qty": 320,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0103",
+  "report_id": "RPT-0038",
+  "segment_id": "bayan-5-st21-0400",
+  "stage": "temporary_asphalt",
+  "date": "2026-07-06",
+  "reported_qty": 320,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0104",
+  "report_id": "RPT-0038",
+  "segment_id": "bayan-5-st21-0500",
+  "stage": "temporary_asphalt",
+  "date": "2026-07-06",
+  "reported_qty": 320,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0077",
+  "report_id": "RPT-0030",
+  "segment_id": "bayan-3-st14-0000",
+  "stage": "pipelaying",
+  "date": "2026-07-07",
+  "reported_qty": 310,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0078",
+  "report_id": "RPT-0030",
+  "segment_id": "bayan-3-st14-0100",
+  "stage": "pipelaying",
+  "date": "2026-07-07",
+  "reported_qty": 310,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0079",
+  "report_id": "RPT-0030",
+  "segment_id": "bayan-3-st14-0200",
+  "stage": "pipelaying",
+  "date": "2026-07-07",
+  "reported_qty": 310,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0080",
+  "report_id": "RPT-0030",
+  "segment_id": "bayan-3-st14-0300",
+  "stage": "pipelaying",
+  "date": "2026-07-07",
+  "reported_qty": 310,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0126",
+  "report_id": "RPT-0049",
+  "segment_id": "bayan-5-st22-0000",
+  "stage": "temporary_asphalt",
+  "date": "2026-07-07",
+  "reported_qty": 400,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0127",
+  "report_id": "RPT-0049",
+  "segment_id": "bayan-5-st22-0100",
+  "stage": "temporary_asphalt",
+  "date": "2026-07-07",
+  "reported_qty": 400,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0128",
+  "report_id": "RPT-0049",
+  "segment_id": "bayan-5-st22-0200",
+  "stage": "temporary_asphalt",
+  "date": "2026-07-07",
+  "reported_qty": 400,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0129",
+  "report_id": "RPT-0049",
+  "segment_id": "bayan-5-st22-0300",
+  "stage": "temporary_asphalt",
+  "date": "2026-07-07",
+  "reported_qty": 400,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0130",
+  "report_id": "RPT-0050",
+  "segment_id": "bayan-5-st22-0400",
+  "stage": "temporary_asphalt",
+  "date": "2026-07-07",
+  "reported_qty": 50,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0267",
+  "report_id": "RPT-0099",
+  "segment_id": "arterial-r40-0800",
+  "stage": "milling",
+  "date": "2026-07-07",
+  "reported_qty": 400,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0268",
+  "report_id": "RPT-0099",
+  "segment_id": "arterial-r40-0900",
+  "stage": "milling",
+  "date": "2026-07-07",
+  "reported_qty": 400,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0269",
+  "report_id": "RPT-0099",
+  "segment_id": "arterial-r40-1000",
+  "stage": "milling",
+  "date": "2026-07-07",
+  "reported_qty": 400,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0270",
+  "report_id": "RPT-0099",
+  "segment_id": "arterial-r40-1100",
+  "stage": "milling",
+  "date": "2026-07-07",
+  "reported_qty": 400,
+  "crew": "Crew A"
+ },
+ {
+  "id": "wl-0105",
+  "report_id": "RPT-0039",
+  "segment_id": "bayan-5-st21-0000",
+  "stage": "milling",
+  "date": "2026-07-10",
+  "reported_qty": 300,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0106",
+  "report_id": "RPT-0039",
+  "segment_id": "bayan-5-st21-0100",
+  "stage": "milling",
+  "date": "2026-07-10",
+  "reported_qty": 300,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0107",
+  "report_id": "RPT-0039",
+  "segment_id": "bayan-5-st21-0200",
+  "stage": "milling",
+  "date": "2026-07-10",
+  "reported_qty": 300,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0108",
+  "report_id": "RPT-0040",
+  "segment_id": "bayan-5-st21-0300",
+  "stage": "milling",
+  "date": "2026-07-10",
+  "reported_qty": 200,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0109",
+  "report_id": "RPT-0040",
+  "segment_id": "bayan-5-st21-0400",
+  "stage": "milling",
+  "date": "2026-07-10",
+  "reported_qty": 200,
+  "crew": "Crew D"
+ },
+ {
+  "id": "wl-0110",
+  "report_id": "RPT-0041",
+  "segment_id": "bayan-5-st21-0500",
+  "stage": "milling",
+  "date": "2026-07-10",
+  "reported_qty": 20,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0168",
+  "report_id": "RPT-0065",
+  "segment_id": "bayan-9-st31-0000",
+  "stage": "type_i",
+  "date": "2026-07-10",
+  "reported_qty": 300,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0169",
+  "report_id": "RPT-0065",
+  "segment_id": "bayan-9-st31-0100",
+  "stage": "type_i",
+  "date": "2026-07-10",
+  "reported_qty": 300,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0170",
+  "report_id": "RPT-0065",
+  "segment_id": "bayan-9-st31-0200",
+  "stage": "type_i",
+  "date": "2026-07-10",
+  "reported_qty": 300,
+  "crew": "Crew C"
+ },
+ {
+  "id": "wl-0171",
+  "report_id": "RPT-0066",
+  "segment_id": "bayan-9-st31-0300",
+  "stage": "type_i",
+  "date": "2026-07-10",
+  "reported_qty": 130,
+  "crew": "Crew B"
+ },
+ {
+  "id": "wl-0172",
+  "report_id": "RPT-0066",
+  "segment_id": "bayan-9-st31-0400",
+  "stage": "type_i",
+  "date": "2026-07-10",
+  "reported_qty": 130,
+  "crew": "Crew B"
+ }
+]

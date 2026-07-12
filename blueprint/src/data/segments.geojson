@@ -1,0 +1,1957 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.042,
+      29.3058
+     ],
+     [
+      48.042515,
+      29.3058
+     ],
+     [
+      48.04303,
+      29.3058
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-3-st11-0000",
+    "street": "Street 11",
+    "block": "3",
+    "governorate": "Hawalli",
+    "from_ch": 0,
+    "to_ch": 100,
+    "length_m": 100,
+    "width_m": 8,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04303,
+      29.3058
+     ],
+     [
+      48.043545,
+      29.3058
+     ],
+     [
+      48.04406,
+      29.3058
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-3-st11-0100",
+    "street": "Street 11",
+    "block": "3",
+    "governorate": "Hawalli",
+    "from_ch": 100,
+    "to_ch": 200,
+    "length_m": 100,
+    "width_m": 8,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04406,
+      29.3058
+     ],
+     [
+      48.044575,
+      29.3058
+     ],
+     [
+      48.04509,
+      29.3058
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-3-st11-0200",
+    "street": "Street 11",
+    "block": "3",
+    "governorate": "Hawalli",
+    "from_ch": 200,
+    "to_ch": 300,
+    "length_m": 100,
+    "width_m": 8,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04509,
+      29.3058
+     ],
+     [
+      48.045605,
+      29.3058
+     ],
+     [
+      48.04612,
+      29.3058
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-3-st11-0300",
+    "street": "Street 11",
+    "block": "3",
+    "governorate": "Hawalli",
+    "from_ch": 300,
+    "to_ch": 400,
+    "length_m": 100,
+    "width_m": 8,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04612,
+      29.3058
+     ],
+     [
+      48.046326,
+      29.3058
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-3-st11-0400",
+    "street": "Street 11",
+    "block": "3",
+    "governorate": "Hawalli",
+    "from_ch": 400,
+    "to_ch": 420,
+    "length_m": 20,
+    "width_m": 8,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.042,
+      29.30665
+     ],
+     [
+      48.042515,
+      29.30665
+     ],
+     [
+      48.04303,
+      29.30665
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-3-st12-0000",
+    "street": "Street 12",
+    "block": "3",
+    "governorate": "Hawalli",
+    "from_ch": 0,
+    "to_ch": 100,
+    "length_m": 100,
+    "width_m": 8,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04303,
+      29.30665
+     ],
+     [
+      48.043545,
+      29.30665
+     ],
+     [
+      48.04406,
+      29.30665
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-3-st12-0100",
+    "street": "Street 12",
+    "block": "3",
+    "governorate": "Hawalli",
+    "from_ch": 100,
+    "to_ch": 200,
+    "length_m": 100,
+    "width_m": 8,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04406,
+      29.30665
+     ],
+     [
+      48.044575,
+      29.30665
+     ],
+     [
+      48.04509,
+      29.30665
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-3-st12-0200",
+    "street": "Street 12",
+    "block": "3",
+    "governorate": "Hawalli",
+    "from_ch": 200,
+    "to_ch": 300,
+    "length_m": 100,
+    "width_m": 8,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04509,
+      29.30665
+     ],
+     [
+      48.045605,
+      29.30665
+     ],
+     [
+      48.045914,
+      29.30665
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-3-st12-0300",
+    "street": "Street 12",
+    "block": "3",
+    "governorate": "Hawalli",
+    "from_ch": 300,
+    "to_ch": 380,
+    "length_m": 80,
+    "width_m": 8,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.042,
+      29.3075
+     ],
+     [
+      48.042515,
+      29.3075
+     ],
+     [
+      48.04303,
+      29.3075
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-3-st13-0000",
+    "street": "Street 13",
+    "block": "3",
+    "governorate": "Hawalli",
+    "from_ch": 0,
+    "to_ch": 100,
+    "length_m": 100,
+    "width_m": 7,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04303,
+      29.3075
+     ],
+     [
+      48.043545,
+      29.3075
+     ],
+     [
+      48.04406,
+      29.3075
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-3-st13-0100",
+    "street": "Street 13",
+    "block": "3",
+    "governorate": "Hawalli",
+    "from_ch": 100,
+    "to_ch": 200,
+    "length_m": 100,
+    "width_m": 7,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04406,
+      29.3075
+     ],
+     [
+      48.044575,
+      29.3075
+     ],
+     [
+      48.04509,
+      29.3075
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-3-st13-0200",
+    "street": "Street 13",
+    "block": "3",
+    "governorate": "Hawalli",
+    "from_ch": 200,
+    "to_ch": 300,
+    "length_m": 100,
+    "width_m": 7,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04509,
+      29.3075
+     ],
+     [
+      48.045605,
+      29.3075
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-3-st13-0300",
+    "street": "Street 13",
+    "block": "3",
+    "governorate": "Hawalli",
+    "from_ch": 300,
+    "to_ch": 350,
+    "length_m": 50,
+    "width_m": 7,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.042,
+      29.30835
+     ],
+     [
+      48.042515,
+      29.30835
+     ],
+     [
+      48.04303,
+      29.30835
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-3-st14-0000",
+    "street": "Street 14",
+    "block": "3",
+    "governorate": "Hawalli",
+    "from_ch": 0,
+    "to_ch": 100,
+    "length_m": 100,
+    "width_m": 7,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04303,
+      29.30835
+     ],
+     [
+      48.043545,
+      29.30835
+     ],
+     [
+      48.04406,
+      29.30835
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-3-st14-0100",
+    "street": "Street 14",
+    "block": "3",
+    "governorate": "Hawalli",
+    "from_ch": 100,
+    "to_ch": 200,
+    "length_m": 100,
+    "width_m": 7,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04406,
+      29.30835
+     ],
+     [
+      48.044575,
+      29.30835
+     ],
+     [
+      48.04509,
+      29.30835
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-3-st14-0200",
+    "street": "Street 14",
+    "block": "3",
+    "governorate": "Hawalli",
+    "from_ch": 200,
+    "to_ch": 300,
+    "length_m": 100,
+    "width_m": 7,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04509,
+      29.30835
+     ],
+     [
+      48.045193,
+      29.30835
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-3-st14-0300",
+    "street": "Street 14",
+    "block": "3",
+    "governorate": "Hawalli",
+    "from_ch": 300,
+    "to_ch": 310,
+    "length_m": 10,
+    "width_m": 7,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.056,
+      29.3016
+     ],
+     [
+      48.056,
+      29.302049
+     ],
+     [
+      48.056,
+      29.302498
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-5-st21-0000",
+    "street": "Street 21",
+    "block": "5",
+    "governorate": "Hawalli",
+    "from_ch": 0,
+    "to_ch": 100,
+    "length_m": 100,
+    "width_m": 9,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.056,
+      29.302498
+     ],
+     [
+      48.056,
+      29.302947
+     ],
+     [
+      48.056,
+      29.303397
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-5-st21-0100",
+    "street": "Street 21",
+    "block": "5",
+    "governorate": "Hawalli",
+    "from_ch": 100,
+    "to_ch": 200,
+    "length_m": 100,
+    "width_m": 9,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.056,
+      29.303397
+     ],
+     [
+      48.056,
+      29.303846
+     ],
+     [
+      48.056,
+      29.304295
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-5-st21-0200",
+    "street": "Street 21",
+    "block": "5",
+    "governorate": "Hawalli",
+    "from_ch": 200,
+    "to_ch": 300,
+    "length_m": 100,
+    "width_m": 9,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.056,
+      29.304295
+     ],
+     [
+      48.056,
+      29.304744
+     ],
+     [
+      48.056,
+      29.305193
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-5-st21-0300",
+    "street": "Street 21",
+    "block": "5",
+    "governorate": "Hawalli",
+    "from_ch": 300,
+    "to_ch": 400,
+    "length_m": 100,
+    "width_m": 9,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.056,
+      29.305193
+     ],
+     [
+      48.056,
+      29.305642
+     ],
+     [
+      48.056,
+      29.306092
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-5-st21-0400",
+    "street": "Street 21",
+    "block": "5",
+    "governorate": "Hawalli",
+    "from_ch": 400,
+    "to_ch": 500,
+    "length_m": 100,
+    "width_m": 9,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.056,
+      29.306092
+     ],
+     [
+      48.056,
+      29.306271
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-5-st21-0500",
+    "street": "Street 21",
+    "block": "5",
+    "governorate": "Hawalli",
+    "from_ch": 500,
+    "to_ch": 520,
+    "length_m": 20,
+    "width_m": 9,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.05695,
+      29.3016
+     ],
+     [
+      48.05695,
+      29.302049
+     ],
+     [
+      48.05695,
+      29.302498
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-5-st22-0000",
+    "street": "Street 22",
+    "block": "5",
+    "governorate": "Hawalli",
+    "from_ch": 0,
+    "to_ch": 100,
+    "length_m": 100,
+    "width_m": 8,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.05695,
+      29.302498
+     ],
+     [
+      48.05695,
+      29.302947
+     ],
+     [
+      48.05695,
+      29.303397
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-5-st22-0100",
+    "street": "Street 22",
+    "block": "5",
+    "governorate": "Hawalli",
+    "from_ch": 100,
+    "to_ch": 200,
+    "length_m": 100,
+    "width_m": 8,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.05695,
+      29.303397
+     ],
+     [
+      48.05695,
+      29.303846
+     ],
+     [
+      48.05695,
+      29.304295
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-5-st22-0200",
+    "street": "Street 22",
+    "block": "5",
+    "governorate": "Hawalli",
+    "from_ch": 200,
+    "to_ch": 300,
+    "length_m": 100,
+    "width_m": 8,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.05695,
+      29.304295
+     ],
+     [
+      48.05695,
+      29.304744
+     ],
+     [
+      48.05695,
+      29.305193
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-5-st22-0300",
+    "street": "Street 22",
+    "block": "5",
+    "governorate": "Hawalli",
+    "from_ch": 300,
+    "to_ch": 400,
+    "length_m": 100,
+    "width_m": 8,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.05695,
+      29.305193
+     ],
+     [
+      48.05695,
+      29.305642
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-5-st22-0400",
+    "street": "Street 22",
+    "block": "5",
+    "governorate": "Hawalli",
+    "from_ch": 400,
+    "to_ch": 450,
+    "length_m": 50,
+    "width_m": 8,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.0579,
+      29.3016
+     ],
+     [
+      48.0579,
+      29.302049
+     ],
+     [
+      48.0579,
+      29.302498
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-5-st23-0000",
+    "street": "Street 23",
+    "block": "5",
+    "governorate": "Hawalli",
+    "from_ch": 0,
+    "to_ch": 100,
+    "length_m": 100,
+    "width_m": 8,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.0579,
+      29.302498
+     ],
+     [
+      48.0579,
+      29.302947
+     ],
+     [
+      48.0579,
+      29.303397
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-5-st23-0100",
+    "street": "Street 23",
+    "block": "5",
+    "governorate": "Hawalli",
+    "from_ch": 100,
+    "to_ch": 200,
+    "length_m": 100,
+    "width_m": 8,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.0579,
+      29.303397
+     ],
+     [
+      48.0579,
+      29.303846
+     ],
+     [
+      48.0579,
+      29.304295
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-5-st23-0200",
+    "street": "Street 23",
+    "block": "5",
+    "governorate": "Hawalli",
+    "from_ch": 200,
+    "to_ch": 300,
+    "length_m": 100,
+    "width_m": 8,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.0579,
+      29.304295
+     ],
+     [
+      48.0579,
+      29.304744
+     ],
+     [
+      48.0579,
+      29.305193
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-5-st23-0300",
+    "street": "Street 23",
+    "block": "5",
+    "governorate": "Hawalli",
+    "from_ch": 300,
+    "to_ch": 400,
+    "length_m": 100,
+    "width_m": 8,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.05885,
+      29.3016
+     ],
+     [
+      48.05885,
+      29.302049
+     ],
+     [
+      48.05885,
+      29.302498
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-5-st24-0000",
+    "street": "Street 24",
+    "block": "5",
+    "governorate": "Hawalli",
+    "from_ch": 0,
+    "to_ch": 100,
+    "length_m": 100,
+    "width_m": 7,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.05885,
+      29.302498
+     ],
+     [
+      48.05885,
+      29.302947
+     ],
+     [
+      48.05885,
+      29.303397
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-5-st24-0100",
+    "street": "Street 24",
+    "block": "5",
+    "governorate": "Hawalli",
+    "from_ch": 100,
+    "to_ch": 200,
+    "length_m": 100,
+    "width_m": 7,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.05885,
+      29.303397
+     ],
+     [
+      48.05885,
+      29.303846
+     ],
+     [
+      48.05885,
+      29.304295
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-5-st24-0200",
+    "street": "Street 24",
+    "block": "5",
+    "governorate": "Hawalli",
+    "from_ch": 200,
+    "to_ch": 300,
+    "length_m": 100,
+    "width_m": 7,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.05885,
+      29.304295
+     ],
+     [
+      48.05885,
+      29.304564
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-5-st24-0300",
+    "street": "Street 24",
+    "block": "5",
+    "governorate": "Hawalli",
+    "from_ch": 300,
+    "to_ch": 330,
+    "length_m": 30,
+    "width_m": 7,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.0468,
+      29.2946
+     ],
+     [
+      48.047315,
+      29.2946
+     ],
+     [
+      48.04783,
+      29.2946
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-9-st31-0000",
+    "street": "Street 31",
+    "block": "9",
+    "governorate": "Hawalli",
+    "from_ch": 0,
+    "to_ch": 100,
+    "length_m": 100,
+    "width_m": 8,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04783,
+      29.2946
+     ],
+     [
+      48.048345,
+      29.2946
+     ],
+     [
+      48.04886,
+      29.2946
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-9-st31-0100",
+    "street": "Street 31",
+    "block": "9",
+    "governorate": "Hawalli",
+    "from_ch": 100,
+    "to_ch": 200,
+    "length_m": 100,
+    "width_m": 8,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04886,
+      29.2946
+     ],
+     [
+      48.049375,
+      29.2946
+     ],
+     [
+      48.04989,
+      29.2946
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-9-st31-0200",
+    "street": "Street 31",
+    "block": "9",
+    "governorate": "Hawalli",
+    "from_ch": 200,
+    "to_ch": 300,
+    "length_m": 100,
+    "width_m": 8,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04989,
+      29.2946
+     ],
+     [
+      48.050405,
+      29.2946
+     ],
+     [
+      48.05092,
+      29.2946
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-9-st31-0300",
+    "street": "Street 31",
+    "block": "9",
+    "governorate": "Hawalli",
+    "from_ch": 300,
+    "to_ch": 400,
+    "length_m": 100,
+    "width_m": 8,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.05092,
+      29.2946
+     ],
+     [
+      48.051229,
+      29.2946
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-9-st31-0400",
+    "street": "Street 31",
+    "block": "9",
+    "governorate": "Hawalli",
+    "from_ch": 400,
+    "to_ch": 430,
+    "length_m": 30,
+    "width_m": 8,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.0468,
+      29.29375
+     ],
+     [
+      48.047315,
+      29.29375
+     ],
+     [
+      48.04783,
+      29.29375
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-9-st32-0000",
+    "street": "Street 32",
+    "block": "9",
+    "governorate": "Hawalli",
+    "from_ch": 0,
+    "to_ch": 100,
+    "length_m": 100,
+    "width_m": 7,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04783,
+      29.29375
+     ],
+     [
+      48.048345,
+      29.29375
+     ],
+     [
+      48.04886,
+      29.29375
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-9-st32-0100",
+    "street": "Street 32",
+    "block": "9",
+    "governorate": "Hawalli",
+    "from_ch": 100,
+    "to_ch": 200,
+    "length_m": 100,
+    "width_m": 7,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04886,
+      29.29375
+     ],
+     [
+      48.049375,
+      29.29375
+     ],
+     [
+      48.04989,
+      29.29375
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-9-st32-0200",
+    "street": "Street 32",
+    "block": "9",
+    "governorate": "Hawalli",
+    "from_ch": 200,
+    "to_ch": 300,
+    "length_m": 100,
+    "width_m": 7,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.0468,
+      29.2929
+     ],
+     [
+      48.047315,
+      29.2929
+     ],
+     [
+      48.04783,
+      29.2929
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-9-st33-0000",
+    "street": "Street 33",
+    "block": "9",
+    "governorate": "Hawalli",
+    "from_ch": 0,
+    "to_ch": 100,
+    "length_m": 100,
+    "width_m": 7,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04783,
+      29.2929
+     ],
+     [
+      48.048345,
+      29.2929
+     ],
+     [
+      48.04886,
+      29.2929
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-9-st33-0100",
+    "street": "Street 33",
+    "block": "9",
+    "governorate": "Hawalli",
+    "from_ch": 100,
+    "to_ch": 200,
+    "length_m": 100,
+    "width_m": 7,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04886,
+      29.2929
+     ],
+     [
+      48.049375,
+      29.2929
+     ],
+     [
+      48.049478,
+      29.2929
+     ]
+    ]
+   },
+   "properties": {
+    "id": "bayan-9-st33-0200",
+    "street": "Street 33",
+    "block": "9",
+    "governorate": "Hawalli",
+    "from_ch": 200,
+    "to_ch": 260,
+    "length_m": 60,
+    "width_m": 7,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.0398,
+      29.2988
+     ],
+     [
+      48.040315,
+      29.298857
+     ],
+     [
+      48.04083,
+      29.298914
+     ]
+    ]
+   },
+   "properties": {
+    "id": "arterial-r40-0000",
+    "street": "Route 40",
+    "block": "Arterial",
+    "governorate": "Hawalli",
+    "from_ch": 0,
+    "to_ch": 100,
+    "length_m": 100,
+    "width_m": 14,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04083,
+      29.298914
+     ],
+     [
+      48.041345,
+      29.298969
+     ],
+     [
+      48.04186,
+      29.299023
+     ]
+    ]
+   },
+   "properties": {
+    "id": "arterial-r40-0100",
+    "street": "Route 40",
+    "block": "Arterial",
+    "governorate": "Hawalli",
+    "from_ch": 100,
+    "to_ch": 200,
+    "length_m": 100,
+    "width_m": 14,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04186,
+      29.299023
+     ],
+     [
+      48.042375,
+      29.299075
+     ],
+     [
+      48.04289,
+      29.299124
+     ]
+    ]
+   },
+   "properties": {
+    "id": "arterial-r40-0200",
+    "street": "Route 40",
+    "block": "Arterial",
+    "governorate": "Hawalli",
+    "from_ch": 200,
+    "to_ch": 300,
+    "length_m": 100,
+    "width_m": 14,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04289,
+      29.299124
+     ],
+     [
+      48.043405,
+      29.299171
+     ],
+     [
+      48.04392,
+      29.299214
+     ]
+    ]
+   },
+   "properties": {
+    "id": "arterial-r40-0300",
+    "street": "Route 40",
+    "block": "Arterial",
+    "governorate": "Hawalli",
+    "from_ch": 300,
+    "to_ch": 400,
+    "length_m": 100,
+    "width_m": 14,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04392,
+      29.299214
+     ],
+     [
+      48.044435,
+      29.299253
+     ],
+     [
+      48.04495,
+      29.299289
+     ]
+    ]
+   },
+   "properties": {
+    "id": "arterial-r40-0400",
+    "street": "Route 40",
+    "block": "Arterial",
+    "governorate": "Hawalli",
+    "from_ch": 400,
+    "to_ch": 500,
+    "length_m": 100,
+    "width_m": 14,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.04495,
+      29.299289
+     ],
+     [
+      48.045466,
+      29.29932
+     ],
+     [
+      48.045981,
+      29.299346
+     ]
+    ]
+   },
+   "properties": {
+    "id": "arterial-r40-0500",
+    "street": "Route 40",
+    "block": "Arterial",
+    "governorate": "Hawalli",
+    "from_ch": 500,
+    "to_ch": 600,
+    "length_m": 100,
+    "width_m": 14,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.045981,
+      29.299346
+     ],
+     [
+      48.046496,
+      29.299367
+     ],
+     [
+      48.047011,
+      29.299383
+     ]
+    ]
+   },
+   "properties": {
+    "id": "arterial-r40-0600",
+    "street": "Route 40",
+    "block": "Arterial",
+    "governorate": "Hawalli",
+    "from_ch": 600,
+    "to_ch": 700,
+    "length_m": 100,
+    "width_m": 14,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.047011,
+      29.299383
+     ],
+     [
+      48.047526,
+      29.299394
+     ],
+     [
+      48.048041,
+      29.299399
+     ]
+    ]
+   },
+   "properties": {
+    "id": "arterial-r40-0700",
+    "street": "Route 40",
+    "block": "Arterial",
+    "governorate": "Hawalli",
+    "from_ch": 700,
+    "to_ch": 800,
+    "length_m": 100,
+    "width_m": 14,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.048041,
+      29.299399
+     ],
+     [
+      48.048556,
+      29.299399
+     ],
+     [
+      48.049071,
+      29.299394
+     ]
+    ]
+   },
+   "properties": {
+    "id": "arterial-r40-0800",
+    "street": "Route 40",
+    "block": "Arterial",
+    "governorate": "Hawalli",
+    "from_ch": 800,
+    "to_ch": 900,
+    "length_m": 100,
+    "width_m": 14,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.049071,
+      29.299394
+     ],
+     [
+      48.049586,
+      29.299383
+     ],
+     [
+      48.050101,
+      29.299367
+     ]
+    ]
+   },
+   "properties": {
+    "id": "arterial-r40-0900",
+    "street": "Route 40",
+    "block": "Arterial",
+    "governorate": "Hawalli",
+    "from_ch": 900,
+    "to_ch": 1000,
+    "length_m": 100,
+    "width_m": 14,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.050101,
+      29.299367
+     ],
+     [
+      48.050616,
+      29.299346
+     ],
+     [
+      48.051131,
+      29.29932
+     ]
+    ]
+   },
+   "properties": {
+    "id": "arterial-r40-1000",
+    "street": "Route 40",
+    "block": "Arterial",
+    "governorate": "Hawalli",
+    "from_ch": 1000,
+    "to_ch": 1100,
+    "length_m": 100,
+    "width_m": 14,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.051131,
+      29.29932
+     ],
+     [
+      48.051646,
+      29.299289
+     ],
+     [
+      48.052161,
+      29.299253
+     ]
+    ]
+   },
+   "properties": {
+    "id": "arterial-r40-1100",
+    "street": "Route 40",
+    "block": "Arterial",
+    "governorate": "Hawalli",
+    "from_ch": 1100,
+    "to_ch": 1200,
+    "length_m": 100,
+    "width_m": 14,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.052161,
+      29.299253
+     ],
+     [
+      48.052676,
+      29.299214
+     ],
+     [
+      48.053191,
+      29.299171
+     ]
+    ]
+   },
+   "properties": {
+    "id": "arterial-r40-1200",
+    "street": "Route 40",
+    "block": "Arterial",
+    "governorate": "Hawalli",
+    "from_ch": 1200,
+    "to_ch": 1300,
+    "length_m": 100,
+    "width_m": 14,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.053191,
+      29.299171
+     ],
+     [
+      48.053706,
+      29.299124
+     ],
+     [
+      48.054221,
+      29.299075
+     ]
+    ]
+   },
+   "properties": {
+    "id": "arterial-r40-1300",
+    "street": "Route 40",
+    "block": "Arterial",
+    "governorate": "Hawalli",
+    "from_ch": 1300,
+    "to_ch": 1400,
+    "length_m": 100,
+    "width_m": 14,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.054221,
+      29.299075
+     ],
+     [
+      48.054736,
+      29.299023
+     ],
+     [
+      48.055251,
+      29.298969
+     ]
+    ]
+   },
+   "properties": {
+    "id": "arterial-r40-1400",
+    "street": "Route 40",
+    "block": "Arterial",
+    "governorate": "Hawalli",
+    "from_ch": 1400,
+    "to_ch": 1500,
+    "length_m": 100,
+    "width_m": 14,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.055251,
+      29.298969
+     ],
+     [
+      48.055766,
+      29.298914
+     ],
+     [
+      48.056281,
+      29.298857
+     ]
+    ]
+   },
+   "properties": {
+    "id": "arterial-r40-1500",
+    "street": "Route 40",
+    "block": "Arterial",
+    "governorate": "Hawalli",
+    "from_ch": 1500,
+    "to_ch": 1600,
+    "length_m": 100,
+    "width_m": 14,
+    "notes": ""
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      48.056281,
+      29.298857
+     ],
+     [
+      48.056797,
+      29.2988
+     ]
+    ]
+   },
+   "properties": {
+    "id": "arterial-r40-1600",
+    "street": "Route 40",
+    "block": "Arterial",
+    "governorate": "Hawalli",
+    "from_ch": 1600,
+    "to_ch": 1650,
+    "length_m": 50,
+    "width_m": 14,
+    "notes": ""
+   }
+  }
+ ]
+}

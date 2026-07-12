@@ -656,6 +656,12 @@
     .trip-time { font-size: .74rem; color: var(--text-2); direction: ltr; }
     .trip-tons { margin-inline-start: auto; font-size: .78rem; font-weight: 700; background: var(--surface-2); border-radius: 6px; padding: .15rem .5rem; white-space: nowrap; }
     .trip-sub { font-size: .74rem; color: var(--text-2); margin-top: .15rem; }
+    .rep-row { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-bottom: .55rem; }
+    .rep-row:last-child { margin-bottom: 0; }
+    .rep-row-lbl { font-size: .78rem; font-weight: 700; color: var(--text-2); min-width: 70px; }
+    .rep-row input { flex: 1; min-width: 125px; max-width: 185px; }
+    .rep-go { width: auto !important; flex: 0 0 auto; min-width: 0; padding: .5rem .95rem; font-size: .82rem; }
+    .rep-sep { font-size: .74rem; color: var(--text-3); }
     .hbars { display: flex; flex-direction: column; gap: .55rem; }
     .hbar { display: flex; align-items: center; gap: .5rem; position: relative; border-radius: 6px; transition: background .15s ease; }
     .hbar:hover { background: rgba(0,166,81,.05); }
@@ -4415,7 +4421,9 @@ async function dbReportDayLoads(dayISO) {
   const start = new Date(dayISO + "T00:00:00+03:00");
   return sbGet(`dispatch_loads?ts=gte.${start.toISOString()}&ts=lt.${new Date(start.getTime() + 864e5).toISOString()}&order=ts.asc&limit=1000`);
 }
-async function dashGenerateReport(kind) {
+// kind "day": a = yyyy-mm-dd · kind "range": a/b = from/to days (inclusive)
+// kind "month": a = yyyy-mm (whole calendar month)
+async function dashGenerateReport(kind, a, b) {
   if (!_dashCache) {
     try { const d = await sbGet("rpc/dash_payload"); if (d && d.dispatch) _dashCache = d; } catch (e) {}
   }
@@ -4424,12 +4432,18 @@ async function dashGenerateReport(kind) {
   const today = _dashDayStr(new Date());
   let from, to, label;
   if (kind === "day") {
-    to = from = all.length ? all.map((r) => r.d).reduce((a, b) => (a > b ? a : b)) : today;
-    label = "آخر يوم عمل";
-  } else if (kind === "week") {
-    to = today; from = _dashDayStr(new Date(Date.now() - 6 * 864e5)); label = "آخر أسبوع";
+    to = from = a || today;
+    label = "يومي";
+  } else if (kind === "range") {
+    from = a || today; to = b || today;
+    if (from > to) { const t = from; from = to; to = t; }
+    label = "فترة";
   } else {
-    to = today; from = _dashDayStr(new Date(Date.now() - 29 * 864e5)); label = "آخر شهر";
+    const ym = a || today.slice(0, 7);
+    const y = parseInt(ym.slice(0, 4), 10), m = parseInt(ym.slice(5, 7), 10);
+    from = ym + "-01"; to = _dashDayStr(new Date(y, m, 0));   // day 0 of next month = month end
+    let name = ym; try { name = new Date(y, m - 1, 1).toLocaleDateString("ar", { month: "long", year: "numeric" }); } catch (e) {}
+    label = "شهر " + name;
   }
   const rows = all.filter((r) => r.d >= from && r.d <= to);
   let detail = null;
@@ -4762,24 +4776,39 @@ async function plantTabDash(body) {
   body.innerHTML = "";
   const rep = el("div", "card");
   rep.appendChild(sectionTitle("📄 إنشاء تقرير"));
-  const rrow = el("div"); rrow.style.cssText = "display:flex;gap:.5rem;flex-wrap:wrap;";
-  [["day", "آخر يوم عمل"], ["week", "آخر أسبوع"], ["month", "آخر شهر"]].forEach(([k, l]) => {
-    const b = el("button", "btn-secondary"); b.type = "button"; b.textContent = l;
-    b.style.cssText = "width:auto;flex:1;min-width:110px;";
-    b.addEventListener("click", () => dashGenerateReport(k));
-    rrow.appendChild(b);
-  });
-  rep.appendChild(rrow);
+  const today = _dashDayStr(new Date());
+  const mkRow = (title) => { const r = el("div", "rep-row"); const t = el("span", "rep-row-lbl"); t.textContent = title; r.appendChild(t); return r; };
+  const mkGo = (fn) => { const b = el("button", "btn-secondary rep-go"); b.type = "button"; b.textContent = "إنشاء"; b.addEventListener("click", fn); return b; };
+  // Single day — defaults to the last work day once the payload is in.
+  const dayRow = mkRow("تقرير يوم");
+  const dayI = input("date", ""); dayI.value = today; dayI.max = today;
+  dayRow.appendChild(dayI); dayRow.appendChild(mkGo(() => dashGenerateReport("day", dayI.value || today)));
+  // Day-to-day period (replaces the fixed last-week window).
+  const rgRow = mkRow("تقرير فترة");
+  const fromI = input("date", ""); fromI.value = _dashDayStr(new Date(Date.now() - 6 * 864e5)); fromI.max = today;
+  const toI = input("date", ""); toI.value = today; toI.max = today;
+  const sep = el("span", "rep-sep"); sep.textContent = "إلى";
+  rgRow.appendChild(fromI); rgRow.appendChild(sep); rgRow.appendChild(toI);
+  rgRow.appendChild(mkGo(() => dashGenerateReport("range", fromI.value || today, toI.value || today)));
+  // Calendar month (replaces the fixed last-30-days window).
+  const moRow = mkRow("تقرير شهر");
+  const moI = input("month", ""); moI.value = today.slice(0, 7); moI.max = today.slice(0, 7);
+  moRow.appendChild(moI); moRow.appendChild(mkGo(() => dashGenerateReport("month", moI.value || today.slice(0, 7))));
+  rep.appendChild(dayRow); rep.appendChild(rgRow); rep.appendChild(moRow);
   body.appendChild(rep);
+  const setDayDefault = () => {
+    const all = (_dashCache && _dashCache.dispatch) || [];
+    if (all.length) dayI.value = all.map((r) => r.d).reduce((a, b) => (a > b ? a : b));
+  };
 
   const box = el("div", "plant-dash-wrap"); body.appendChild(box);
   const paint = (data) => { box.innerHTML = ""; _dashPlant(box, data); };
-  if (_dashCache) { paint(_dashCache); return; }
+  if (_dashCache) { setDayDefault(); paint(_dashCache); return; }
   const info = el("div", "info-box"); info.textContent = "جارٍ تحميل البيانات…"; box.appendChild(info);
   try {
     const d = await sbGet("rpc/dash_payload");
     if (!d || !d.dispatch) throw new Error("bad payload");
-    _dashCache = d; paint(d);
+    _dashCache = d; setDayDefault(); paint(d);
   } catch {
     box.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل البيانات — تحقق من الاتصال</div>`;
   }

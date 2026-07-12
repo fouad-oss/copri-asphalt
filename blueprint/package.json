@@ -9,7 +9,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "gen": "node scripts/generate-data.mjs",
-    "extract": "node scripts/extract-osm.mjs"
+    "extract": "node scripts/extract-osm.mjs",
+    "release": "npm run build && node scripts/publish.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.2",

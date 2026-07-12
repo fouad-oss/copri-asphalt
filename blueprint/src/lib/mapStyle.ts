@@ -37,11 +37,13 @@ const lineColor: ExpressionSpecification = [
 ] as unknown as ExpressionSpecification
 
 // Zoom-dependent stroke width, proportional to the real road width so the
-// arterial reads heavier than block streets at every zoom. Zoom interpolate
-// must be the TOP-LEVEL expression, so scaling (halo) multiplies the stop
-// outputs instead of wrapping the whole expression.
+// arterial reads heavier than block streets at every zoom, with a slight
+// swell on hover. Zoom interpolate must be the TOP-LEVEL expression, so
+// scaling (halo) multiplies the stop outputs instead of wrapping the whole
+// expression.
+const hoverBoost = ['case', ['boolean', ['feature-state', 'hover'], false], 1.4, 1]
 function lineWidthExpr(scale = 1): ExpressionSpecification {
-  const at = (k: number) => ['*', k * scale, ['get', 'width_m']]
+  const at = (k: number) => ['*', k * scale, ['get', 'width_m'], hoverBoost]
   return [
     'interpolate', ['linear'], ['zoom'],
     12, at(0.1),
@@ -51,6 +53,39 @@ function lineWidthExpr(scale = 1): ExpressionSpecification {
   ] as unknown as ExpressionSpecification
 }
 const lineWidth = lineWidthExpr()
+
+// Recolor/dim changes ease instead of snapping — this is what makes the
+// time slider feel smooth.
+const SMOOTH = {
+  'line-color-transition': { duration: 250 },
+  'line-opacity-transition': { duration: 250 },
+  'line-width-transition': { duration: 120 },
+}
+
+// Faint graticule under the network — drafting-paper feel.
+export const GRID_SOURCE_ID = 'grid'
+export function gridGeoJSON(minX: number, minY: number, maxX: number, maxY: number) {
+  const PAD = 0.015
+  const STEP = 0.005
+  const x0 = Math.floor((minX - PAD) / STEP) * STEP
+  const x1 = Math.ceil((maxX + PAD) / STEP) * STEP
+  const y0 = Math.floor((minY - PAD) / STEP) * STEP
+  const y1 = Math.ceil((maxY + PAD) / STEP) * STEP
+  const features = []
+  for (let x = x0; x <= x1 + 1e-9; x += STEP)
+    features.push({ type: 'Feature' as const, properties: {}, geometry: { type: 'LineString' as const, coordinates: [[x, y0], [x, y1]] } })
+  for (let y = y0; y <= y1 + 1e-9; y += STEP)
+    features.push({ type: 'Feature' as const, properties: {}, geometry: { type: 'LineString' as const, coordinates: [[x0, y], [x1, y]] } })
+  return { type: 'FeatureCollection' as const, features }
+}
+export function gridLayer(): LayerSpecification {
+  return {
+    id: 'grid',
+    type: 'line',
+    source: GRID_SOURCE_ID,
+    paint: { 'line-color': '#121a26', 'line-width': 0.7 },
+  }
+}
 
 const stageIdx: ExpressionSpecification = ['get', 'stage_idx'] as unknown as ExpressionSpecification
 
@@ -83,7 +118,7 @@ export function segmentLayers(): LayerSpecification[] {
       source: SOURCE_ID,
       filter: ['==', stageIdx, 0],
       layout: { 'line-cap': 'butt' },
-      paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': dimmable(0.85) },
+      paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': dimmable(0.85), ...SMOOTH },
     },
     {
       // in progress (stages 1..complete-1) — dashed
@@ -97,6 +132,7 @@ export function segmentLayers(): LayerSpecification[] {
         'line-width': lineWidth,
         'line-dasharray': [2.2, 1.4],
         'line-opacity': dimmable(1),
+        ...SMOOTH,
       },
     },
     {
@@ -106,7 +142,7 @@ export function segmentLayers(): LayerSpecification[] {
       source: SOURCE_ID,
       filter: ['==', stageIdx, COMPLETE_INDEX],
       layout: { 'line-cap': 'butt' },
-      paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': dimmable(1) },
+      paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': dimmable(1), ...SMOOTH },
     },
   ]
 }

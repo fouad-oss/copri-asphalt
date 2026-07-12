@@ -33,10 +33,20 @@ export default function DetailPanel() {
     const rows = worklog
       .filter((r) => r.segment_id === p.id && r.date <= asOfDate)
       .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.id < b.id ? 1 : -1))
+    // Rows logged out of stage order (same walk as the insight strip).
+    const outOfSeq = new Set<string>()
+    let maxSeen = 0
+    for (const r of [...rows].sort((a, b) =>
+      a.date < b.date ? -1 : a.date > b.date ? 1 : STAGE_INDEX[a.stage] - STAGE_INDEX[b.stage],
+    )) {
+      const i = STAGE_INDEX[r.stage]
+      if (i < maxSeen) outOfSeq.add(r.id)
+      if (i > maxSeen) maxSeen = i
+    }
     const since = dates[cur]
     const daysIn = since ? daysBetween(since, asOfDate) : null
     const stalled = cur > 0 && cur < COMPLETE_INDEX && daysIn !== null && daysIn > STALL_DAYS
-    return { cur, dates, rows, daysIn, stalled }
+    return { cur, dates, rows, daysIn, stalled, outOfSeq }
   }, [p, worklog, asOfDate])
 
   return (
@@ -63,7 +73,7 @@ export default function DetailPanel() {
             <div className="mt-1 text-[10px] text-slate-600">{p.id}</div>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-5 py-4">
+          <div className="panel-scroll flex-1 overflow-y-auto px-5 py-4">
             {/* progress rail */}
             <div className="mb-1 flex items-center justify-between">
               <span className="text-[10px] uppercase tracking-[.25em] text-slate-500">progress</span>
@@ -80,7 +90,9 @@ export default function DetailPanel() {
             <div className="mb-1 text-sm font-bold" style={{ color: stageColor(derived.cur) }}>
               {derived.cur}/{COMPLETE_INDEX} · {STAGES[derived.cur].label}
             </div>
-            <ProgressRail dates={derived.dates} current={derived.cur} />
+            <div key={p.id} className="rail-in">
+              <ProgressRail dates={derived.dates} current={derived.cur} />
+            </div>
 
             {/* dimensions */}
             <div className="mt-4 grid grid-cols-3 gap-2 border-y border-slate-800 py-3 text-center">
@@ -119,6 +131,11 @@ export default function DetailPanel() {
                   <span className="font-bold text-slate-200">
                     {STAGES[STAGE_INDEX[r.stage]].label}
                   </span>
+                  {derived.outOfSeq.has(r.id) && (
+                    <span className="bg-amber-500/15 px-1 text-[9px] font-bold uppercase tracking-wider text-amber-400">
+                      out of seq
+                    </span>
+                  )}
                   <span className="ml-auto text-slate-400">{r.date}</span>
                 </div>
                 <div className="mt-0.5 pl-4 text-slate-500">

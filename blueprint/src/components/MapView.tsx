@@ -4,7 +4,15 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { useApp } from '../store'
 import { segmentInsights, matchesFilters, NO_WORK } from '../lib/insights'
 import { STAGES } from '../config/stages'
-import { BASE_STYLE, SOURCE_ID, SEGMENT_LAYER_IDS, segmentLayers } from '../lib/mapStyle'
+import {
+  BASE_STYLE,
+  SOURCE_ID,
+  SEGMENT_LAYER_IDS,
+  GRID_SOURCE_ID,
+  segmentLayers,
+  gridGeoJSON,
+  gridLayer,
+} from '../lib/mapStyle'
 import type { SegmentProps } from '../types'
 
 interface Tip {
@@ -124,7 +132,6 @@ export default function MapView() {
     }
     map.addSource(SOURCE_ID, { type: 'geojson', data: enriched, promoteId: 'id' })
     segmentLayers().forEach((l) => map.addLayer(l))
-    // Fit the network once.
     let minX = 180, minY = 90, maxX = -180, maxY = -90
     for (const f of enriched.features)
       for (const [x, y] of f.geometry.coordinates) {
@@ -133,6 +140,36 @@ export default function MapView() {
         if (x > maxX) maxX = x
         if (y > maxY) maxY = y
       }
+    // Drafting-paper graticule under the network.
+    map.addSource(GRID_SOURCE_ID, { type: 'geojson', data: gridGeoJSON(minX, minY, maxX, maxY) })
+    map.addLayer(gridLayer(), 'seg-halo')
+    // Street names as monospace HTML annotations (no glyph server needed);
+    // shown from street-level zoom so the district view stays clean.
+    const labelEls: HTMLElement[] = []
+    const byStreet = new Map<string, typeof enriched.features>()
+    for (const f of enriched.features) {
+      const key = `${f.properties.street}|${f.properties.block}`
+      const arr = byStreet.get(key)
+      if (arr) arr.push(f)
+      else byStreet.set(key, [f])
+    }
+    for (const feats of byStreet.values()) {
+      const midFeat = feats[Math.floor(feats.length / 2)]
+      const coords = midFeat.geometry.coordinates
+      const mid = coords[Math.floor(coords.length / 2)]
+      const div = document.createElement('div')
+      div.className = 'street-label'
+      div.textContent = midFeat.properties.street
+      labelEls.push(div)
+      new maplibregl.Marker({ element: div }).setLngLat(mid as [number, number]).addTo(map)
+    }
+    const updateLabels = () => {
+      const show = map.getZoom() >= 14.3
+      labelEls.forEach((el) => { el.style.display = show ? '' : 'none' })
+    }
+    map.on('zoom', updateLabels)
+    updateLabels()
+    // Fit the network once.
     map.fitBounds([[minX, minY], [maxX, maxY]], { padding: 70, duration: 0 })
   }, [mapReady, enriched])
 

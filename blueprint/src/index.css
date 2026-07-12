@@ -10,3 +10,68 @@ body {
   color: #cbd5e1;
   font-family: ui-monospace, 'Cascadia Mono', Consolas, 'Courier New', monospace;
 }
+
+/* time slider — square cyan thumb on a hairline track */
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+input[type='range']::-webkit-slider-runnable-track {
+  height: 2px;
+  background: #26303d;
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 9px;
+  height: 15px;
+  margin-top: -6.5px;
+  background: #22d3ee;
+  border: none;
+  border-radius: 0;
+}
+input[type='range']::-moz-range-track {
+  height: 2px;
+  background: #26303d;
+}
+input[type='range']::-moz-range-thumb {
+  width: 9px;
+  height: 15px;
+  background: #22d3ee;
+  border: none;
+  border-radius: 0;
+}
+
+/* thin dark scrollbar (detail panel) */
+.panel-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.panel-scroll::-webkit-scrollbar-thumb {
+  background: #26303d;
+}
+.panel-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #26303d transparent;
+}
+
+/* street annotations on the map */
+.street-label {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #5b6b7d;
+  text-shadow: 0 0 4px #0a0e14, 0 0 2px #0a0e14;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* progress rail re-draws when the selected segment changes */
+.rail-in {
+  animation: rail-in 0.35s ease-out;
+}
+@keyframes rail-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}

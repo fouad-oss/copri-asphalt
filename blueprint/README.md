@@ -44,11 +44,11 @@ from the summed segment length — and prints them on every run.
 ## Build order (stop for review after each step)
 
 1. ✅ Repo scaffold + stage config + fake data generator
-2. Map view with static coloring at a fixed date
-3. Detail panel + progress rail
-4. Time slider
-5. Insight strip + filters
-6. Visual polish pass
+2. ✅ Map view with static coloring at a fixed date
+3. ✅ Detail panel + progress rail
+4. ✅ Time slider
+5. ✅ Insight strip + filters
+6. ✅ Visual polish pass
 
 ## Explicitly NOT in scope (do not build yet)
 

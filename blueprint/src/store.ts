@@ -48,3 +48,8 @@ export const useApp = create<AppState>((set, get) => ({
   setFilters: (patch) => set({ filters: { ...get().filters, ...patch } }),
   clearFilters: () => set({ filters: NO_FILTERS }),
 }))
+
+if (import.meta.env.DEV) {
+  // test/debug handle, same idea as window.__map
+  ;(window as unknown as { __app: typeof useApp }).__app = useApp
+}

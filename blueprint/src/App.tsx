@@ -37,6 +37,8 @@ function App() {
   return (
     <div className="relative h-screen w-screen overflow-hidden">
       <MapView />
+      {/* drafting-sheet frame */}
+      <div className="pointer-events-none absolute inset-2 z-[5] border border-slate-800/70" />
       {/* one wrapping top row — header, filters, insights can never overlap */}
       <div className="pointer-events-none absolute inset-x-4 top-4 z-10 flex flex-wrap items-start gap-x-6 gap-y-2">
         <header>

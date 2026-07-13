@@ -2,3 +2,5 @@
 desktop.ini
 .claude/
 Accounting raw data/
+COPRI_dedup_review.xlsx
+__pycache__/

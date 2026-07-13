@@ -1733,9 +1733,29 @@ function renderPrintTest() {
   const btn = el("button", "btn-primary");
   btn.innerHTML = "🖨️ طباعة سند تجريبي — ٤ نسخ";
   btn.addEventListener("click", () => {
-    const receiptLink = `${window.location.href.split("?")[0]}?note=${encodeURIComponent(sample.noteNumber)}`;
+    const receiptLink = `${window.location.origin}/?note=${encodeURIComponent(sample.noteNumber)}`;
     printDeliveryNote(sample, receiptLink);
   });
+  card.appendChild(btn);
+
+  main.appendChild(card);
+}
+
+// Placeholder on the bare domain — the root URL is reserved for a future page.
+// Clerks landing here (stale bookmarks) get pointed to the dispatch portal.
+function renderRootLanding() {
+  const main = renderShell("بوابات كوبري");
+
+  const card = el("div", "card");
+  card.appendChild(sectionTitle("انتقلت بوابة إدخال الشحنات"));
+
+  const info = el("div", "info-box");
+  info.textContent = "الرجاء استخدام الرابط الخاص بقسمك وتحديث الإشارة المرجعية المحفوظة. أرقام الدخول (PIN) لم تتغير.";
+  card.appendChild(info);
+
+  const btn = el("button", "btn-primary");
+  btn.innerHTML = "🚛 بوابة إدخال الشحنات — كتبة المصنع";
+  btn.addEventListener("click", () => { window.location.href = "/dispatch"; });
   card.appendChild(btn);
 
   main.appendChild(card);
@@ -2284,7 +2304,7 @@ function renderDispatch(ctx) {
       const w = await dbSubmitDispatch(data, submitRef);
       if (!w.success || !w.note) throw new Error(w.error || "dispatch_submit failed");
       data.noteNumber = String(w.note);
-      const receiptLink = `${window.location.href.split("?")[0]}?note=${encodeURIComponent(data.noteNumber)}`;
+      const receiptLink = `${window.location.origin}/?note=${encodeURIComponent(data.noteNumber)}`;
       renderDispatchSuccess(ctx, data, receiptLink);
     } catch {
       btn.disabled = false; btn.innerHTML = submitLabel;
@@ -2945,7 +2965,7 @@ async function renderEngineerHome(engName) {
       receiptBtn.style.fontSize = ".85rem";
       receiptBtn.style.padding = ".6rem 1rem";
       receiptBtn.addEventListener("click", () => {
-        window.location.href = `${window.location.href.split("?")[0]}?note=${encodeURIComponent(d.noteNumber)}`;
+        window.location.href = `${window.location.origin}/?note=${encodeURIComponent(d.noteNumber)}`;
       });
       card.appendChild(receiptBtn);
       listArea.appendChild(card);
@@ -6561,10 +6581,13 @@ if (millingReport) {
     const session = getEngineerSession();
     if (session) renderEngineerHome(session.name);
     else renderPINScreen(name => renderEngineerHome(name));
-  } else {
+  } else if (window.location.pathname.startsWith("/dispatch") || window.location.protocol === "file:") {
+    // Dispatch moved off the root (2026-07-13) — the plain URL is reserved for a future page.
     const clerkSession = getClerkSession();
     if (clerkSession) renderCompanySelect();
     else renderClerkPINScreen(renderCompanySelect);
+  } else {
+    renderRootLanding();
   }
 }
 }

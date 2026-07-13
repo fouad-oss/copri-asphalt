@@ -129,7 +129,8 @@ async function main() {
   const blockFeatures = []
   const segFeatures = []
   const seenBlockOsm = new Set()
-  const seenWayIds = new Set()
+  const areaRecs = [] // {area, suburbRings, blocks} — streets assigned globally after all fetches
+  const wayPool = new Map() // way id → way, deduped across overlapping area bboxes
   let streetsTotal = 0
 
   for (const area of AREAS) {
@@ -155,12 +156,6 @@ async function main() {
         .filter((m) => m.type === 'way' && m.role !== 'inner' && m.geometry)
         .map((m) => m.geometry.map((g) => round6([g.lon, g.lat])))
       if (rings.length) suburbRings.push(chainRings(rings))
-    }
-    const owns = (pt) => {
-      if (!suburbRings.length) return true // no boundary in OSM — bbox rules
-      if (suburbRings.some((ring) => pointInRing(pt, ring))) return true
-      // boundary roads sit ON the suburb edge — accept within ~150 m
-      return suburbRings.some((ring) => ring.some((rp) => dist(pt, rp) < 150))
     }
     // Blocks lie fully INSIDE their suburb, so no edge tolerance — a single
     // midpoint with the 150 m fallback let border blocks (سلوى ق7 sits on
@@ -210,23 +205,57 @@ async function main() {
       })
     }
 
-    // streets — collect first so manual traces can name unnamed ways
-    const wayList = []
+    // streets — pool ALL candidate ways; ownership is decided globally
+    // after every area is fetched. Per-area claiming (first-fetch-wins +
+    // 150 m edge tolerance) let مشرف claim streets sitting INSIDE سلوى
+    // ق12, and bbox clipping let سلوى claim بيان's eastern جادات.
     for (const el of data.elements) {
-      if (el.type !== 'way' || !el.tags?.highway || !el.geometry || seenWayIds.has(el.id)) continue
+      if (el.type !== 'way' || !el.tags?.highway || !el.geometry || wayPool.has(el.id)) continue
       const coords = el.geometry.map((g) => round6([g.lon, g.lat]))
       if (coords.length < 2) continue
-      const mid = coords[Math.floor(coords.length / 2)]
-      if (!owns(mid)) continue // neighbouring suburb's street — its query claims it
-      seenWayIds.add(el.id)
-      wayList.push({
+      wayPool.set(el.id, {
         id: el.id,
         coords,
-        mid,
+        mid: coords[Math.floor(coords.length / 2)],
         highway: el.tags.highway,
         rawName: (el.tags['name:ar'] || el.tags.name || '').trim(),
       })
     }
+    areaRecs.push({ area, suburbRings, blocks })
+    console.log(`  ${area.site}: blocks ${blocks.length} · pooled ways ${wayPool.size}`)
+  }
+
+  // ── global street ownership ──
+  // The suburb polygon that CONTAINS a way's midpoint wins. Only ways
+  // contained by no polygon (true boundary roads on the line, like
+  // خالد بن عبدالعزيز) fall back to the nearest boundary within 150 m.
+  const assignedWays = new Map(areaRecs.map((r) => [r.area.site, []]))
+  for (const w of wayPool.values()) {
+    let owner = areaRecs.find((r) => r.suburbRings.some((ring) => pointInRing(w.mid, ring)))
+    if (!owner) {
+      let bestD = 150
+      for (const r of areaRecs) {
+        for (const ring of r.suburbRings) {
+          for (const rp of ring) {
+            const d = dist(w.mid, rp)
+            if (d < bestD) { bestD = d; owner = r }
+          }
+        }
+      }
+    }
+    if (!owner) {
+      // area with no OSM boundary at all — its bbox is the best we have
+      owner = areaRecs.find((r) => {
+        const [s, wst, n, e] = r.area.bbox
+        return !r.suburbRings.length && w.mid[1] >= s && w.mid[1] <= n && w.mid[0] >= wst && w.mid[0] <= e
+      })
+    }
+    if (owner) assignedWays.get(owner.area.site).push(w)
+  }
+
+  for (const rec of areaRecs) {
+    const { area, blocks } = rec
+    const wayList = assignedWays.get(area.site)
     // Grouping rules (each group = one street unit):
     //  - numbered streets (شارع N) are BLOCK-scoped — ش1 in ق1 ≠ ش1 in ق2
     //  - جادات are their own units ("شارع 3 جادة 2" is a lane of ش3, NOT
@@ -315,7 +344,7 @@ async function main() {
         ch = Math.max(Math.ceil((ch + Math.round(chainLen(chain))) / 100) * 100, ch + 100)
       }
     }
-    console.log(`  ${area.site}: blocks ${blocks.length} · street groups ${groups.size} · segments +${areaSegs}`)
+    console.log(`  ${area.site}: streets ${wayList.length} ways → ${groups.size} groups · segments +${areaSegs}`)
   }
 
   // ── motorways dispatched by km range ──

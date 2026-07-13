@@ -13,6 +13,11 @@ export function navFor(p: Profile) {
   const items: { to: string; key: string }[] = [{ to: "/", key: "nav.home" }]
   if (canDecide || p.accountant) items.push({ to: "/approvals", key: "nav.approvals" })
   items.push({ to: "/commitments", key: "nav.commitments" })
+  if (p.accountant || p.requester) items.push({ to: "/deliveries", key: "nav.deliveries" })
+  items.push({ to: "/masters", key: "nav.masters" })
+  if (p.approver || p.accountant || p.admin || p.management)
+    items.push({ to: "/reports", key: "nav.reports" })
+  if (p.admin) items.push({ to: "/admin", key: "nav.admin" })
   return items
 }
 

@@ -3928,42 +3928,9 @@ function renderMaterialReceiptForm(name, onDone) {
   const { group: gSub, input: subInput } = fieldGroup("المقاول من الباطن", select(CONFIG.materialSubcontractors || [], "اختر المقاول"), true);
   card.appendChild(gSub);
 
-  // ── PO-line link (0018): every delivery note references a PO line.
-  // Optional until the enforce_capture_commitment flag flips for
-  // materials; "no PO" opens an accountant exception, not a free pass.
-  const poSel = el("select");
-  const poGroup = fieldGroup("أمر الشراء (LPO)", poSel, false, "اربط السند بأمر الشراء الذي وردت عليه المواد").group;
-  const poLineSel = el("select");
-  const poLineGroup = fieldGroup("بند أمر الشراء", poLineSel, false).group;
-  poLineGroup.style.display = "none";
-  const noPoChk = el("input"); noPoChk.type = "checkbox"; noPoChk.id = "mat-nopo";
-  const noPoLbl = el("label"); noPoLbl.htmlFor = "mat-nopo";
-  noPoLbl.style.cssText = "display:flex;gap:.5rem;align-items:center;cursor:pointer;margin:.3rem 0 .6rem";
-  noPoLbl.appendChild(noPoChk);
-  noPoLbl.appendChild(document.createTextNode("🚩 لا يوجد أمر شراء لهذه المواد (يُفتح استثناء للمحاسب)"));
-  card.appendChild(poGroup); card.appendChild(poLineGroup); card.appendChild(noPoLbl);
-  (async () => {
-    try {
-      const lpos = await sbGet(`commitments?ctype=eq.LPO&status=${sbEq("نشط")}&select=id,number,vendors(name)&order=created_at.desc&limit=200`);
-      poSel.innerHTML = "";
-      const d = el("option"); d.value = ""; d.textContent = lpos.length ? "اختر أمر الشراء (اختياري)" : "لا أوامر شراء نشطة"; poSel.appendChild(d);
-      lpos.forEach(l => { const o = el("option"); o.value = l.id; o.textContent = `${l.number} · ${(l.vendors && l.vendors.name) || ""}`; poSel.appendChild(o); });
-    } catch { poGroup.style.display = "none"; }
-  })();
-  poSel.addEventListener("change", async () => {
-    poLineSel.innerHTML = ""; poLineGroup.style.display = "none";
-    if (poSel.value) noPoChk.checked = false;
-    if (!poSel.value) return;
-    try {
-      const ls = await sbGet(`commitment_lines?commitment_id=eq.${poSel.value}&order=line_no`);
-      const d = el("option"); d.value = ""; d.textContent = ls.length ? "اختر البند" : "لا بنود على هذا الأمر"; poLineSel.appendChild(d);
-      ls.forEach(l => { const o = el("option"); o.value = l.id; o.textContent = `${l.line_no}. ${l.item}` + (l.qty ? ` (${l.qty} ${l.unit})` : ""); poLineSel.appendChild(o); });
-      poLineGroup.style.display = "";
-    } catch {}
-  });
-  noPoChk.addEventListener("change", () => {
-    if (noPoChk.checked) { poSel.value = ""; poLineSel.innerHTML = ""; poLineGroup.style.display = "none"; }
-  });
+  // Capture is RAW (v2 brief / 0020): the engineer records exactly what
+  // is in front of them — no PO reference at capture time. Mapping a DN
+  // to its PO line is an accounting step in the daily batch screen.
 
   // Photo of the paper receipt (required). capture=environment opens the camera on mobile.
   const { group: gPhoto, input: photoInput } = fieldGroup("صورة الإيصال الورقي", input("file"), true, "التقط أو أرفق صورة سند الاستلام");
@@ -4003,8 +3970,6 @@ function renderMaterialReceiptForm(name, onDone) {
       quantity: qtyInput.value.trim(), unit: unitInput.value,
       supplier: supInput.value, subcontractor: subInput.value,
       receiverName: name, remarks: remInput.value.trim(),
-      commitmentLineId: poLineSel.value ? Number(poLineSel.value) : null,
-      noPoFlag: noPoChk.checked,
     };
     const required = ["project", "site", "category", "material", "quantity", "supplier", "subcontractor"];
     if (required.some(k => !data[k])) { errDiv.textContent = "يرجى تعبئة جميع الحقول المطلوبة"; errDiv.style.display = "block"; return; }
@@ -5580,7 +5545,16 @@ function pipeLogout() {
 }
 function pipeUserFromProfile(r, pin) {
   return { name: r.name, pin: pin || "", requester: !!r.requester, approver: !!r.approver,
-           accountant: !!r.accountant, admin: !!r.admin, costCenterId: r.costCenterId || null };
+           accountant: !!r.accountant, admin: !!r.admin,
+           financeApprover: !!r.financeApprover, management: !!r.management,
+           costCenterId: r.costCenterId || null };
+}
+// Does this user hold the capability an approval-chain gate requires?
+function pipeHasCap(user, capability) {
+  return capability === "approver" ? !!user.approver
+       : capability === "finance_approver" ? !!user.financeApprover
+       : capability === "accountant" ? !!user.accountant
+       : capability === "admin" ? !!user.admin : false;
 }
 
 function pipeStatusChip(status) {
@@ -5604,15 +5578,21 @@ const pipeKD = (v) => `${Number(v || 0).toLocaleString("en-US", { maximumFractio
 
 // ── Reads (anon selects; PostgREST FK embeds carry the display names) ──
 async function dbPipeMasters() {
-  const [ccs, vendors, blankets, draw, cats] = await Promise.all([
+  const [ccs, vendors, blankets, draw, cats, lineDraw] = await Promise.all([
     sbGet("cost_centers?active=eq.true&order=kind.desc,code"),
     sbGet("vendors?active=eq.true&order=name"),
     sbGet(`blanket_lpos?status=${sbEq("نشط")}&select=*,vendors(name),commitments!blanket_lpos_commitment_id_fkey(number)&order=id`),
     sbGet("blanket_drawdown"),
     sbGet("list_options?kind=eq.blanket_category&order=sort_order"),
+    // pre-0022 the view is absent → degrade to ceiling-only blankets
+    sbGet("blanket_line_drawdown?order=blanket_id,line_no").catch(() => []),
   ]);
   const byId = {}; draw.forEach(d => { byId[d.blanket_id] = d; });
-  blankets.forEach(b => { const d = byId[b.id] || {}; b.drawn = d.drawn || 0; b.remaining = d.remaining != null ? d.remaining : b.ceiling; });
+  blankets.forEach(b => {
+    const d = byId[b.id] || {};
+    b.drawn = d.drawn || 0; b.remaining = d.remaining != null ? d.remaining : b.ceiling;
+    b.lines = lineDraw.filter(l => l.blanket_id === b.id);
+  });
   return { ccs, vendors, blankets, cats: cats.map(c => c.value) };
 }
 const PIPE_REQ_SELECT = "select=*,cost_centers(code,name_ar,name_en),vendors(name),commitments!commitment_requests_commitment_fkey(number)";
@@ -5752,15 +5732,17 @@ function renderPipeHome(user) {
   const tabs = el("div", "portal-tabs");
   const body = el("div");
   const defs = [];
-  if (user.requester) defs.push(["➕ طلب جديد", () => pipeTabNewRequest(body, user)]);
+  const canDecide = user.approver || user.financeApprover || user.admin;
+  if (user.requester || user.accountant) defs.push(["➕ طلب جديد", () => pipeTabNewRequest(body, user)]);
   defs.push(["📋 طلباتي", () => pipeTabMyRequests(body, user)]);
   if (user.requester) defs.push(["📄 أمر شراء يدوي", () => pipeTabManualPO(body, user)]);
   if (user.requester) defs.push(["📦 استلام GRN", () => pipeTabGRN(body, user)]);
   if (user.accountant) defs.push(["☑️ الاعتماد اليومي", () => pipeTabDaily(body, user)]);
-  if (user.approver) defs.push(["✅ قائمة الاعتماد", () => pipeTabQueue(body, user)]);
+  if (canDecide) defs.push(["✅ قائمة الاعتماد", () => pipeTabQueue(body, user)]);
   defs.push(["📚 سجل الالتزامات", () => pipeTabRegister(body)]);
   defs.push(["🧾 المطابقة", () => pipeTabMatch(body, user)]);
   defs.push(["☂️ المظلات", () => pipeTabBlankets(body)]);
+  defs.push(["🏗 مقاولو الباطن", () => pipeTabSubs(body, user)]);
   if (user.approver) defs.push(["🔁 تحميل داخلي", () => pipeTabRecharge(body, user)]);
   if (user.approver) defs.push(["📤 التصدير", () => pipeTabExport(body, user)]);
   const btns = defs.map(([label, fn]) => {
@@ -5832,17 +5814,29 @@ async function pipeTabNewRequest(body, user) {
   card.appendChild(fieldGroup("مركز التكلفة الطالب", ccSel, true).group);
 
   // Call-off: pick a live blanket → vendor locks to the blanket's vendor.
+  // Line-controlled blankets (0022) additionally need a LINE + quantity;
+  // the value is derived at the line's agreed rate, never typed.
   const blSel = el("select");
   const blDef = el("option"); blDef.value = ""; blDef.textContent = "بدون — طلب مستقل"; blSel.appendChild(blDef);
   m.blankets.forEach(b => {
     const o = el("option"); o.value = b.id;
     const no = (b.commitments && b.commitments.number) || `#${b.id}`;
-    o.textContent = `${no} · ${(b.vendors && b.vendors.name) || ""} · ${b.category} · متبقي ${pipeKD(b.remaining)}`;
+    o.textContent = `${no} · ${(b.vendors && b.vendors.name) || ""} · ${b.category} · ` +
+      (b.control_mode === "lines" ? `${b.lines.length} بنود` : `متبقي ${pipeKD(b.remaining)}`);
     blSel.appendChild(o);
   });
   const blGroup = fieldGroup("سحب من مظلة (LPO)", blSel, false,
-    "السحب ضمن سقف وصلاحية المظلة يُعتمد تلقائياً").group;
+    "السحب ضمن حدود وصلاحية المظلة يُعتمد تلقائياً").group;
   card.appendChild(blGroup);
+
+  const blLineSel = el("select");
+  const blLineGroup = fieldGroup("بند المظلة", blLineSel, false).group;
+  blLineGroup.style.display = "none";
+  card.appendChild(blLineGroup);
+  const blQtyI = input("number", "0", "decimal"); blQtyI.step = "0.01"; blQtyI.min = "0";
+  const blQtyGroup = fieldGroup("الكمية المطلوبة", blQtyI, false).group;
+  blQtyGroup.style.display = "none";
+  card.appendChild(blQtyGroup);
 
   const vSel = el("select");
   card.appendChild(fieldGroup("المورد / المقاول", vSel, true).group);
@@ -5857,11 +5851,13 @@ async function pipeTabNewRequest(body, user) {
   }
   fillVendors();
 
-  // Blanket terms — only when this LPO request IS a blanket.
+  // Blanket terms — only when this LPO request IS a blanket. v2: a
+  // blanket is specified by ITEM LINES (agreed rate + agreed qty per
+  // line); the KD total is derived and displayed, never typed.
   const blkWrap = el("div");
   const blkChk = el("input"); blkChk.type = "checkbox"; blkChk.id = "rf-blk";
   const blkLbl = el("label"); blkLbl.htmlFor = "rf-blk"; blkLbl.style.cssText = "display:flex;gap:.5rem;align-items:center;cursor:pointer";
-  blkLbl.appendChild(blkChk); blkLbl.appendChild(document.createTextNode("هذا الطلب مظلة (Blanket LPO) — سقف يُسحب منه لاحقاً"));
+  blkLbl.appendChild(blkChk); blkLbl.appendChild(document.createTextNode("هذا الطلب مظلة (Blanket LPO) — بنود يُسحب منها لاحقاً"));
   const blkFields = el("div"); blkFields.style.display = "none";
   const catSel = select(m.cats, "اختر الفئة");
   blkFields.appendChild(fieldGroup("فئة المظلة", catSel, true).group);
@@ -5870,15 +5866,70 @@ async function pipeTabNewRequest(body, user) {
   const fromI = input("date", ""); const toI = input("date", "");
   blkFields.appendChild(fieldGroup("سارية من", fromI, true).group);
   blkFields.appendChild(fieldGroup("سارية حتى", toI, true).group);
-  blkChk.addEventListener("change", () => { blkFields.style.display = blkChk.checked ? "" : "none"; });
+  // Lines editor: item / unit / qty / rate rows
+  const blkLinesHost = el("div");
+  const blkLinesTitle = el("div", "field-hint"); blkLinesTitle.textContent = "بنود المظلة — الكمية هي أداة الرقابة، والقيمة تُشتق (كمية × سعر):";
+  blkFields.appendChild(blkLinesTitle); blkFields.appendChild(blkLinesHost);
+  const blkLines = [];
+  const blkTotal = el("div", "info-box"); blkTotal.textContent = "مجموع البنود: 0 د.ك";
+  function blkSyncTotal() {
+    let t = 0;
+    blkLines.forEach(L => { t += (parseFloat(L.qty.value) || 0) * (parseFloat(L.rate.value) || 0); });
+    blkTotal.textContent = `مجموع البنود: ${pipeKD(t)}`;
+    return t;
+  }
+  function blkAddLine() {
+    const wrap = el("div"); wrap.style.cssText = "border:1px solid var(--surface-2);border-radius:8px;padding:.5rem;margin:.4rem 0";
+    const item = input("text", "المادة / الخدمة (مثل: ديزل، نقلة ركام، فحص)");
+    const row = el("div", "field-row-2");
+    const unit = input("text", "الوحدة (طن/لتر/نقلة)");
+    const qty = input("number", "الكمية المتفق عليها", "decimal"); qty.step = "0.01"; qty.min = "0";
+    const row2 = el("div", "field-row-2");
+    const rate = input("number", "السعر المتفق (د.ك)", "decimal"); rate.step = "0.001"; rate.min = "0";
+    const del = el("button", "btn-secondary"); del.type = "button"; del.textContent = "حذف";
+    row.appendChild(unit); row.appendChild(qty); row2.appendChild(rate); row2.appendChild(del);
+    wrap.appendChild(item); wrap.appendChild(row); wrap.appendChild(row2);
+    const L = { wrap, item, unit, qty, rate };
+    del.addEventListener("click", () => { blkLines.splice(blkLines.indexOf(L), 1); wrap.remove(); blkSyncTotal(); });
+    [qty, rate].forEach(i => i.addEventListener("input", blkSyncTotal));
+    blkLines.push(L); blkLinesHost.appendChild(wrap);
+  }
+  const blkAddB = el("button", "btn-secondary"); blkAddB.type = "button"; blkAddB.textContent = "+ إضافة بند";
+  blkFields.appendChild(blkAddB); blkFields.appendChild(blkTotal);
+  blkAddB.addEventListener("click", blkAddLine);
+  blkChk.addEventListener("change", () => {
+    blkFields.style.display = blkChk.checked ? "" : "none";
+    if (blkChk.checked && !blkLines.length) blkAddLine();
+    syncValue();
+  });
   blkWrap.appendChild(blkLbl); blkWrap.appendChild(blkFields);
   card.appendChild(blkWrap);
 
   const descI = textarea("وصف الأعمال / المواد المطلوبة", 3);
   card.appendChild(fieldGroup("الوصف", descI, true).group);
   const valI = input("number", "0.000", "decimal"); valI.step = "0.001"; valI.min = "0";
-  card.appendChild(fieldGroup("القيمة التقديرية (د.ك)", valI, true).group);
+  const valGroup = fieldGroup("القيمة التقديرية (د.ك)", valI, true).group;
+  card.appendChild(valGroup);
 
+  function currentBlanket() { return m.blankets.find(x => String(x.id) === blSel.value); }
+  function currentLine() {
+    const b = currentBlanket();
+    return b && b.control_mode === "lines"
+      ? b.lines.find(l => String(l.line_id) === blLineSel.value) : null;
+  }
+  // Derived value: line call-off (qty × agreed rate) and blanket-with-
+  // lines totals lock the value field; everything else types it.
+  function syncValue() {
+    const ln = currentLine();
+    if (ln) {
+      const q = parseFloat(blQtyI.value) || 0;
+      valI.value = (q * ln.agreed_rate).toFixed(3);
+      valI.readOnly = true; valI.style.background = "var(--surface-2)";
+    } else if (blkChk.checked && blkLines.length) {
+      valI.value = blkSyncTotal().toFixed(3);
+      valI.readOnly = true; valI.style.background = "var(--surface-2)";
+    } else { valI.readOnly = false; valI.style.background = ""; }
+  }
   function syncSections() {
     const isLPO = typeSel.value === "LPO";
     blGroup.style.display = isLPO && m.blankets.length ? "" : "none";
@@ -5888,14 +5939,27 @@ async function pipeTabNewRequest(body, user) {
     syncBlanket();
   }
   function syncBlanket() {
-    const b = m.blankets.find(x => String(x.id) === blSel.value);
+    const b = currentBlanket();
+    blLineSel.innerHTML = ""; blLineGroup.style.display = "none"; blQtyGroup.style.display = "none";
     if (b) {
       vSel.value = String(b.vendor_id); vSel.disabled = true;
       blkChk.checked = false; blkChk.disabled = true; blkFields.style.display = "none";
+      if (b.control_mode === "lines") {
+        const d0 = el("option"); d0.value = ""; d0.textContent = "اختر البند"; blLineSel.appendChild(d0);
+        b.lines.forEach(l => {
+          const o = el("option"); o.value = l.line_id;
+          o.textContent = `${l.line_no}. ${l.item} — ${l.agreed_rate} د.ك/${l.unit || "وحدة"} · متبقٍ ${l.remaining_qty} من ${l.agreed_qty}`;
+          blLineSel.appendChild(o);
+        });
+        blLineGroup.style.display = ""; blQtyGroup.style.display = "";
+      }
     } else { vSel.disabled = false; blkChk.disabled = false; }
+    syncValue();
   }
   typeSel.addEventListener("change", syncSections);
   blSel.addEventListener("change", syncBlanket);
+  blLineSel.addEventListener("change", syncValue);
+  blQtyI.addEventListener("input", syncValue);
   syncSections();
 
   const err = el("div", "error-msg"); err.style.display = "none"; card.appendChild(err);
@@ -5910,25 +5974,45 @@ async function pipeTabNewRequest(body, user) {
     if (!ccSel.value) return fail("اختر مركز التكلفة");
     if (!vSel.value) return fail("اختر المورد / المقاول");
     if (!descI.value.trim()) return fail("الوصف مطلوب");
+    const b = currentBlanket();
+    const isLineCallOff = !!(b && b.control_mode === "lines");
+    if (isLineCallOff && !blLineSel.value) return fail("اختر بند المظلة");
+    if (isLineCallOff && !(parseFloat(blQtyI.value) > 0)) return fail("أدخل الكمية المطلوبة");
     const val = parseFloat(valI.value);
     if (!(val > 0)) return fail("أدخل قيمة تقديرية صحيحة");
     if (blkChk.checked && (!catSel.value || !fromI.value || !toI.value)) return fail("أكمل بيانات المظلة (الفئة والصلاحية)");
+    let linesPayload = [];
+    if (blkChk.checked) {
+      for (const L of blkLines) {
+        if (!L.item.value.trim()) return fail("كل بند مظلة يحتاج اسم مادة/خدمة");
+        if (!(parseFloat(L.qty.value) > 0)) return fail(`بند «${L.item.value.trim()}»: أدخل كمية صحيحة`);
+        if (!(parseFloat(L.rate.value) >= 0)) return fail(`بند «${L.item.value.trim()}»: أدخل السعر`);
+        linesPayload.push({ item: L.item.value.trim(), unit: L.unit.value.trim(),
+                            qty: parseFloat(L.qty.value), rate: parseFloat(L.rate.value) });
+      }
+      if (!linesPayload.length) return fail("أضف بنداً واحداً على الأقل للمظلة");
+    }
     sendBtn.disabled = true; sendBtn.textContent = "جارٍ الإرسال…";
     try {
       const r = await sbRpc("request_submit", {
         p_pin: user.pin, p_client_ref: clientRef, p_type: typeSel.value,
         p_cost_center_id: Number(ccSel.value), p_vendor_id: Number(vSel.value),
         p_description: descI.value.trim(), p_value: val,
-        p_blanket_id: blSel.value ? Number(blSel.value) : null,
+        p_blanket_id: !isLineCallOff && blSel.value ? Number(blSel.value) : null,
         p_is_blanket: blkChk.checked,
         p_blanket_category: blkChk.checked ? catSel.value : "",
         p_blanket_rate_ref: blkChk.checked ? rateI.value.trim() : "",
         p_blanket_valid_from: blkChk.checked ? fromI.value : null,
         p_blanket_valid_to: blkChk.checked ? toI.value : null,
+        p_blanket_line_id: isLineCallOff ? Number(blLineSel.value) : null,
+        p_qty: isLineCallOff ? parseFloat(blQtyI.value) : null,
+        p_blanket_lines: linesPayload,
       });
       if (!r || !r.success) {
         sendBtn.disabled = false; sendBtn.textContent = "إرسال الطلب 📨";
         const msgs = { "ceiling exceeded": `تجاوز سقف المظلة — المتبقي ${pipeKD(r && r.remaining)}`,
+                       "line quantity exceeded": `تجاوز كمية البند — المتبقي ${(r && r.remainingQty) != null ? r.remainingQty : "؟"}`,
+                       "blanket is line-controlled — pick a line": "هذه المظلة ببنود — اختر البند",
                        "blanket not active": "المظلة غير نشطة", "vendor does not match blanket": "المورد لا يطابق مظلة السحب",
                        "blanket outside validity window": "المظلة خارج فترة الصلاحية" };
         return fail(msgs[r && r.error] || "تعذّر إرسال الطلب — راجع البيانات");
@@ -5964,22 +6048,48 @@ async function pipeTabMyRequests(body, user) {
   rows.forEach(r => body.appendChild(pipeReqCard(r)));
 }
 
-// ── Tab: head-office approval queue ──
+// ── Tab: approval queue — configurable sequential gates (0020) ──
+// Each pending request sits at a gate of its chain; only holders of the
+// gate's capability can decide it. The card says WHY it routed here
+// (office_note) and shows the provable gate trail (gate_log).
 async function pipeTabQueue(body, user) {
   body.innerHTML = "";
   const info = el("div", "info-box"); info.textContent = "جارٍ التحميل…"; body.appendChild(info);
-  let rows = [];
-  try { rows = await dbPipeQueue(); } catch {}
+  let rows = [], gates = [];
+  try {
+    [rows, gates] = await Promise.all([
+      dbPipeQueue(),
+      // pre-0020 the table is absent → fall back to the v1 single gate
+      sbGet("approval_chain_gates?active=eq.true&order=chain,gate_no").catch(() => []),
+    ]);
+  } catch {}
   body.innerHTML = "";
+  const gateOf = (r) => gates.find(g => g.chain === r.chain && g.gate_no === r.current_gate)
+    || { capability: "approver", label: "المكتب الرئيسي" };
   const pending = rows.filter(r => r.status === "قيد المراجعة");
+  const mine    = pending.filter(r => pipeHasCap(user, gateOf(r).capability) && r.requested_by !== user.name);
+  const others  = pending.filter(r => !mine.includes(r));
   const decided = rows.filter(r => r.status !== "قيد المراجعة").slice(0, 30);
 
+  const gateTrail = (r, c) => {
+    (r.gate_log || []).forEach(g => {
+      const t = el("div", "field-hint");
+      t.textContent = `${g.decision === "approve" ? "✓" : "✕"} مرحلة ${g.gate} (${g.by}) — ${fmtKW(g.at)}`;
+      c.appendChild(t);
+    });
+  };
+
   const hPend = el("div", "prog-day-head today");
-  hPend.textContent = `بانتظار قرارك (${pending.length})`;
+  hPend.textContent = `بانتظار قرارك (${mine.length})`;
   body.appendChild(hPend);
-  if (!pending.length) {
-    const e = el("div", "info-box"); e.textContent = "لا توجد طلبات بانتظار الاعتماد."; body.appendChild(e);
-  } else pending.forEach(r => body.appendChild(pipeReqCard(r, (c) => {
+  if (!mine.length) {
+    const e = el("div", "info-box"); e.textContent = "لا توجد طلبات بانتظار قرارك."; body.appendChild(e);
+  } else mine.forEach(r => body.appendChild(pipeReqCard(r, (c) => {
+    const g = gateOf(r);
+    const gl = el("div", "req-line");
+    gl.innerHTML = `المرحلة الحالية: <b>${g.label || g.capability}</b> (${r.current_gate})`;
+    c.appendChild(gl);
+    gateTrail(r, c);
     const noteI = textarea("ملاحظة (اختياري — مطلوبة عند الرفض)");
     noteI.style.cssText = "margin-top:.6rem;min-height:44px;";
     c.appendChild(noteI);
@@ -6001,6 +6111,20 @@ async function pipeTabQueue(body, user) {
     noB.addEventListener("click", () => decide("reject"));
     acts.appendChild(okB); acts.appendChild(noB); c.appendChild(acts);
   })));
+
+  if (others.length) {
+    const hO = el("div", "prog-day-head"); hO.textContent = `في مراحل أخرى (${others.length})`;
+    body.appendChild(hO);
+    others.forEach(r => body.appendChild(pipeReqCard(r, (c) => {
+      const g = gateOf(r);
+      const gl = el("div", "req-line");
+      gl.innerHTML = r.requested_by === user.name
+        ? `<span style="color:var(--amber)">طلبك — لا يمكنك اعتماده (فصل المهام)</span> · بانتظار <b>${g.label || g.capability}</b>`
+        : `بانتظار <b>${g.label || g.capability}</b> (مرحلة ${r.current_gate})`;
+      c.appendChild(gl);
+      gateTrail(r, c);
+    })));
+  }
 
   if (decided.length) {
     const hLog = el("div", "prog-day-head"); hLog.textContent = "قرارات سابقة";
@@ -6063,16 +6187,266 @@ async function pipeTabBlankets(body) {
     const l1 = el("div", "req-line");
     l1.textContent = `${(b.vendors && b.vendors.name) || "—"} · سارية ${b.valid_from} ← ${b.valid_to}`;
     c.appendChild(l1);
-    const pct = Math.min(100, Math.round((b.drawn / b.ceiling) * 100));
+    const mkBar = (pct) => {
+      const bar = el("div");
+      bar.style.cssText = "background:var(--surface-2);border-radius:6px;height:10px;margin:.35rem 0;overflow:hidden";
+      const fill = el("div");
+      fill.style.cssText = `height:100%;width:${pct}%;border-radius:6px;background:${pct >= 90 ? "var(--red)" : pct >= 70 ? "var(--amber)" : "var(--green)"}`;
+      bar.appendChild(fill); return bar;
+    };
+    if (b.control_mode === "lines" && b.lines && b.lines.length) {
+      // v2: quantity per line is the control; KD totals are derived.
+      let totalAgreed = 0, totalDrawn = 0;
+      b.lines.forEach(l => {
+        totalAgreed += Number(l.agreed_value) || 0; totalDrawn += Number(l.drawn_value) || 0;
+        const ln = el("div", "req-line");
+        ln.innerHTML = `${l.line_no}. ${l.item} — مسحوب <b>${l.drawn_qty}</b> من <b>${l.agreed_qty}</b> ${l.unit || ""} · ${l.agreed_rate} د.ك/${l.unit || "وحدة"}`;
+        c.appendChild(ln);
+        c.appendChild(mkBar(Math.min(100, Math.round((l.drawn_qty / l.agreed_qty) * 100))));
+      });
+      const l2 = el("div", "req-line");
+      l2.innerHTML = `القيمة المشتقة: مسحوب <b>${pipeKD(totalDrawn)}</b> من <b>${pipeKD(totalAgreed)}</b>`;
+      c.appendChild(l2);
+    } else {
+      const pct = Math.min(100, Math.round((b.drawn / b.ceiling) * 100));
+      c.appendChild(mkBar(pct));
+      const l2 = el("div", "req-line");
+      l2.innerHTML = `السقف <b>${pipeKD(b.ceiling)}</b> · مسحوب <b>${pipeKD(b.drawn)}</b> · متبقي <b>${pipeKD(b.remaining)}</b>`;
+      c.appendChild(l2);
+    }
+    if (b.rate_ref) { const h = el("div", "field-hint"); h.textContent = `مرجع السعر: ${b.rate_ref}`; c.appendChild(h); }
+    body.appendChild(c);
+  });
+}
+
+// ── Tab: subcontract register (0021) — the invisible liability made
+// visible: value vs certified vs back-charges vs retention held. The
+// materials-issued-to-sub ledger records what COPRI delivers on a sub's
+// behalf (معلق) until it is deducted on a payment certificate (مخصوم).
+async function pipeTabSubs(body, user) {
+  body.innerHTML = "";
+  const info = el("div", "info-box"); info.textContent = "جارٍ التحميل…"; body.appendChild(info);
+  let subs = [], cons = [];
+  try {
+    [subs, cons] = await Promise.all([
+      sbGet("subcontract_overview?order=id.desc&limit=200"),
+      sbGet(`commitments?ctype=eq.CON&status=${sbEq("نشط")}&select=id,number,value,vendors(name)&order=created_at.desc`),
+    ]);
+  } catch {
+    body.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل البيانات — تأكد من تطبيق migration 0021</div>`; return;
+  }
+  body.innerHTML = "";
+  const canRegister = user.approver || user.accountant;
+  const registered = new Set(subs.map(s => s.commitment_id));
+  const unregistered = cons.filter(c => !registered.has(c.id));
+
+  // Register terms on a CON commitment
+  if (canRegister && unregistered.length) {
+    const card = el("div", "card");
+    card.appendChild(sectionTitle("تسجيل عقد مقاول باطن"));
+    const cSel = el("select");
+    const d0 = el("option"); d0.value = ""; d0.textContent = "اختر التزام العقد (CON)"; cSel.appendChild(d0);
+    unregistered.forEach(c => {
+      const o = el("option"); o.value = c.id;
+      o.textContent = `${c.number} · ${(c.vendors && c.vendors.name) || ""} · ${pipeKD(c.value)}`;
+      cSel.appendChild(o);
+    });
+    card.appendChild(fieldGroup("الالتزام", cSel, true, "عقد جديد؟ أنشئ طلب RF-Contract أولاً — لا عقد بلا التزام").group);
+    const scopeI = textarea("نطاق الأعمال", 2);
+    card.appendChild(fieldGroup("النطاق", scopeI, false).group);
+    const row = el("div", "field-row-2");
+    const retI = input("number", "10", "decimal"); retI.step = "0.5"; retI.min = "0"; retI.max = "100";
+    const advI = input("number", "0.000", "decimal"); advI.step = "0.001"; advI.min = "0";
+    const g1 = fieldGroup("نسبة الاحتجاز %", retI, true).group;
+    const g2 = fieldGroup("الدفعة المقدمة (د.ك)", advI, false).group;
+    row.appendChild(g1); row.appendChild(g2); card.appendChild(row);
+    const row2 = el("div", "field-row-2");
+    const fI = input("date", ""); const tI = input("date", "");
+    row2.appendChild(fieldGroup("سارٍ من", fI, false).group);
+    row2.appendChild(fieldGroup("حتى", tI, false).group);
+    card.appendChild(row2);
+    const docI = input("text", "رابط مستند العقد (اختياري)");
+    card.appendChild(fieldGroup("المستند", docI, false).group);
+    const err = el("div", "error-msg"); err.style.display = "none"; card.appendChild(err);
+    const b = el("button", "btn-primary"); b.type = "button"; b.textContent = "تسجيل العقد 🏗"; b.style.width = "100%";
+    b.addEventListener("click", async () => {
+      err.style.display = "none";
+      if (!cSel.value) { err.textContent = "اختر الالتزام"; err.style.display = "block"; return; }
+      const ret = parseFloat(retI.value);
+      if (!(ret >= 0 && ret <= 100)) { err.textContent = "نسبة الاحتجاز بين 0 و100"; err.style.display = "block"; return; }
+      b.disabled = true;
+      try {
+        const r = await sbRpc("subcontract_register", {
+          p_pin: user.pin, p_commitment_id: Number(cSel.value),
+          p_scope: scopeI.value.trim(), p_retention_pct: ret,
+          p_advance: parseFloat(advI.value) || 0,
+          p_valid_from: fI.value || null, p_valid_to: tI.value || null,
+          p_doc_url: docI.value.trim(),
+        });
+        if (r && r.success) { pipeTabSubs(body, user); return; }
+        err.textContent = r && r.error === "already registered" ? "هذا الالتزام مسجل مسبقاً" : "تعذّر التسجيل"; err.style.display = "block";
+      } catch { err.textContent = "حدث خطأ — حاول مجدداً"; err.style.display = "block"; }
+      b.disabled = false;
+    });
+    card.appendChild(b);
+    body.appendChild(card);
+  }
+
+  const h = el("div", "prog-day-head"); h.textContent = `سجل عقود الباطن (${subs.length})`; body.appendChild(h);
+  if (!subs.length) {
+    const e = el("div", "info-box");
+    e.textContent = "لا عقود مسجلة بعد — يُنشأ العقد باعتماد طلب RF-Contract ثم تسجيل شروطه هنا.";
+    body.appendChild(e); return;
+  }
+
+  async function drill(s, host) {
+    host.innerHTML = `<div class="info-box">جارٍ التحميل…</div>`;
+    let certs = [], charges = [];
+    try {
+      [certs, charges] = await Promise.all([
+        sbGet(`payment_certificates?subcontract_id=eq.${s.id}&order=cert_no.desc`),
+        sbGet(`sub_material_charges?subcontract_id=eq.${s.id}&order=created_at.desc`),
+      ]);
+    } catch { host.innerHTML = `<div class="error-msg" style="display:block">تعذّر التحميل</div>`; return; }
+    host.innerHTML = "";
+
+    if (certs.length) {
+      const t = el("div", "field-hint"); t.textContent = "شهادات الدفع:"; host.appendChild(t);
+      certs.forEach(pc => {
+        const d = el("div", "req-line");
+        d.innerHTML = `شهادة <b>#${pc.cert_no}</b> ${pc.period ? `(${pc.period})` : ""} · إجمالي ${pipeKD(pc.gross_amount)} − احتجاز ${pipeKD(pc.retention_amount)} − استرداد مواد ${pipeKD(pc.backcharge_amount)} = <b>${pipeKD(pc.net_amount)}</b>`;
+        host.appendChild(d);
+      });
+    }
+    const pendingCharges = charges.filter(c => c.status === "معلق");
+    if (charges.length) {
+      const t = el("div", "field-hint"); t.style.marginTop = ".4rem"; t.textContent = "مواد مسلّمة للمقاول (استرداد):"; host.appendChild(t);
+      charges.forEach(c => {
+        const d = el("div", "req-line");
+        d.innerHTML = `${c.description || "مواد"} ${c.quantity ? `· ${c.quantity} ${c.unit || ""}` : ""} · <b>${pipeKD(c.amount)}</b> · ` +
+          (c.status === "معلق" ? `<span style="color:var(--amber)">معلق — لدى المحاسب</span>`
+                               : c.status === "مخصوم" ? `<span style="color:var(--green)">مخصوم</span>` : c.status);
+        host.appendChild(d);
+      });
+    }
+
+    if (user.accountant && s.status === "نشط") {
+      // Add a back-charge
+      const chC = el("div", "card"); chC.style.marginTop = ".6rem";
+      chC.appendChild(sectionTitle("إضافة مواد مسلّمة للمقاول"));
+      const dI = input("text", "الوصف (مثال: أسفلت 60/70 — 12 طن)");
+      chC.appendChild(fieldGroup("الوصف", dI, true).group);
+      const row = el("div", "field-row-2");
+      const qI = input("number", "الكمية", "decimal"); qI.step = "0.01";
+      const uI = input("text", "الوحدة");
+      row.appendChild(qI); row.appendChild(uI); chC.appendChild(row);
+      const aI = input("number", "القيمة (د.ك)", "decimal"); aI.step = "0.001"; aI.min = "0";
+      chC.appendChild(fieldGroup("قيمة الاسترداد", aI, true).group);
+      const chErr = el("div", "error-msg"); chErr.style.display = "none"; chC.appendChild(chErr);
+      const chB = el("button", "btn-secondary"); chB.type = "button"; chB.textContent = "تسجيل"; chB.style.width = "100%";
+      chB.addEventListener("click", async () => {
+        chErr.style.display = "none";
+        if (!(parseFloat(aI.value) > 0)) { chErr.textContent = "أدخل قيمة صحيحة"; chErr.style.display = "block"; return; }
+        chB.disabled = true;
+        try {
+          const r = await sbRpc("sub_charge_add", {
+            p_pin: user.pin, p_subcontract_id: s.id, p_amount: parseFloat(aI.value),
+            p_description: dI.value.trim(), p_quantity: parseFloat(qI.value) || null, p_unit: uI.value.trim(),
+          });
+          if (r && r.success) { drill(s, host); return; }
+          chErr.textContent = "تعذّر التسجيل"; chErr.style.display = "block";
+        } catch { chErr.textContent = "حدث خطأ"; chErr.style.display = "block"; }
+        chB.disabled = false;
+      });
+      chC.appendChild(chB); host.appendChild(chC);
+
+      // Record a certificate — pending charges deduct on it atomically
+      const pcC = el("div", "card"); pcC.style.marginTop = ".6rem";
+      pcC.appendChild(sectionTitle("تسجيل شهادة دفع"));
+      const gI = input("number", "الإجمالي المعتمد (د.ك)", "decimal"); gI.step = "0.001"; gI.min = "0";
+      pcC.appendChild(fieldGroup("إجمالي الشهادة", gI, true).group);
+      const perI = input("text", "الفترة (مثال: 2026-06)");
+      pcC.appendChild(fieldGroup("الفترة", perI, false).group);
+      const picked = new Set();
+      if (pendingCharges.length) {
+        const t = el("div", "field-hint"); t.textContent = "خصم مواد معلقة على هذه الشهادة:"; pcC.appendChild(t);
+        pendingCharges.forEach(c => {
+          const lbl = el("label"); lbl.style.cssText = "display:flex;gap:.5rem;align-items:center;cursor:pointer;margin:.2rem 0";
+          const cb = el("input"); cb.type = "checkbox"; cb.checked = true; picked.add(c.id);
+          cb.addEventListener("change", () => { cb.checked ? picked.add(c.id) : picked.delete(c.id); preview(); });
+          lbl.appendChild(cb);
+          lbl.appendChild(document.createTextNode(`${c.description || "مواد"} — ${pipeKD(c.amount)}`));
+          pcC.appendChild(lbl);
+        });
+      }
+      const prev = el("div", "info-box"); pcC.appendChild(prev);
+      const chargeById = {}; pendingCharges.forEach(c => { chargeById[c.id] = c; });
+      function preview() {
+        const g = parseFloat(gI.value) || 0;
+        const ret = Math.round(g * s.retention_pct * 1000 / 100) / 1000;
+        let ch = 0; picked.forEach(id => { ch += Number(chargeById[id].amount) || 0; });
+        prev.textContent = `الصافي: ${pipeKD(g)} − احتجاز ${s.retention_pct}% (${pipeKD(ret)}) − مواد (${pipeKD(ch)}) = ${pipeKD(g - ret - ch)}`;
+      }
+      gI.addEventListener("input", preview); preview();
+      const pcErr = el("div", "error-msg"); pcErr.style.display = "none"; pcC.appendChild(pcErr);
+      const pcB = el("button", "btn-primary"); pcB.type = "button"; pcB.textContent = "تسجيل الشهادة"; pcB.style.width = "100%";
+      pcB.addEventListener("click", async () => {
+        pcErr.style.display = "none";
+        if (!(parseFloat(gI.value) > 0)) { pcErr.textContent = "أدخل إجمالي الشهادة"; pcErr.style.display = "block"; return; }
+        pcB.disabled = true;
+        try {
+          const r = await sbRpc("certificate_record", {
+            p_pin: user.pin, p_subcontract_id: s.id, p_gross: parseFloat(gI.value),
+            p_period: perI.value.trim(), p_charge_ids: Array.from(picked),
+          });
+          if (r && r.success) { pipeTabSubs(body, user); return; }
+          pcErr.textContent = "تعذّر التسجيل"; pcErr.style.display = "block";
+        } catch { pcErr.textContent = "حدث خطأ"; pcErr.style.display = "block"; }
+        pcB.disabled = false;
+      });
+      pcC.appendChild(pcB); host.appendChild(pcC);
+    }
+    if (!certs.length && !charges.length && !(user.accountant && s.status === "نشط")) {
+      host.innerHTML = `<div class="field-hint">لا شهادات ولا مواد بعد.</div>`;
+    }
+  }
+
+  subs.forEach(s => {
+    const c = el("div", "card req-card");
+    const top = el("div", "prog-top");
+    const no = el("div", "req-client"); no.textContent = s.number;
+    top.appendChild(no); top.appendChild(pipeStatusChip(s.status));
+    c.appendChild(top);
+    const l1 = el("div", "req-line");
+    l1.textContent = `${s.vendor_name || "—"}` + (s.scope ? ` · ${s.scope}` : "");
+    c.appendChild(l1);
+    const pct = Math.min(100, Math.round((s.certified_amount / s.contract_value) * 100)) || 0;
     const bar = el("div");
     bar.style.cssText = "background:var(--surface-2);border-radius:6px;height:10px;margin:.5rem 0;overflow:hidden";
     const fill = el("div");
-    fill.style.cssText = `height:100%;width:${pct}%;border-radius:6px;background:${pct >= 90 ? "var(--red)" : pct >= 70 ? "var(--amber)" : "var(--green)"}`;
+    fill.style.cssText = `height:100%;width:${pct}%;border-radius:6px;background:var(--green)`;
     bar.appendChild(fill); c.appendChild(bar);
     const l2 = el("div", "req-line");
-    l2.innerHTML = `السقف <b>${pipeKD(b.ceiling)}</b> · مسحوب <b>${pipeKD(b.drawn)}</b> · متبقي <b>${pipeKD(b.remaining)}</b>`;
+    l2.innerHTML = `العقد <b>${pipeKD(s.contract_value)}</b> · مصدَّق <b>${pipeKD(s.certified_amount)}</b> (${s.cert_count} شهادة) · احتجاز محتجز <b>${pipeKD(s.retention_held)}</b>`;
     c.appendChild(l2);
-    if (b.rate_ref) { const h = el("div", "field-hint"); h.textContent = `مرجع السعر: ${b.rate_ref}`; c.appendChild(h); }
+    const l3 = el("div", "req-line");
+    l3.innerHTML =
+      (Number(s.backcharges_pending) > 0 ? `<span style="color:var(--amber)">مواد معلقة للاسترداد: <b>${pipeKD(s.backcharges_pending)}</b></span> · ` : "") +
+      `مواد مخصومة: ${pipeKD(s.backcharges_deducted)}` +
+      (Number(s.advance_amount) > 0 ? ` · دفعة مقدمة ${pipeKD(s.advance_amount)}` : "");
+    c.appendChild(l3);
+    if (s.doc_url) {
+      const a = el("a"); a.href = s.doc_url; a.target = "_blank"; a.rel = "noopener";
+      a.textContent = "📎 مستند العقد"; a.className = "req-line"; c.appendChild(a);
+    }
+    const drillHost = el("div"); drillHost.style.display = "none"; drillHost.style.marginTop = ".5rem";
+    c.appendChild(drillHost);
+    const openB = el("button", "btn-secondary"); openB.type = "button"; openB.textContent = "التفاصيل ▾"; openB.style.width = "100%";
+    openB.addEventListener("click", () => {
+      if (drillHost.style.display === "none") { drillHost.style.display = ""; openB.textContent = "إخفاء ▴"; drill(s, drillHost); }
+      else { drillHost.style.display = "none"; openB.textContent = "التفاصيل ▾"; }
+    });
+    c.appendChild(openB);
     body.appendChild(c);
   });
 }
@@ -6468,26 +6842,32 @@ async function pipeTabMatch(body, user) {
 async function pipeTabDaily(body, user) {
   body.innerHTML = "";
   const info = el("div", "info-box"); info.textContent = "جارٍ التحميل…"; body.appendChild(info);
-  let pending = [], exSite = [], exGrn = [], lpos = [];
+  let pending = [], exSite = [], exGrn = [], lpos = [], suggests = [];
   try {
-    [pending, exSite, exGrn, lpos] = await Promise.all([
+    [pending, exSite, exGrn, lpos, suggests] = await Promise.all([
       sbGet("capture_pending?order=ts&limit=400"),
       sbGet(`material_receipts?approval_status=${sbEq("استثناء")}&order=ts.desc&limit=100`),
       sbGet(`grns?approval_status=${sbEq("استثناء")}&select=*,commitments(number)&order=created_at.desc&limit=100`),
       sbGet(`commitments?ctype=eq.LPO&status=${sbEq("نشط")}&select=id,number,vendors(name)&order=created_at.desc`),
+      // pre-0020 the view is absent → no suggestions, batch still works
+      sbGet("capture_line_suggest?order=receipt_id,material_score.desc&limit=1000").catch(() => []),
     ]);
   } catch {
     body.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل البيانات — تحقق من الاتصال</div>`; return;
   }
   body.innerHTML = "";
+  // suggested PO lines per unmapped site capture (vendor + material match)
+  const suggestByReceipt = {};
+  suggests.forEach(s => { (suggestByReceipt[s.receipt_id] = suggestByReceipt[s.receipt_id] || []).push(s); });
 
-  const head = el("div", "prog-day-head"); head.textContent = "دفعة الاعتماد اليومية"; body.appendChild(head);
+  const head = el("div", "prog-day-head"); head.textContent = "دفعة الاعتماد اليومية — اربط ثم اعتمد"; body.appendChild(head);
   if (!pending.length) {
     const e = el("div", "info-box"); e.textContent = "لا التقاطات بانتظار الاعتماد — الدفعة فارغة ✅"; body.appendChild(e);
   } else {
     const card = el("div", "card");
-    const states = new Map(); // key kind:id → {mode:'ok'|'ex', note}
-    pending.forEach(p => states.set(`${p.kind}:${p.id}`, { mode: "ok", note: "", row: p }));
+    const states = new Map(); // key kind:id → {mode:'ok'|'ex', note, lineId, mapped}
+    pending.forEach(p => states.set(`${p.kind}:${p.id}`,
+      { mode: "ok", note: "", lineId: null, mapped: !!p.commitment_line_id || p.kind === "grn", row: p }));
 
     const summary = el("div", "info-box");
     function syncSummary() {
@@ -6499,6 +6879,7 @@ async function pipeTabDaily(body, user) {
 
     pending.forEach(p => {
       const key = `${p.kind}:${p.id}`;
+      const st = states.get(key);
       const row = el("div", "card req-card"); row.style.padding = ".6rem";
       const top = el("div", "prog-top");
       const no = el("div", "req-client");
@@ -6508,34 +6889,62 @@ async function pipeTabDaily(body, user) {
       top.appendChild(flag); row.appendChild(top);
       const l1 = el("div", "req-line");
       l1.textContent = `${p.description || "—"}` + (p.quantity ? ` · ${p.quantity} ${p.unit || ""}` : "") +
-        (p.amount ? ` · ${pipeKD(p.amount)}` : "");
+        (p.amount ? ` · ${pipeKD(p.amount)}` : "") + (p.vendor_name ? ` · ${p.vendor_name}` : "");
       row.appendChild(l1);
       const l2 = el("div", "req-line");
       l2.innerHTML = `${p.actor || "—"} · ${fmtKW(p.ts)} · ` +
         (p.commitment_no ? `على <b>${p.commitment_no}</b>` :
-          p.no_po_flag ? `<span style="color:var(--red)">🚩 بدون أمر شراء</span>`
-                       : `<span style="color:var(--amber)">غير مرتبط ببند</span>`);
+          `<span style="color:var(--amber)">غير مرتبط ببند — الربط شرط الاعتماد</span>`);
       row.appendChild(l2);
       if (p.photo_url) {
         const a = el("a"); a.href = p.photo_url; a.target = "_blank"; a.rel = "noopener";
         a.textContent = "📷 صورة السند"; a.className = "req-line"; row.appendChild(a);
       }
+
+      // Mapping step (site captures only): auto-suggested by vendor +
+      // material + open PO, confirmed by the accountant — never automatic.
+      let mapSel = null;
+      if (p.kind === "site" && !p.commitment_line_id) {
+        mapSel = el("select"); mapSel.style.marginTop = ".4rem";
+        const sug = suggestByReceipt[p.id] || [];
+        const d0 = el("option"); d0.value = "";
+        d0.textContent = sug.length ? "اربط ببند أمر شراء…" : "لا بنود مقترحة — لا مورد مطابق بأوامر نشطة";
+        mapSel.appendChild(d0);
+        sug.forEach(s => {
+          const o = el("option"); o.value = s.line_id;
+          o.textContent = `${s.commitment_no} · ${s.line_no}. ${s.item}` +
+            (s.open_qty != null ? ` (متبقٍ ${s.open_qty} ${s.unit || ""})` : "") +
+            (s.material_score >= 1 ? " ★" : "");
+          mapSel.appendChild(o);
+        });
+        mapSel.addEventListener("change", () => {
+          st.lineId = mapSel.value ? Number(mapSel.value) : null;
+          st.mapped = !!st.lineId;
+          st.mode = st.mapped ? "ok" : "ex";
+          paint();
+        });
+        row.appendChild(mapSel);
+      }
+
       const noteI = input("text", "سبب الاستثناء"); noteI.style.display = "none"; noteI.style.marginTop = ".4rem";
-      noteI.addEventListener("input", () => { states.get(key).note = noteI.value; });
+      noteI.addEventListener("input", () => { st.note = noteI.value; });
       row.appendChild(noteI);
       function paint() {
-        const s = states.get(key);
-        flag.textContent = s.mode === "ok" ? "✔ سيُعتمد" : "🚩 استثناء";
-        flag.style.color = s.mode === "ok" ? "var(--green)" : "var(--red)";
-        noteI.style.display = s.mode === "ex" ? "" : "none";
-        row.style.opacity = s.mode === "ex" ? ".85" : "1";
+        flag.textContent = st.mode === "ok" ? "✔ سيُعتمد" : "🚩 استثناء";
+        flag.style.color = st.mode === "ok" ? "var(--green)" : "var(--red)";
+        noteI.style.display = st.mode === "ex" ? "" : "none";
+        row.style.opacity = st.mode === "ex" ? ".85" : "1";
         syncSummary();
       }
       flag.addEventListener("click", () => {
-        const s = states.get(key); s.mode = s.mode === "ok" ? "ex" : "ok"; paint();
+        if (st.mode === "ok") { st.mode = "ex"; }
+        else if (st.mapped) { st.mode = "ok"; }
+        else { noteI.style.display = ""; noteI.placeholder = "غير مرتبط ببند — يبقى استثناءً حتى الربط"; }
+        paint();
       });
-      // "No PO" flags default to exception — they are never a free pass
-      if (p.no_po_flag) { states.get(key).mode = "ex"; }
+      // Unmapped site captures cannot be approved — they start (and stay)
+      // as exceptions until the accountant maps them.
+      if (!st.mapped) st.mode = "ex";
       paint();
       card.appendChild(row);
     });
@@ -6548,13 +6957,18 @@ async function pipeTabDaily(body, user) {
       const approve = [], except = [];
       states.forEach((s, k) => {
         const [kind, id] = k.split(":");
-        if (s.mode === "ok") approve.push({ kind, id: Number(id) });
+        if (s.mode === "ok") approve.push({ kind, id: Number(id), line_id: s.lineId || null });
         else except.push({ kind, id: Number(id), note: s.note || "" });
       });
       go.disabled = true; go.textContent = "جارٍ الاعتماد…";
       try {
         const r = await sbRpc("capture_batch_decide", { p_pin: user.pin, p_approve: approve, p_except: except });
-        if (r && r.success) { pipeTabDaily(body, user); return; }
+        if (r && r.success) {
+          if (r.skippedUnmapped) {
+            alert(`اعتُمد ${r.approved} · استثناءات ${r.excepted} · تخطّى ${r.skippedUnmapped} غير مرتبط`);
+          }
+          pipeTabDaily(body, user); return;
+        }
         err.textContent = r && r.error === "not an accountant" ? "حسابك بلا صلاحية محاسب" : "تعذّر الاعتماد";
         err.style.display = "block";
       } catch { err.textContent = "حدث خطأ — حاول مجدداً"; err.style.display = "block"; }

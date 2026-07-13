@@ -15,7 +15,7 @@ There is no test suite, linter, or package manager. For local testing serve stat
 
 ## Deploy workflow
 
-- **Frontend:** commit + push `index.html` to `main` → Vercel auto-deploys to `copri-asphalt-app.vercel.app`. Every non-`main` branch gets its own Vercel preview URL. This is the whole deploy — no more Apps Script paste.
+- **Frontend:** commit + push `index.html` to `main` → Vercel auto-deploys. Canonical production URL is **`app.copri.com`** (live 2026-07-13; `copri-asphalt-app.vercel.app` serves the same deploy). Every non-`main` branch gets its own Vercel preview URL (behind Vercel SSO since Deployment Protection was enabled). This is the whole deploy — no more Apps Script paste. Do NOT touch `copri.com`/`www` — the old company site lives on the apex, and MX/email records are Google Workspace.
 - **Database schema changes:** add a numbered file in `supabase/migrations/` and run it in the Supabase SQL editor (the user pastes it, same ritual as the old Code.gs paste). Keep migrations append-only.
 - **Keys:** `CONFIG.supabaseUrl` + `CONFIG.supabaseAnonKey` (publishable key — public by design, RLS enforces access). The secret key is never committed and never leaves the user's machine.
 

@@ -1,0 +1,107 @@
+{
+  "_comment": [
+    "Per-master configuration for tools/dedup/dedup.py (brief appendix: master-data dedup).",
+    "Columns are CANDIDATE lists — the first header found in the export wins; missing",
+    "columns are reported, never fatal. token_expansions only affect the internal match",
+    "key (the human always reviews the original names). Bands are token-set similarity",
+    "percentages: >= high_band clusters as a suggested merge, [low_band, high_band) lands",
+    "on the POSSIBLE MATCHES sheet for careful review."
+  ],
+  "vendors": {
+    "label": "vendor master",
+    "export_globs": ["Vendors*.xlsx", "Vendor*.xlsx", "Contacts*.xlsx"],
+    "columns": {
+      "id":      ["Contact ID", "ContactID", "Contact Id", "ID"],
+      "name":    ["CompanyName", "Company Name", "Company name", "Name", "Vendor Name"],
+      "account": ["AR_AcccountCode", "AR_AccountCode", "AR Account Code", "AccountCode"],
+      "phone":   ["Phone", "Phone No", "PhoneNumber", "Mobile", "Tel", "Telephone"],
+      "email":   ["Email", "E-mail", "EmailAddress", "Email Address"],
+      "cr":      ["CR", "CR No", "CR Number", "Commercial Registration", "CommercialRegistrationNo"]
+    },
+    "hard_evidence": ["phone", "email", "cr", "account"],
+    "evidence_globs": ["Supplier Invoice (AP)*.xlsx", "Supplier Invoice*.xlsx"],
+    "evidence_name_columns": ["Vendor", "Supplier"],
+    "legal_suffix_tokens": [
+      "co", "company", "comp", "corp", "corporation", "inc", "ltd", "limited",
+      "est", "establishment", "wll", "w", "l", "ll", "kscc", "ksc", "kscp",
+      "spc", "bsc", "llc", "gmbh", "sal", "plc",
+      "شركه", "الشركه", "مؤسسه", "المؤسسه", "ذ", "م"
+    ],
+    "token_expansions": {
+      "gen": "general", "genl": "general",
+      "trad": "trading", "trdg": "trading",
+      "cont": "contracting", "contr": "contracting",
+      "const": "construction", "constr": "construction",
+      "intl": "international",
+      "equip": "equipment", "equips": "equipment",
+      "mfg": "manufacturing",
+      "bldg": "building", "bldgs": "buildings",
+      "ind": "industries", "inds": "industries",
+      "petrolium": "petroleum", "comany": "company"
+    },
+    "test_patterns": [
+      "\\btest\\b", "\\btset\\b", "\\btsetvendor\\b", "\\bdummy\\b", "\\bsample\\b",
+      "x{4,}", "customertest", "system administrator", "\\bimplementer\\b",
+      "\\basdf", "\\bqwer", "\\bzxc"
+    ],
+    "non_vendor_name_dash_prefix": true,
+    "non_vendor_exact": [
+      "asphalt plant", "main office", "material services", "project division",
+      "garage division", "international", "milling division", "steel factory",
+      "archive projects", "subcontractors", "section 600", "construction",
+      "maintenance"
+    ],
+    "non_vendor_substrings": [
+      "copri", "payable", "provision", "transitory", "clearing account",
+      "deposits receivable", "cash till", "principal account", "suspense",
+      "doubtful debts", "salaries outstanding", "accrued"
+    ],
+    "non_vendor_regex": ["^j ?\\d{3,4}\\b"],
+    "foreign_demo_substrings": ["demo", "architec", "interior design", "real estate development"],
+    "high_band": 92.0,
+    "low_band": 80.0,
+    "review_workbook": "dedup-review-vendors.xlsx",
+    "apply_sql": "dedup-apply-vendors.sql",
+    "quarantine_name": "ZZ — QUARANTINE — excluded ERP contacts"
+  },
+  "items": {
+    "label": "materials/item master",
+    "export_globs": ["Item Master*.xlsx", "Items*.xlsx", "Item*.xlsx", "Materials Master*.xlsx", "Stock Item*.xlsx"],
+    "columns": {
+      "id":    ["ItemID", "Item ID", "Item Code", "ItemCode", "ID"],
+      "name":  ["Description", "Item Name", "ItemName", "Name"],
+      "uom":   ["UOM", "Unit", "Current UOM", "Unit of Measure", "UnitOfMeasure"],
+      "group": ["Group", "Category", "Item Group", "ItemGroup"]
+    },
+    "hard_evidence": [],
+    "evidence_globs": [],
+    "evidence_name_columns": [],
+    "legal_suffix_tokens": [],
+    "token_expansions": {"agg": "aggregate", "aggr": "aggregate"},
+    "uom_equivalence": {
+      "TON": ["ton", "tons", "tonne", "tonnes", "mt", "m t", "طن"],
+      "PCS": ["pcs", "pc", "piece", "pieces", "nos", "no", "each", "ea", "عدد", "قطعه"],
+      "LTR": ["ltr", "lt", "l", "litre", "liter", "لتر"],
+      "M3":  ["m3", "cbm", "cum", "cubic meter", "م3"],
+      "M2":  ["m2", "sqm", "square meter", "م2"],
+      "KG":  ["kg", "kgs", "kilogram", "كجم", "كغم"],
+      "TRIP": ["trip", "trips", "نقله"]
+    },
+    "dimension_patterns": [
+      "(\\d+)\\s*/\\s*(\\d+)",
+      "(\\d+)\\s*-\\s*(\\d+)\\s*(?:mm)?",
+      "(\\d+)\\s*to\\s*(\\d+)\\s*(?:mm)?"
+    ],
+    "test_patterns": ["\\btest\\b", "\\bdummy\\b", "x{4,}"],
+    "non_vendor_name_dash_prefix": false,
+    "non_vendor_exact": [],
+    "non_vendor_substrings": [],
+    "non_vendor_regex": [],
+    "foreign_demo_substrings": [],
+    "high_band": 92.0,
+    "low_band": 80.0,
+    "review_workbook": "dedup-review-items.xlsx",
+    "apply_sql": "dedup-apply-items.sql",
+    "quarantine_name": "ZZ — QUARANTINE — excluded ERP items"
+  }
+}

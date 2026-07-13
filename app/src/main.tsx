@@ -1,4 +1,4 @@
-import { StrictMode } from "react"
+import { lazy, StrictMode, Suspense } from "react"
 import { createRoot } from "react-dom/client"
 import { createBrowserRouter, Navigate, RouterProvider } from "react-router-dom"
 import { Toaster } from "@/components/ui/sonner"
@@ -30,8 +30,22 @@ function Guard({ children }: { children: React.ReactNode }) {
   return getSession() ? <>{children}</> : <Navigate to="/login" replace />
 }
 
+/* Field/side portals (wave 3): separate auth realms outside the office
+   Guard, lazy-loaded so office users never download them. */
+const CapturePortal = lazy(() => import("@/screens/capture/CapturePortal"))
+const DispatchPortal = lazy(() => import("@/screens/dispatch/DispatchPortal"))
+const MillingPortal = lazy(() => import("@/screens/milling/MillingPortal"))
+const BoardsPortal = lazy(() => import("@/screens/boards/BoardsPortal"))
+const lazyEl = (C: React.ComponentType) => (
+  <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">…</div>}><C /></Suspense>
+)
+
 const router = createBrowserRouter([
   { path: "/login", element: <Login /> },
+  { path: "/capture/*", element: lazyEl(CapturePortal) },
+  { path: "/dispatch/*", element: lazyEl(DispatchPortal) },
+  { path: "/milling/*", element: lazyEl(MillingPortal) },
+  { path: "/boards/*", element: lazyEl(BoardsPortal) },
   {
     path: "/",
     element: <Guard><AppShell /></Guard>,

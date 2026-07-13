@@ -1,0 +1,29 @@
+{
+  "_comment": "Filename → department mapping for the SpectroNova per-department exports (the filenames do NOT identify the department). Derived 2026-07-13 by chaining PO → Delivery Note → Stock Receipt → JV GL-code prefixes; evidence in 'Accounting raw data/output/raw-data-inventory.md'. FOUAD: review each row, then set confirmed=true — the importer refuses to emit SQL until then.",
+  "confirmed": false,
+  "export_date": "2026-07-13",
+  "po_files": {
+    "Purchase Order (PO).xlsx":     { "department": "Project 363 — 30&40 Expressway", "cost_center": "363" },
+    "Purchase Order (PO) (1).xlsx": { "department": "Project 364 — Hawalli Governorate", "cost_center": "364" },
+    "Purchase Order (PO) (2).xlsx": { "department": "Main Office", "cost_center": "5105" },
+    "Purchase Order (PO) (3).xlsx": { "department": "Asphalt Plant Amghara", "cost_center": "5205" },
+    "Purchase Order (PO) (4).xlsx": { "department": "Garage", "cost_center": "5305" },
+    "Purchase Order (PO) (5).xlsx": { "department": "Steel Factory", "cost_center": "5405" },
+    "Purchase Order (PO) (6).xlsx": { "department": "Milling", "cost_center": "5505" }
+  },
+  "dn_files": {
+    "Delivery Note (6).xlsx": "363",
+    "Delivery Note (5).xlsx": "364",
+    "Delivery Note (3).xlsx": "5105",
+    "Delivery Note (4).xlsx": "5205",
+    "Delivery Note (2).xlsx": "5305",
+    "Delivery Note (1).xlsx": "5405",
+    "Delivery Note.xlsx":     "5505"
+  },
+  "vendor_aliases": {
+    "_comment": "SpectroNova supplier names → canonical vendors.name (internal profit centers already seeded in 0013). Extend as the report flags unmatched internals.",
+    "5205-Asphalt Plant Amghara": "كوبري — مصنع الأسفلت",
+    "5505-Milling": "كوبري — القشط",
+    "5305-Garage": "كوبري — الكراج"
+  }
+}

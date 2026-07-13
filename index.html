@@ -1136,15 +1136,26 @@ function fieldRow(label, value) {
 // Every helper returns parsed JSON or throws; readers that must never
 // break the UI catch at the call site (same contract as before).
 // ════════════════════════════════════════════════════════
+// Supabase Auth session (pipeline portal only — 0017). When a user is
+// logged in via email+password the JWT rides every request instead of
+// the anon key; everywhere else PIPE_JWT stays empty and nothing changes.
+const PIPE_JWT = { access: "", refresh: "", exp: 0 };
 function sbHeaders() {
   return {
     apikey: CONFIG.supabaseAnonKey,
-    Authorization: `Bearer ${CONFIG.supabaseAnonKey}`,
+    Authorization: `Bearer ${PIPE_JWT.access || CONFIG.supabaseAnonKey}`,
     "Content-Type": "application/json",
   };
 }
+// Refresh the JWT just before expiry; no-op for anon/PIN sessions.
+async function pipeEnsureAuth() {
+  if (!PIPE_JWT.refresh) return;
+  if (Math.floor(Date.now() / 1000) < PIPE_JWT.exp - 60) return;
+  await pipeAuthRefresh();
+}
 // GET /rest/v1/<path> (table query or RPC). Throws on HTTP error.
 async function sbGet(path, timeoutMs) {
+  await pipeEnsureAuth();
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs || 15000);
   try {
@@ -1156,6 +1167,7 @@ async function sbGet(path, timeoutMs) {
 // INSERT rows. Returns { success, duplicate } — duplicate = unique-key hit,
 // the atomic replacement for the old read-then-append duplicate guards.
 async function sbInsert(table, rows) {
+  await pipeEnsureAuth();
   const res = await fetch(`${CONFIG.supabaseUrl}/rest/v1/${table}`, {
     method: "POST",
     headers: { ...sbHeaders(), Prefer: "return=minimal" },
@@ -1171,6 +1183,7 @@ async function sbInsert(table, rows) {
 // server-side — the public key has no direct row-update rights on those
 // tables. Returns the function's json result.
 async function sbRpc(name, args) {
+  await pipeEnsureAuth();
   const res = await fetch(`${CONFIG.supabaseUrl}/rest/v1/rpc/${name}`, {
     method: "POST", headers: sbHeaders(), body: JSON.stringify(args || {}),
   });
@@ -3656,14 +3669,19 @@ async function matGet(params) {
 // receipt_id is the duplicate guard). A row is never written without its photo.
 async function dbSubmitMaterialReceipt(p) {
   const photoUrl = await sbUploadPhoto(`${p.receiptId}.jpg`, p.photoData);
-  return sbInsert("material_receipts", {
+  const row = {
     receipt_id: p.receiptId, receiver: p.receiverName || "", project: p.project || "",
     site: p.site || "", work_order: p.workOrder || "", block: p.block || "",
     street: p.street || "", category: p.category || "", material: p.material || "",
     quantity: parseFloat(p.quantity) || null, unit: p.unit || "",
     supplier: p.supplier || "", subcontractor: p.subcontractor || "",
     photo_url: photoUrl, remarks: p.remarks || "",
-  });
+  };
+  // 0018 columns ride along only when used, so a frontend deploy ahead
+  // of the migration cannot break the live receipt flow.
+  if (p.commitmentLineId) row.commitment_line_id = p.commitmentLineId;
+  if (p.noPoFlag) row.no_po_flag = true;
+  return sbInsert("material_receipts", row);
 }
 // Client-side unique id — the no-cors POST can't read a server-assigned id.
 function matNewReceiptId() {
@@ -3910,6 +3928,43 @@ function renderMaterialReceiptForm(name, onDone) {
   const { group: gSub, input: subInput } = fieldGroup("المقاول من الباطن", select(CONFIG.materialSubcontractors || [], "اختر المقاول"), true);
   card.appendChild(gSub);
 
+  // ── PO-line link (0018): every delivery note references a PO line.
+  // Optional until the enforce_capture_commitment flag flips for
+  // materials; "no PO" opens an accountant exception, not a free pass.
+  const poSel = el("select");
+  const poGroup = fieldGroup("أمر الشراء (LPO)", poSel, false, "اربط السند بأمر الشراء الذي وردت عليه المواد").group;
+  const poLineSel = el("select");
+  const poLineGroup = fieldGroup("بند أمر الشراء", poLineSel, false).group;
+  poLineGroup.style.display = "none";
+  const noPoChk = el("input"); noPoChk.type = "checkbox"; noPoChk.id = "mat-nopo";
+  const noPoLbl = el("label"); noPoLbl.htmlFor = "mat-nopo";
+  noPoLbl.style.cssText = "display:flex;gap:.5rem;align-items:center;cursor:pointer;margin:.3rem 0 .6rem";
+  noPoLbl.appendChild(noPoChk);
+  noPoLbl.appendChild(document.createTextNode("🚩 لا يوجد أمر شراء لهذه المواد (يُفتح استثناء للمحاسب)"));
+  card.appendChild(poGroup); card.appendChild(poLineGroup); card.appendChild(noPoLbl);
+  (async () => {
+    try {
+      const lpos = await sbGet(`commitments?ctype=eq.LPO&status=${sbEq("نشط")}&select=id,number,vendors(name)&order=created_at.desc&limit=200`);
+      poSel.innerHTML = "";
+      const d = el("option"); d.value = ""; d.textContent = lpos.length ? "اختر أمر الشراء (اختياري)" : "لا أوامر شراء نشطة"; poSel.appendChild(d);
+      lpos.forEach(l => { const o = el("option"); o.value = l.id; o.textContent = `${l.number} · ${(l.vendors && l.vendors.name) || ""}`; poSel.appendChild(o); });
+    } catch { poGroup.style.display = "none"; }
+  })();
+  poSel.addEventListener("change", async () => {
+    poLineSel.innerHTML = ""; poLineGroup.style.display = "none";
+    if (poSel.value) noPoChk.checked = false;
+    if (!poSel.value) return;
+    try {
+      const ls = await sbGet(`commitment_lines?commitment_id=eq.${poSel.value}&order=line_no`);
+      const d = el("option"); d.value = ""; d.textContent = ls.length ? "اختر البند" : "لا بنود على هذا الأمر"; poLineSel.appendChild(d);
+      ls.forEach(l => { const o = el("option"); o.value = l.id; o.textContent = `${l.line_no}. ${l.item}` + (l.qty ? ` (${l.qty} ${l.unit})` : ""); poLineSel.appendChild(o); });
+      poLineGroup.style.display = "";
+    } catch {}
+  });
+  noPoChk.addEventListener("change", () => {
+    if (noPoChk.checked) { poSel.value = ""; poLineSel.innerHTML = ""; poLineGroup.style.display = "none"; }
+  });
+
   // Photo of the paper receipt (required). capture=environment opens the camera on mobile.
   const { group: gPhoto, input: photoInput } = fieldGroup("صورة الإيصال الورقي", input("file"), true, "التقط أو أرفق صورة سند الاستلام");
   photoInput.accept = "image/*"; photoInput.setAttribute("capture", "environment");
@@ -3948,6 +4003,8 @@ function renderMaterialReceiptForm(name, onDone) {
       quantity: qtyInput.value.trim(), unit: unitInput.value,
       supplier: supInput.value, subcontractor: subInput.value,
       receiverName: name, remarks: remInput.value.trim(),
+      commitmentLineId: poLineSel.value ? Number(poLineSel.value) : null,
+      noPoFlag: noPoChk.checked,
     };
     const required = ["project", "site", "category", "material", "quantity", "supplier", "subcontractor"];
     if (required.some(k => !data[k])) { errDiv.textContent = "يرجى تعبئة جميع الحقول المطلوبة"; errDiv.style.display = "block"; return; }
@@ -5475,6 +5532,57 @@ const RF_TYPES = [
 function getPipeSession()  { try { return JSON.parse(sessionStorage.getItem("pipe_session") || "null"); } catch { return null; } }
 function setPipeSession(u) { sessionStorage.setItem("pipe_session", JSON.stringify(u)); }
 
+// ── Supabase Auth (0017): email+password login over plain REST ──
+// Tokens live in PIPE_JWT (module-global; sbHeaders sends them) and are
+// persisted inside pipe_session so a reload keeps the login. PIN login
+// stays as the staged-cutover fallback until auth_required flips.
+function pipeSetTokens(j) {
+  PIPE_JWT.access  = j.access_token || "";
+  PIPE_JWT.refresh = j.refresh_token || "";
+  PIPE_JWT.exp     = Math.floor(Date.now() / 1000) + (j.expires_in || 3600);
+}
+function pipeRestoreTokens(u) {
+  if (u && u.auth) { PIPE_JWT.access = u.auth.access; PIPE_JWT.refresh = u.auth.refresh; PIPE_JWT.exp = u.auth.exp; }
+}
+function pipeSaveTokens(u) {
+  u.auth = { access: PIPE_JWT.access, refresh: PIPE_JWT.refresh, exp: PIPE_JWT.exp };
+  setPipeSession(u);
+}
+async function pipeAuthLogin(email, password) {
+  const res = await fetch(`${CONFIG.supabaseUrl}/auth/v1/token?grant_type=password`, {
+    method: "POST",
+    headers: { apikey: CONFIG.supabaseAnonKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error(j.error_description || j.msg || `auth ${res.status}`); e.badCreds = res.status === 400; throw e; }
+  pipeSetTokens(j);
+  return j;
+}
+async function pipeAuthRefresh() {
+  if (!PIPE_JWT.refresh) return false;
+  try {
+    const res = await fetch(`${CONFIG.supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+      method: "POST",
+      headers: { apikey: CONFIG.supabaseAnonKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: PIPE_JWT.refresh }),
+    });
+    if (!res.ok) { PIPE_JWT.access = ""; PIPE_JWT.refresh = ""; PIPE_JWT.exp = 0; return false; }
+    pipeSetTokens(await res.json());
+    const u = getPipeSession(); if (u && u.auth) pipeSaveTokens(u);
+    return true;
+  } catch { return false; }
+}
+function pipeLogout() {
+  PIPE_JWT.access = ""; PIPE_JWT.refresh = ""; PIPE_JWT.exp = 0;
+  sessionStorage.removeItem("pipe_session");
+  location.href = location.href.split("?")[0] + "?rf=1";
+}
+function pipeUserFromProfile(r, pin) {
+  return { name: r.name, pin: pin || "", requester: !!r.requester, approver: !!r.approver,
+           accountant: !!r.accountant, admin: !!r.admin, costCenterId: r.costCenterId || null };
+}
+
 function pipeStatusChip(status) {
   const map = { "قيد المراجعة": ["rgba(230,81,0,.12)", "var(--amber)"],
                 "معتمد": ["rgba(0,166,81,.12)", "var(--green)"],
@@ -5518,42 +5626,119 @@ async function dbPipeRegister() {
   return sbGet("commitments?select=*,cost_centers(code,name_ar,name_en),vendors(name)&order=created_at.desc&limit=200");
 }
 
-// ── Login: PIN only, validated server-side ──
+// ── Login: email+password (Supabase Auth) with legacy PIN fallback ──
+// Email path: /auth/v1 token → pipeline_login_jwt profile; a fresh auth
+// account is linked once to its pipeline_users row by entering the old
+// PIN (pipeline_user_link_self). PIN path: pipeline_user_check — refused
+// server-side once the auth_required setting flips.
 function renderPipePINScreen(onSuccess) {
   const main = renderShell("بوابة الالتزامات"); main.innerHTML = "";
   const screen = el("div", "pin-screen");
   const logo = el("div"); logo.innerHTML = `<svg width="48" height="48" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#00A651"/><path d="M6 22 L16 10 L26 22" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="4" y="22" width="24" height="3" rx="1.5" fill="white"/></svg>`;
   screen.appendChild(logo);
   const h = el("h2"); h.textContent = "بوابة الالتزامات"; screen.appendChild(h);
-  const p = el("p"); p.textContent = "أدخل الرمز السري للمتابعة"; screen.appendChild(p);
-  const pinWrap = el("div", "field-group");
-  const pinLabel = el("label"); pinLabel.innerHTML = 'الرمز السري <span class="req">*</span>';
-  const pinInput = input("password", "••••", "numeric"); pinInput.className += " pin-input"; pinInput.maxLength = 6;
-  pinWrap.appendChild(pinLabel); pinWrap.appendChild(pinInput); screen.appendChild(pinWrap);
-  const errDiv = el("div", "error-msg"); errDiv.style.display = "none"; screen.appendChild(errDiv);
+  const p = el("p"); p.textContent = "سجّل الدخول للمتابعة"; screen.appendChild(p);
+
+  const errDiv = el("div", "error-msg"); errDiv.style.display = "none";
+  const fail = (msg) => { errDiv.textContent = msg; errDiv.style.display = "block"; };
+
+  // Email + password (primary)
+  const emailWrap = el("div", "field-group");
+  const emailLabel = el("label"); emailLabel.innerHTML = 'البريد الإلكتروني <span class="req">*</span>';
+  const emailInput = input("email", "name@copri.com"); emailInput.autocomplete = "username";
+  emailWrap.appendChild(emailLabel); emailWrap.appendChild(emailInput); screen.appendChild(emailWrap);
+  const passWrap = el("div", "field-group");
+  const passLabel = el("label"); passLabel.innerHTML = 'كلمة المرور <span class="req">*</span>';
+  const passInput = input("password", "••••••••"); passInput.autocomplete = "current-password";
+  passWrap.appendChild(passLabel); passWrap.appendChild(passInput); screen.appendChild(passWrap);
+  screen.appendChild(errDiv);
   const btn = el("button", "btn-primary"); btn.type = "button"; btn.textContent = "دخول"; btn.style.width = "100%"; screen.appendChild(btn);
+
+  // Legacy PIN (collapsed; the server refuses it once auth_required=true)
+  const pinToggle = el("button", "btn-secondary"); pinToggle.type = "button";
+  pinToggle.textContent = "الدخول بالرمز السري (مؤقت)"; pinToggle.style.cssText = "width:100%;margin-top:.6rem";
+  const pinArea = el("div"); pinArea.style.display = "none";
+  const pinWrap = el("div", "field-group");
+  const pinLabel = el("label"); pinLabel.textContent = "الرمز السري";
+  const pinInput = input("password", "••••", "numeric"); pinInput.className += " pin-input"; pinInput.maxLength = 6;
+  pinWrap.appendChild(pinLabel); pinWrap.appendChild(pinInput); pinArea.appendChild(pinWrap);
+  const pinBtn = el("button", "btn-primary"); pinBtn.type = "button"; pinBtn.textContent = "دخول بالرمز"; pinBtn.style.width = "100%";
+  pinArea.appendChild(pinBtn);
+  pinToggle.addEventListener("click", () => { pinArea.style.display = pinArea.style.display === "none" ? "" : "none"; });
+  screen.appendChild(pinToggle); screen.appendChild(pinArea);
   main.appendChild(screen);
+
+  // One-time link: fresh auth account proves ownership of its pipeline
+  // user row with the old PIN.
+  function renderLinkStep() {
+    screen.innerHTML = "";
+    const h2 = el("h2"); h2.textContent = "ربط الحساب"; screen.appendChild(h2);
+    const p2 = el("p"); p2.textContent = "أول دخول بهذا البريد — أدخل رمزك السري القديم مرة واحدة لربط الحساب باسمك"; screen.appendChild(p2);
+    const w = el("div", "field-group");
+    const l = el("label"); l.innerHTML = 'الرمز السري <span class="req">*</span>';
+    const i = input("password", "••••", "numeric"); i.className += " pin-input"; i.maxLength = 6;
+    w.appendChild(l); w.appendChild(i); screen.appendChild(w);
+    screen.appendChild(errDiv); errDiv.style.display = "none";
+    const b = el("button", "btn-primary"); b.type = "button"; b.textContent = "ربط ودخول"; b.style.width = "100%"; screen.appendChild(b);
+    b.addEventListener("click", async () => {
+      const pin = i.value.trim();
+      if (!pin) return fail("أدخل الرمز السري");
+      b.disabled = true; b.textContent = "جارٍ الربط…";
+      try {
+        const r = await sbRpc("pipeline_user_link_self", { p_pin: pin });
+        if (r && r.success) {
+          const u = pipeUserFromProfile(r, pin); pipeSaveTokens(u); onSuccess(u); return;
+        }
+        fail(r && r.error === "user already linked" ? "هذا المستخدم مرتبط بحساب آخر — راجع المسؤول"
+           : r && r.error === "account already linked" ? "هذا الحساب مرتبط مسبقاً — راجع المسؤول"
+           : "رمز سري خاطئ");
+      } catch { fail("تعذّر الاتصال — حاول مجدداً"); }
+      b.disabled = false; b.textContent = "ربط ودخول";
+    });
+    i.addEventListener("keydown", e => { if (e.key === "Enter") b.click(); });
+  }
+
   btn.addEventListener("click", async () => {
-    const pin = pinInput.value.trim();
-    if (!pin) { errDiv.textContent = "يرجى إدخال الرمز السري"; errDiv.style.display = "block"; return; }
-    btn.disabled = true; btn.textContent = "جارٍ التحقق…";
+    errDiv.style.display = "none";
+    const email = emailInput.value.trim(), pass = passInput.value;
+    if (!email || !pass) return fail("أدخل البريد وكلمة المرور");
+    btn.disabled = true; btn.textContent = "جارٍ الدخول…";
     try {
-      const r = await sbRpc("pipeline_user_check", { p_pin: pin });
+      await pipeAuthLogin(email, pass);
+      const r = await sbRpc("pipeline_login_jwt", {});
       if (r && r.success) {
-        const u = { name: r.name, pin, requester: !!r.requester, approver: !!r.approver, costCenterId: r.costCenterId || null };
-        setPipeSession(u); onSuccess(u); return;
+        const u = pipeUserFromProfile(r, ""); pipeSaveTokens(u); onSuccess(u); return;
       }
-      errDiv.textContent = "رمز سري خاطئ"; errDiv.style.display = "block"; pinInput.value = "";
-    } catch {
-      errDiv.textContent = "تعذّر الاتصال — حاول مجدداً"; errDiv.style.display = "block";
+      if (r && r.notLinked) { renderLinkStep(); return; }
+      fail("الحساب غير مفعّل في البوابة — راجع المسؤول");
+    } catch (e) {
+      fail(e && e.badCreds ? "بريد أو كلمة مرور غير صحيحة" : "تعذّر الاتصال — حاول مجدداً");
     }
     btn.disabled = false; btn.textContent = "دخول";
   });
-  pinInput.addEventListener("keydown", e => { if (e.key === "Enter") btn.click(); });
+  passInput.addEventListener("keydown", e => { if (e.key === "Enter") btn.click(); });
+
+  pinBtn.addEventListener("click", async () => {
+    errDiv.style.display = "none";
+    const pin = pinInput.value.trim();
+    if (!pin) return fail("يرجى إدخال الرمز السري");
+    pinBtn.disabled = true; pinBtn.textContent = "جارٍ التحقق…";
+    try {
+      const r = await sbRpc("pipeline_user_check", { p_pin: pin });
+      if (r && r.success) {
+        const u = pipeUserFromProfile(r, pin); setPipeSession(u); onSuccess(u); return;
+      }
+      fail(r && r.authRequired ? "الدخول بالرمز أُوقف — استخدم البريد وكلمة المرور" : "رمز سري خاطئ");
+      pinInput.value = "";
+    } catch { fail("تعذّر الاتصال — حاول مجدداً"); }
+    pinBtn.disabled = false; pinBtn.textContent = "دخول بالرمز";
+  });
+  pinInput.addEventListener("keydown", e => { if (e.key === "Enter") pinBtn.click(); });
 }
 
 // ── Portal shell: header + capability-based tabs ──
 function renderPipeHome(user) {
+  pipeRestoreTokens(user);
   setPipeSession(user);
   const main = renderShell("بوابة الالتزامات"); main.innerHTML = "";
 
@@ -5561,7 +5746,7 @@ function renderPipeHome(user) {
   const hi = el("div");
   hi.innerHTML = `<div class="who">${user.name}</div><div class="sub">الطلبات والالتزامات — RF / WO / LPO / CON</div>`;
   const out = el("button", "btn-secondary"); out.type = "button"; out.textContent = "خروج"; out.style.width = "auto";
-  out.addEventListener("click", () => { sessionStorage.removeItem("pipe_session"); location.href = location.href.split("?")[0] + "?rf=1"; });
+  out.addEventListener("click", pipeLogout);
   head.appendChild(hi); head.appendChild(out); main.appendChild(head);
 
   const tabs = el("div", "portal-tabs");
@@ -5569,9 +5754,12 @@ function renderPipeHome(user) {
   const defs = [];
   if (user.requester) defs.push(["➕ طلب جديد", () => pipeTabNewRequest(body, user)]);
   defs.push(["📋 طلباتي", () => pipeTabMyRequests(body, user)]);
+  if (user.requester) defs.push(["📄 أمر شراء يدوي", () => pipeTabManualPO(body, user)]);
   if (user.requester) defs.push(["📦 استلام GRN", () => pipeTabGRN(body, user)]);
+  if (user.accountant) defs.push(["☑️ الاعتماد اليومي", () => pipeTabDaily(body, user)]);
   if (user.approver) defs.push(["✅ قائمة الاعتماد", () => pipeTabQueue(body, user)]);
   defs.push(["📚 سجل الالتزامات", () => pipeTabRegister(body)]);
+  defs.push(["🧾 المطابقة", () => pipeTabMatch(body, user)]);
   defs.push(["☂️ المظلات", () => pipeTabBlankets(body)]);
   if (user.approver) defs.push(["🔁 تحميل داخلي", () => pipeTabRecharge(body, user)]);
   if (user.approver) defs.push(["📤 التصدير", () => pipeTabExport(body, user)]);
@@ -5921,6 +6109,26 @@ async function pipeTabGRN(body, user) {
       cmtSel.appendChild(o);
     });
     card.appendChild(fieldGroup("أمر الشراء (LPO)", cmtSel, true).group);
+    // Optional PO-line link (0018): received qty accumulates on the line
+    const lineSel = el("select");
+    const lineGroup = fieldGroup("بند أمر الشراء", lineSel, false, "الاستلام يتراكم على البند في المطابقة").group;
+    lineGroup.style.display = "none";
+    card.appendChild(lineGroup);
+    cmtSel.addEventListener("change", async () => {
+      lineSel.innerHTML = ""; lineGroup.style.display = "none";
+      if (!cmtSel.value) return;
+      try {
+        const ls = await sbGet(`commitment_lines?commitment_id=eq.${cmtSel.value}&order=line_no`);
+        if (!ls.length) return;
+        const d = el("option"); d.value = ""; d.textContent = "بدون بند محدد"; lineSel.appendChild(d);
+        ls.forEach(l => {
+          const o = el("option"); o.value = l.id;
+          o.textContent = `${l.line_no}. ${l.item}` + (l.qty ? ` (${l.qty} ${l.unit})` : "");
+          lineSel.appendChild(o);
+        });
+        lineGroup.style.display = "";
+      } catch {}
+    });
     const descI = textarea("ما الذي تم استلامه", 2);
     card.appendChild(fieldGroup("الوصف", descI, true).group);
     const qtyI = input("number", "الكمية", "decimal"); qtyI.step = "0.01";
@@ -5957,6 +6165,7 @@ async function pipeTabGRN(body, user) {
           p_description: descI.value.trim(),
           p_quantity: qtyI.value ? parseFloat(qtyI.value) : null,
           p_unit: unitI.value.trim(), p_amount: amt,
+          p_line_id: lineSel.value ? Number(lineSel.value) : null,
           p_invoice_no: invI.value.trim(), p_invoice_date: invDateI.value || null,
           p_force: !!force, p_note: noteI.value.trim(),
         });
@@ -6005,6 +6214,402 @@ async function pipeTabGRN(body, user) {
       const l3 = el("div", "req-line");
       l3.textContent = `استلمه ${g.received_by || "—"} · ${fmtKW(g.created_at)}`;
       c.appendChild(l3);
+      body.appendChild(c);
+    });
+  }
+}
+
+// ── Tab: manual PO entry (0018) — the always-open intake door.
+// Mirrors the paper RF-LPO→PO flow for POs that already exist outside
+// the request portal; Slice 4 restricts this to exceptions later.
+async function pipeTabManualPO(body, user) {
+  body.innerHTML = "";
+  const info = el("div", "info-box"); info.textContent = "جارٍ التحميل…"; body.appendChild(info);
+  let m;
+  try { m = await dbPipeMasters(); } catch {
+    body.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل البيانات — تحقق من الاتصال</div>`; return;
+  }
+  body.innerHTML = "";
+  const card = el("div", "card");
+  card.appendChild(sectionTitle("تسجيل أمر شراء قائم"));
+  const hint = el("div", "info-box");
+  hint.textContent = "لأمر صادر فعلاً خارج البوابة (الدورة الورقية) — التسجيل هنا يُدخله السجل والمطابقة مباشرة.";
+  card.appendChild(hint);
+
+  const clientRef = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+
+  const typeSel = el("select");
+  RF_TYPES.forEach(([v, label]) => { const o = el("option"); o.value = v; o.textContent = label.replace("RF-", ""); typeSel.appendChild(o); });
+  typeSel.value = "LPO";
+  card.appendChild(fieldGroup("نوع الالتزام", typeSel, true).group);
+
+  const ccSel = el("select");
+  const ccDef = el("option"); ccDef.value = ""; ccDef.textContent = "اختر مركز التكلفة"; ccSel.appendChild(ccDef);
+  m.ccs.forEach(cc => { const o = el("option"); o.value = cc.id; o.textContent = pipeCcLabel(cc); ccSel.appendChild(o); });
+  if (user.costCenterId) ccSel.value = String(user.costCenterId);
+  card.appendChild(fieldGroup("مركز التكلفة", ccSel, true).group);
+
+  const vSel = el("select");
+  const vDef = el("option"); vDef.value = ""; vDef.textContent = "اختر من القائمة الموحدة"; vSel.appendChild(vDef);
+  m.vendors.forEach(v => { const o = el("option"); o.value = v.id; o.textContent = v.name; vSel.appendChild(o); });
+  card.appendChild(fieldGroup("المورد / المقاول", vSel, true).group);
+
+  const descI = textarea("موضوع أمر الشراء", 2);
+  card.appendChild(fieldGroup("الوصف", descI, true).group);
+
+  // Lines editor — item / qty / unit / rate rows; amount = qty × rate
+  card.appendChild(sectionTitle("البنود (اختياري)"));
+  const linesWrap = el("div");
+  card.appendChild(linesWrap);
+  const totalBox = el("div", "info-box"); totalBox.style.display = "none";
+  const lines = [];
+  function lineTotal(ln) {
+    const q = parseFloat(ln.qty.value), r = parseFloat(ln.rate.value);
+    return (q > 0 && r >= 0) ? q * r : 0;
+  }
+  function syncTotal() {
+    const t = lines.reduce((s, ln) => s + lineTotal(ln), 0);
+    totalBox.style.display = t > 0 ? "" : "none";
+    totalBox.textContent = `مجموع البنود: ${pipeKD(t)}`;
+    if (t > 0 && !valI.dataset.touched) valI.value = t.toFixed(3);
+  }
+  function addLine() {
+    const row = el("div", "card"); row.style.cssText = "padding:.6rem;margin:.4rem 0";
+    const item = input("text", "البند / المادة");
+    const qty = input("number", "الكمية", "decimal"); qty.step = "0.01";
+    const unit = input("text", "الوحدة");
+    const rate = input("number", "السعر", "decimal"); rate.step = "0.001";
+    const grid = el("div"); grid.style.cssText = "display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:.4rem;align-items:center";
+    const rm = el("button", "btn-secondary"); rm.type = "button"; rm.textContent = "✕"; rm.style.width = "auto";
+    grid.appendChild(item); grid.appendChild(qty); grid.appendChild(unit); grid.appendChild(rate); grid.appendChild(rm);
+    row.appendChild(grid);
+    const ln = { row, item, qty, unit, rate };
+    rm.addEventListener("click", () => { lines.splice(lines.indexOf(ln), 1); row.remove(); syncTotal(); });
+    [qty, rate].forEach(i => i.addEventListener("input", syncTotal));
+    lines.push(ln); linesWrap.appendChild(row);
+  }
+  const addBtn = el("button", "btn-secondary"); addBtn.type = "button";
+  addBtn.textContent = "إضافة بند ➕"; addBtn.style.width = "100%";
+  addBtn.addEventListener("click", addLine);
+  card.appendChild(addBtn); card.appendChild(totalBox);
+
+  const valI = input("number", "0.000", "decimal"); valI.step = "0.001"; valI.min = "0";
+  valI.addEventListener("input", () => { valI.dataset.touched = "1"; });
+  card.appendChild(fieldGroup("قيمة الأمر (د.ك)", valI, true, "تُحسب من البنود تلقائياً ويمكن تعديلها").group);
+  const noteI = textarea("ملاحظات (اختياري)", 2);
+  card.appendChild(fieldGroup("ملاحظات", noteI, false).group);
+
+  const err = el("div", "error-msg"); err.style.display = "none"; card.appendChild(err);
+  const sendBtn = el("button", "btn-primary"); sendBtn.type = "button";
+  sendBtn.textContent = "تسجيل الأمر 📄"; sendBtn.style.width = "100%";
+  card.appendChild(sendBtn);
+  body.appendChild(card);
+
+  sendBtn.addEventListener("click", async () => {
+    err.style.display = "none";
+    const fail = (msg) => { err.textContent = msg; err.style.display = "block"; };
+    if (!ccSel.value) return fail("اختر مركز التكلفة");
+    if (!vSel.value) return fail("اختر المورد / المقاول");
+    if (!descI.value.trim()) return fail("الوصف مطلوب");
+    const val = parseFloat(valI.value);
+    if (!(val > 0)) return fail("أدخل قيمة صحيحة");
+    const pLines = [];
+    for (const ln of lines) {
+      if (!ln.item.value.trim()) { if (ln.qty.value || ln.rate.value) return fail("كل بند يحتاج اسماً"); continue; }
+      pLines.push({ item: ln.item.value.trim(),
+                    qty: ln.qty.value ? parseFloat(ln.qty.value) : null,
+                    unit: ln.unit.value.trim(),
+                    rate: ln.rate.value ? parseFloat(ln.rate.value) : null });
+    }
+    sendBtn.disabled = true; sendBtn.textContent = "جارٍ التسجيل…";
+    try {
+      const r = await sbRpc("po_entry", {
+        p_pin: user.pin, p_client_ref: clientRef, p_type: typeSel.value,
+        p_cost_center_id: Number(ccSel.value), p_vendor_id: Number(vSel.value),
+        p_description: descI.value.trim(), p_value: val,
+        p_lines: pLines, p_note: noteI.value.trim(),
+      });
+      if (!r || !r.success) {
+        sendBtn.disabled = false; sendBtn.textContent = "تسجيل الأمر 📄";
+        const msgs = { "cost center out of scope": "مركز التكلفة خارج صلاحيتك", "not a requester": "حسابك بلا صلاحية طلب" };
+        return fail(msgs[r && r.error] || "تعذّر التسجيل — راجع البيانات");
+      }
+      body.innerHTML = "";
+      const ok = el("div", "card"); ok.style.textAlign = "center";
+      ok.innerHTML = `<div style="font-size:2.4rem">📄</div>
+        <div class="req-client" style="margin:.4rem 0">${r.number}</div>
+        <div class="req-line">سُجّل في سجل الالتزامات — جاهز للمطابقة والاستلام</div>`;
+      const again = el("button", "btn-primary"); again.type = "button"; again.textContent = "أمر آخر ➕";
+      again.style.cssText = "width:100%;margin-top:1rem";
+      again.addEventListener("click", () => pipeTabManualPO(body, user));
+      ok.appendChild(again);
+      body.appendChild(ok);
+    } catch {
+      sendBtn.disabled = false; sendBtn.textContent = "تسجيل الأمر 📄";
+      fail("حدث خطأ — حاول مجدداً");
+    }
+  });
+}
+
+// ── Tab: three-way match (0018) — ordered vs received vs invoiced ──
+async function pipeTabMatch(body, user) {
+  body.innerHTML = "";
+  const info = el("div", "info-box"); info.textContent = "جارٍ التحميل…"; body.appendChild(info);
+  let rows = [], ccs = [], vendors = [];
+  try {
+    [rows, ccs, vendors] = await Promise.all([
+      sbGet("po_match?order=commitment_id.desc&limit=300"),
+      sbGet("cost_centers?select=id,code,name_ar,name_en"),
+      sbGet("vendors?select=id,name"),
+    ]);
+  } catch {
+    body.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل البيانات — تحقق من الاتصال</div>`; return;
+  }
+  body.innerHTML = "";
+  const ccById = {}; ccs.forEach(c => { ccById[c.id] = c; });
+  const vById = {}; vendors.forEach(v => { vById[v.id] = v; });
+
+  const head = el("div", "prog-day-head"); head.textContent = "المطابقة الثلاثية — أمر / استلام / فواتير"; body.appendChild(head);
+  if (!rows.length) {
+    const e = el("div", "info-box"); e.textContent = "لا التزامات بعد."; body.appendChild(e); return;
+  }
+
+  async function drill(r, host) {
+    host.innerHTML = `<div class="info-box">جارٍ التحميل…</div>`;
+    try {
+      const [lines, grns, invs] = await Promise.all([
+        sbGet(`po_line_match?commitment_id=eq.${r.commitment_id}&order=line_no`),
+        sbGet(`grns?commitment_id=eq.${r.commitment_id}&order=created_at.desc`),
+        sbGet(`supplier_invoices?commitment_id=eq.${r.commitment_id}&order=invoice_date.desc`),
+      ]);
+      const lineIds = lines.map(l => l.line_id);
+      const siteNotes = lineIds.length
+        ? await sbGet(`material_receipts?commitment_line_id=in.(${lineIds.join(",")})&order=ts.desc`)
+        : [];
+      host.innerHTML = "";
+      if (lines.length) {
+        const t = el("div", "field-hint"); t.textContent = "البنود:"; host.appendChild(t);
+        lines.forEach(l => {
+          const d = el("div", "req-line");
+          const open = l.open_qty != null && l.open_qty > 0;
+          d.innerHTML = `${l.line_no}. ${l.item} — ` +
+            (l.ordered_qty != null
+              ? `طلب <b>${l.ordered_qty} ${l.unit}</b> · استلم <b>${l.received_qty || 0}</b>` +
+                (l.pending_qty ? ` (+${l.pending_qty} بانتظار)` : "") +
+                (open ? ` · <span style="color:var(--amber)">متبقٍ ${l.open_qty}</span>` : " · ✅ مكتمل")
+              : `${pipeKD(l.ordered_amount)}`);
+          host.appendChild(d);
+        });
+      }
+      if (grns.length) {
+        const t = el("div", "field-hint"); t.style.marginTop = ".4rem"; t.textContent = "استلامات GRN:"; host.appendChild(t);
+        grns.forEach(g => {
+          const d = el("div", "req-line");
+          d.textContent = `${g.grn_no} · ${pipeKD(g.amount)} · ${g.approval_status} · ${fmtKW(g.created_at)}`;
+          host.appendChild(d);
+        });
+      }
+      if (siteNotes.length) {
+        const t = el("div", "field-hint"); t.style.marginTop = ".4rem"; t.textContent = "سندات الموقع:"; host.appendChild(t);
+        siteNotes.forEach(s => {
+          const d = el("div", "req-line");
+          d.textContent = `${s.receipt_id} · ${s.material} ${s.quantity || ""} ${s.unit} · ${s.approval_status} · ${fmtKW(s.ts)}`;
+          host.appendChild(d);
+        });
+      }
+      if (invs.length) {
+        const t = el("div", "field-hint"); t.style.marginTop = ".4rem"; t.textContent = "فواتير المورد:"; host.appendChild(t);
+        invs.forEach(i => {
+          const d = el("div", "req-line");
+          d.textContent = `${i.supplier_invoice_no} · ${pipeKD(i.amount)} · ${i.invoice_date}`;
+          host.appendChild(d);
+        });
+      }
+      if (!lines.length && !grns.length && !invs.length && !siteNotes.length) {
+        host.innerHTML = `<div class="field-hint">لا بنود ولا حركات بعد.</div>`;
+      }
+    } catch { host.innerHTML = `<div class="error-msg" style="display:block">تعذّر التحميل</div>`; }
+  }
+
+  rows.forEach(r => {
+    const c = el("div", "card req-card");
+    const top = el("div", "prog-top");
+    const no = el("div", "req-client"); no.textContent = r.number;
+    top.appendChild(no); top.appendChild(pipeStatusChip(r.status));
+    c.appendChild(top);
+    const cc = ccById[r.cost_center_id];
+    const l1 = el("div", "req-line");
+    l1.textContent = `${(vById[r.vendor_id] || {}).name || "—"} · ${cc ? pipeCcLabel(cc) : "—"}` +
+      (r.origin === "import" ? " · 🗂 مستورد" : r.origin === "manual" ? " · 📄 يدوي" : "");
+    c.appendChild(l1);
+    const l2 = el("div", "req-line");
+    const overInv = Number(r.invoiced_not_received) > 0.001;
+    l2.innerHTML = `أمر <b>${pipeKD(r.ordered_value)}</b> · استلام <b>${pipeKD(r.received_amount)}</b> · فواتير <b>${pipeKD(r.invoiced_amount)}</b>`;
+    c.appendChild(l2);
+    const l3 = el("div", "req-line");
+    l3.innerHTML =
+      (Number(r.pending_count) ? `<span style="color:var(--amber)">⏳ ${r.pending_count} بانتظار الاعتماد</span> · ` : "") +
+      (overInv ? `<span style="color:var(--red)">⚠️ فواتير تفوق الاستلام بـ${pipeKD(r.invoiced_not_received)}</span> · ` : "") +
+      (Number(r.uninvoiced_value) > 0.001 ? `غير مفوتر: ${pipeKD(r.uninvoiced_value)}` : "مفوتر بالكامل");
+    c.appendChild(l3);
+    const drillHost = el("div"); drillHost.style.display = "none"; drillHost.style.marginTop = ".5rem";
+    c.appendChild(drillHost);
+    c.style.cursor = "pointer";
+    c.addEventListener("click", () => {
+      if (drillHost.style.display === "none") { drillHost.style.display = ""; drill(r, drillHost); }
+      else drillHost.style.display = "none";
+    });
+    body.appendChild(c);
+  });
+}
+
+// ── Tab: accountant daily batch (0018) — yesterday's captures in one
+// list, flag exceptions, approve the rest in ONE action. Never per-ticket.
+async function pipeTabDaily(body, user) {
+  body.innerHTML = "";
+  const info = el("div", "info-box"); info.textContent = "جارٍ التحميل…"; body.appendChild(info);
+  let pending = [], exSite = [], exGrn = [], lpos = [];
+  try {
+    [pending, exSite, exGrn, lpos] = await Promise.all([
+      sbGet("capture_pending?order=ts&limit=400"),
+      sbGet(`material_receipts?approval_status=${sbEq("استثناء")}&order=ts.desc&limit=100`),
+      sbGet(`grns?approval_status=${sbEq("استثناء")}&select=*,commitments(number)&order=created_at.desc&limit=100`),
+      sbGet(`commitments?ctype=eq.LPO&status=${sbEq("نشط")}&select=id,number,vendors(name)&order=created_at.desc`),
+    ]);
+  } catch {
+    body.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل البيانات — تحقق من الاتصال</div>`; return;
+  }
+  body.innerHTML = "";
+
+  const head = el("div", "prog-day-head"); head.textContent = "دفعة الاعتماد اليومية"; body.appendChild(head);
+  if (!pending.length) {
+    const e = el("div", "info-box"); e.textContent = "لا التقاطات بانتظار الاعتماد — الدفعة فارغة ✅"; body.appendChild(e);
+  } else {
+    const card = el("div", "card");
+    const states = new Map(); // key kind:id → {mode:'ok'|'ex', note}
+    pending.forEach(p => states.set(`${p.kind}:${p.id}`, { mode: "ok", note: "", row: p }));
+
+    const summary = el("div", "info-box");
+    function syncSummary() {
+      let ok = 0, ex = 0;
+      states.forEach(s => { if (s.mode === "ok") ok++; else ex++; });
+      summary.textContent = `سيُعتمد ${ok} · استثناءات ${ex} — بضغطة واحدة`;
+    }
+    card.appendChild(summary);
+
+    pending.forEach(p => {
+      const key = `${p.kind}:${p.id}`;
+      const row = el("div", "card req-card"); row.style.padding = ".6rem";
+      const top = el("div", "prog-top");
+      const no = el("div", "req-client");
+      no.textContent = p.kind === "site" ? `سند موقع #${p.id}` : `GRN #${p.id}`;
+      top.appendChild(no);
+      const flag = el("button", "btn-secondary"); flag.type = "button"; flag.style.width = "auto";
+      top.appendChild(flag); row.appendChild(top);
+      const l1 = el("div", "req-line");
+      l1.textContent = `${p.description || "—"}` + (p.quantity ? ` · ${p.quantity} ${p.unit || ""}` : "") +
+        (p.amount ? ` · ${pipeKD(p.amount)}` : "");
+      row.appendChild(l1);
+      const l2 = el("div", "req-line");
+      l2.innerHTML = `${p.actor || "—"} · ${fmtKW(p.ts)} · ` +
+        (p.commitment_no ? `على <b>${p.commitment_no}</b>` :
+          p.no_po_flag ? `<span style="color:var(--red)">🚩 بدون أمر شراء</span>`
+                       : `<span style="color:var(--amber)">غير مرتبط ببند</span>`);
+      row.appendChild(l2);
+      if (p.photo_url) {
+        const a = el("a"); a.href = p.photo_url; a.target = "_blank"; a.rel = "noopener";
+        a.textContent = "📷 صورة السند"; a.className = "req-line"; row.appendChild(a);
+      }
+      const noteI = input("text", "سبب الاستثناء"); noteI.style.display = "none"; noteI.style.marginTop = ".4rem";
+      noteI.addEventListener("input", () => { states.get(key).note = noteI.value; });
+      row.appendChild(noteI);
+      function paint() {
+        const s = states.get(key);
+        flag.textContent = s.mode === "ok" ? "✔ سيُعتمد" : "🚩 استثناء";
+        flag.style.color = s.mode === "ok" ? "var(--green)" : "var(--red)";
+        noteI.style.display = s.mode === "ex" ? "" : "none";
+        row.style.opacity = s.mode === "ex" ? ".85" : "1";
+        syncSummary();
+      }
+      flag.addEventListener("click", () => {
+        const s = states.get(key); s.mode = s.mode === "ok" ? "ex" : "ok"; paint();
+      });
+      // "No PO" flags default to exception — they are never a free pass
+      if (p.no_po_flag) { states.get(key).mode = "ex"; }
+      paint();
+      card.appendChild(row);
+    });
+
+    const err = el("div", "error-msg"); err.style.display = "none"; card.appendChild(err);
+    const go = el("button", "btn-primary"); go.type = "button";
+    go.textContent = "اعتماد الدفعة ☑️"; go.style.width = "100%";
+    go.addEventListener("click", async () => {
+      err.style.display = "none";
+      const approve = [], except = [];
+      states.forEach((s, k) => {
+        const [kind, id] = k.split(":");
+        if (s.mode === "ok") approve.push({ kind, id: Number(id) });
+        else except.push({ kind, id: Number(id), note: s.note || "" });
+      });
+      go.disabled = true; go.textContent = "جارٍ الاعتماد…";
+      try {
+        const r = await sbRpc("capture_batch_decide", { p_pin: user.pin, p_approve: approve, p_except: except });
+        if (r && r.success) { pipeTabDaily(body, user); return; }
+        err.textContent = r && r.error === "not an accountant" ? "حسابك بلا صلاحية محاسب" : "تعذّر الاعتماد";
+        err.style.display = "block";
+      } catch { err.textContent = "حدث خطأ — حاول مجدداً"; err.style.display = "block"; }
+      go.disabled = false; go.textContent = "اعتماد الدفعة ☑️";
+    });
+    card.appendChild(go);
+    body.appendChild(card);
+  }
+
+  // Open exceptions — resolve by linking to a PO line
+  const exAll = [
+    ...exSite.map(s => ({ kind: "site", id: s.id, label: `سند موقع ${s.receipt_id}`, desc: `${s.material} ${s.quantity || ""} ${s.unit || ""}`, note: s.exception_note, ts: s.ts })),
+    ...exGrn.map(g => ({ kind: "grn", id: g.id, label: g.grn_no, desc: `${g.description} · ${pipeKD(g.amount)}`, note: g.exception_note, ts: g.created_at })),
+  ];
+  if (exAll.length) {
+    const h = el("div", "prog-day-head"); h.textContent = `استثناءات مفتوحة (${exAll.length})`; body.appendChild(h);
+    exAll.forEach(x => {
+      const c = el("div", "card req-card");
+      const top = el("div", "prog-top");
+      const no = el("div", "req-client"); no.textContent = x.label;
+      top.appendChild(no); top.appendChild(pipeStatusChip("استثناء")); c.appendChild(top);
+      const l1 = el("div", "req-line"); l1.textContent = `${x.desc} · ${fmtKW(x.ts)}`; c.appendChild(l1);
+      if (x.note) { const n = el("div", "field-hint"); n.textContent = `السبب: ${x.note}`; c.appendChild(n); }
+      const poSel = el("select");
+      const d0 = el("option"); d0.value = ""; d0.textContent = "اربط بأمر شراء…"; poSel.appendChild(d0);
+      lpos.forEach(l => { const o = el("option"); o.value = l.id; o.textContent = `${l.number} · ${(l.vendors && l.vendors.name) || ""}`; poSel.appendChild(o); });
+      const lnSel = el("select"); lnSel.style.display = "none";
+      poSel.addEventListener("change", async () => {
+        lnSel.innerHTML = ""; lnSel.style.display = "none";
+        if (!poSel.value) return;
+        try {
+          const ls = await sbGet(`commitment_lines?commitment_id=eq.${poSel.value}&order=line_no`);
+          if (!ls.length) { lnSel.style.display = "none"; return; }
+          const d1 = el("option"); d1.value = ""; d1.textContent = "اختر البند"; lnSel.appendChild(d1);
+          ls.forEach(l => { const o = el("option"); o.value = l.id; o.textContent = `${l.line_no}. ${l.item}${l.qty ? ` (${l.qty} ${l.unit})` : ""}`; lnSel.appendChild(o); });
+          lnSel.style.display = "";
+        } catch {}
+      });
+      c.appendChild(poSel); c.appendChild(lnSel);
+      const rb = el("button", "btn-secondary"); rb.type = "button"; rb.textContent = "ربط واعتماد"; rb.style.cssText = "width:100%;margin-top:.4rem";
+      const xerr = el("div", "error-msg"); xerr.style.display = "none"; c.appendChild(xerr);
+      rb.addEventListener("click", async () => {
+        xerr.style.display = "none";
+        if (!lnSel.value) { xerr.textContent = "اختر أمر الشراء ثم البند"; xerr.style.display = "block"; return; }
+        rb.disabled = true;
+        try {
+          const r = await sbRpc("capture_exception_resolve", {
+            p_pin: user.pin, p_kind: x.kind, p_id: x.id, p_line_id: Number(lnSel.value),
+          });
+          if (r && r.success) { pipeTabDaily(body, user); return; }
+          xerr.textContent = "تعذّر الربط"; xerr.style.display = "block";
+        } catch { xerr.textContent = "حدث خطأ"; xerr.style.display = "block"; }
+        rb.disabled = false;
+      });
+      c.appendChild(rb);
       body.appendChild(c);
     });
   }

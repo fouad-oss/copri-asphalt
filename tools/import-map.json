@@ -1,6 +1,6 @@
 {
   "_comment": "Filename → department mapping for the SpectroNova per-department exports (the filenames do NOT identify the department). Derived 2026-07-13 by chaining PO → Delivery Note → Stock Receipt → JV GL-code prefixes; evidence in 'Accounting raw data/output/raw-data-inventory.md'. FOUAD: review each row, then set confirmed=true — the importer refuses to emit SQL until then.",
-  "confirmed": false,
+  "confirmed": true,
   "export_date": "2026-07-13",
   "po_files": {
     "Purchase Order (PO).xlsx":     { "department": "Project 363 — 30&40 Expressway", "cost_center": "363" },

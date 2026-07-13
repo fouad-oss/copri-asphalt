@@ -5449,7 +5449,8 @@ function pipeStatusChip(status) {
   const map = { "قيد المراجعة": ["rgba(230,81,0,.12)", "var(--amber)"],
                 "معتمد": ["rgba(0,166,81,.12)", "var(--green)"],
                 "مرفوض": ["#fdecea", "var(--red)"], "ملغي": ["var(--surface-2)", "var(--text-2)"],
-                "نشط": ["rgba(0,166,81,.12)", "var(--green)"], "مغلق": ["var(--surface-2)", "var(--text-2)"] };
+                "نشط": ["rgba(0,166,81,.12)", "var(--green)"], "مغلق": ["var(--surface-2)", "var(--text-2)"],
+                "مسودة": ["rgba(230,81,0,.12)", "var(--amber)"], "صادر": ["rgba(0,166,81,.12)", "var(--green)"] };
   const [bg, fg] = map[status] || ["var(--surface-2)", "var(--text-2)"];
   const s = el("span", "plant-chip"); s.textContent = status || "—";
   s.style.background = bg; s.style.color = fg;
@@ -5538,9 +5539,12 @@ function renderPipeHome(user) {
   const defs = [];
   if (user.requester) defs.push(["➕ طلب جديد", () => pipeTabNewRequest(body, user)]);
   defs.push(["📋 طلباتي", () => pipeTabMyRequests(body, user)]);
+  if (user.requester) defs.push(["📦 استلام GRN", () => pipeTabGRN(body, user)]);
   if (user.approver) defs.push(["✅ قائمة الاعتماد", () => pipeTabQueue(body, user)]);
   defs.push(["📚 سجل الالتزامات", () => pipeTabRegister(body)]);
   defs.push(["☂️ المظلات", () => pipeTabBlankets(body)]);
+  if (user.approver) defs.push(["🔁 تحميل داخلي", () => pipeTabRecharge(body, user)]);
+  if (user.approver) defs.push(["📤 التصدير", () => pipeTabExport(body, user)]);
   const btns = defs.map(([label, fn]) => {
     const b = el("button"); b.type = "button"; b.textContent = label;
     b.addEventListener("click", () => { btns.forEach(x => x.classList.remove("active")); b.classList.add("active"); fn(); });
@@ -5851,6 +5855,319 @@ async function pipeTabBlankets(body) {
     l2.innerHTML = `السقف <b>${pipeKD(b.ceiling)}</b> · مسحوب <b>${pipeKD(b.drawn)}</b> · متبقي <b>${pipeKD(b.remaining)}</b>`;
     c.appendChild(l2);
     if (b.rate_ref) { const h = el("div", "field-hint"); h.textContent = `مرجع السعر: ${b.rate_ref}`; c.appendChild(h); }
+    body.appendChild(c);
+  });
+}
+
+// ── Tab: GRN — goods receipt against an active LPO commitment (0014).
+// Optional supplier invoice rides along: exact dupes are refused by the
+// DB constraint; a same-amount invoice within 30 days comes back as
+// nearDuplicate and needs the explicit override button.
+async function pipeTabGRN(body, user) {
+  body.innerHTML = "";
+  const info = el("div", "info-box"); info.textContent = "جارٍ التحميل…"; body.appendChild(info);
+  let lpos = [], recent = [];
+  try {
+    [lpos, recent] = await Promise.all([
+      sbGet(`commitments?ctype=eq.LPO&status=${sbEq("نشط")}&select=*,vendors(name),cost_centers(code,name_ar,name_en)&order=created_at.desc`),
+      sbGet("grns?select=*,commitments(number,vendors(name))&order=created_at.desc&limit=30"),
+    ]);
+  } catch {
+    body.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل البيانات — تحقق من الاتصال</div>`; return;
+  }
+  body.innerHTML = "";
+
+  const card = el("div", "card");
+  card.appendChild(sectionTitle("استلام بضاعة (GRN)"));
+  if (!lpos.length) {
+    const e = el("div", "info-box"); e.textContent = "لا توجد أوامر شراء (LPO) نشطة — الاستلام يكون دائماً مقابل التزام."; card.appendChild(e);
+  } else {
+    const clientRef = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+    const cmtSel = el("select");
+    const def = el("option"); def.value = ""; def.textContent = "اختر أمر الشراء"; cmtSel.appendChild(def);
+    lpos.forEach(c => {
+      const o = el("option"); o.value = c.id;
+      o.textContent = `${c.number} · ${(c.vendors && c.vendors.name) || ""} · ${pipeKD(c.value)}`;
+      cmtSel.appendChild(o);
+    });
+    card.appendChild(fieldGroup("أمر الشراء (LPO)", cmtSel, true).group);
+    const descI = textarea("ما الذي تم استلامه", 2);
+    card.appendChild(fieldGroup("الوصف", descI, true).group);
+    const qtyI = input("number", "الكمية", "decimal"); qtyI.step = "0.01";
+    card.appendChild(fieldGroup("الكمية", qtyI, false).group);
+    const unitI = input("text", "طن / م³ / عدد …");
+    card.appendChild(fieldGroup("الوحدة", unitI, false).group);
+    const amtI = input("number", "0.000", "decimal"); amtI.step = "0.001"; amtI.min = "0";
+    card.appendChild(fieldGroup("القيمة (د.ك)", amtI, true).group);
+    const invI = input("text", "رقم فاتورة المورد (اختياري)");
+    card.appendChild(fieldGroup("فاتورة المورد", invI, false, "تُسجَّل مع حارس الفواتير المكررة").group);
+    const invDateI = input("date", "");
+    card.appendChild(fieldGroup("تاريخ الفاتورة", invDateI, false).group);
+    const noteI = textarea("ملاحظات (اختياري)", 2);
+    card.appendChild(fieldGroup("ملاحظات", noteI, false).group);
+
+    const err = el("div", "error-msg"); err.style.display = "none"; card.appendChild(err);
+    const warnBox = el("div", "info-box"); warnBox.style.display = "none"; card.appendChild(warnBox);
+    const sendBtn = el("button", "btn-primary"); sendBtn.type = "button";
+    sendBtn.textContent = "تسجيل الاستلام 📦"; sendBtn.style.width = "100%";
+    card.appendChild(sendBtn);
+
+    const submit = async (force) => {
+      err.style.display = "none"; warnBox.style.display = "none";
+      const fail = (msg) => { err.textContent = msg; err.style.display = "block"; };
+      if (!cmtSel.value) return fail("اختر أمر الشراء");
+      if (!descI.value.trim()) return fail("الوصف مطلوب");
+      const amt = parseFloat(amtI.value);
+      if (!(amt > 0)) return fail("أدخل قيمة صحيحة");
+      if (invI.value.trim() && !invDateI.value) return fail("تاريخ الفاتورة مطلوب مع رقمها");
+      sendBtn.disabled = true; sendBtn.textContent = "جارٍ التسجيل…";
+      try {
+        const r = await sbRpc("grn_submit", {
+          p_pin: user.pin, p_client_ref: clientRef, p_commitment_id: Number(cmtSel.value),
+          p_description: descI.value.trim(),
+          p_quantity: qtyI.value ? parseFloat(qtyI.value) : null,
+          p_unit: unitI.value.trim(), p_amount: amt,
+          p_invoice_no: invI.value.trim(), p_invoice_date: invDateI.value || null,
+          p_force: !!force, p_note: noteI.value.trim(),
+        });
+        sendBtn.disabled = false; sendBtn.textContent = "تسجيل الاستلام 📦";
+        if (r && r.success) { pipeTabGRN(body, user); return; }
+        if (r && r.nearDuplicate) {
+          warnBox.style.display = "block"; warnBox.innerHTML = "";
+          const t = el("div");
+          t.innerHTML = `⚠️ <b>فاتورة مشابهة مسجلة لنفس المورد بنفس المبلغ</b> — رقم ${r.existingNo} بتاريخ ${r.existingDate}. تأكد أنها ليست نفس الفاتورة.`;
+          warnBox.appendChild(t);
+          const forceB = el("button", "btn-secondary"); forceB.type = "button";
+          forceB.textContent = "تأكيد التسجيل رغم التشابه"; forceB.style.cssText = "margin-top:.5rem;width:100%;color:var(--amber)";
+          forceB.addEventListener("click", () => submit(true));
+          warnBox.appendChild(forceB);
+          return;
+        }
+        const msgs = { "duplicate": "هذه الفاتورة مسجلة مسبقاً لهذا المورد",
+                       "invoice already recorded for this vendor": "هذه الفاتورة مسجلة مسبقاً لهذا المورد",
+                       "commitment not active": "الالتزام غير نشط", "not an LPO": "الالتزام ليس أمر شراء" };
+        fail(msgs[r && r.error] || (r && r.duplicate ? msgs.duplicate : "تعذّر التسجيل — راجع البيانات"));
+      } catch {
+        sendBtn.disabled = false; sendBtn.textContent = "تسجيل الاستلام 📦";
+        fail("حدث خطأ — حاول مجدداً");
+      }
+    };
+    sendBtn.addEventListener("click", () => submit(false));
+  }
+  body.appendChild(card);
+
+  if (recent.length) {
+    const h = el("div", "prog-day-head"); h.textContent = "استلامات سابقة"; body.appendChild(h);
+    recent.forEach(g => {
+      const c = el("div", "card req-card");
+      const top = el("div", "prog-top");
+      const no = el("div", "req-client"); no.textContent = g.grn_no;
+      top.appendChild(no); c.appendChild(top);
+      const l1 = el("div", "req-line");
+      const cm = g.commitments || {};
+      l1.textContent = `${cm.number || "—"} · ${(cm.vendors && cm.vendors.name) || ""}`;
+      c.appendChild(l1);
+      const l2 = el("div", "req-line");
+      l2.innerHTML = `<b>${pipeKD(g.amount)}</b>` + (g.quantity ? ` · ${g.quantity} ${g.unit}` : "") +
+        (g.supplier_invoice_id ? " · بفاتورة مورد" : "");
+      c.appendChild(l2);
+      const d = el("div", "field-hint"); d.style.marginTop = ".4rem"; d.textContent = g.description; c.appendChild(d);
+      const l3 = el("div", "req-line");
+      l3.textContent = `استلمه ${g.received_by || "—"} · ${fmtKW(g.created_at)}`;
+      c.appendChild(l3);
+      body.appendChild(c);
+    });
+  }
+}
+
+// ── Tab: monthly internal recharge (0015) — plant/milling → projects.
+// The run refuses to generate until every needed policy rate exists and
+// returns the exact item strings to add in recharge_rates.
+async function pipeTabRecharge(body, user) {
+  body.innerHTML = "";
+  const info = el("div", "info-box"); info.textContent = "جارٍ التحميل…"; body.appendChild(info);
+  let invoices = [], rates = [];
+  try {
+    [invoices, rates] = await Promise.all([
+      sbGet("internal_invoices?select=*,vendors(name),cost_centers(code,name_ar,name_en)&order=created_at.desc&limit=50"),
+      sbGet("recharge_rates?active=eq.true&select=*,vendors(name,handle)&order=vendor_id,item"),
+    ]);
+  } catch {
+    body.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل البيانات — تحقق من الاتصال</div>`; return;
+  }
+  body.innerHTML = "";
+
+  const card = el("div", "card");
+  card.appendChild(sectionTitle("التحميل الداخلي الشهري"));
+  // default: previous Kuwait month
+  const kw = new Date(Date.now() + 3 * 3600e3);
+  kw.setUTCDate(1); kw.setUTCMonth(kw.getUTCMonth() - 1);
+  const perI = input("month", "");
+  perI.value = `${kw.getUTCFullYear()}-${String(kw.getUTCMonth() + 1).padStart(2, "0")}`;
+  card.appendChild(fieldGroup("الفترة (شهر)", perI, true).group);
+  const err = el("div", "error-msg"); err.style.display = "none"; card.appendChild(err);
+  const missBox = el("div", "info-box"); missBox.style.display = "none"; card.appendChild(missBox);
+  const okBox = el("div", "info-box"); okBox.style.display = "none"; card.appendChild(okBox);
+  const runB = el("button", "btn-primary"); runB.type = "button";
+  runB.textContent = "توليد فواتير الفترة 🔁"; runB.style.width = "100%";
+  card.appendChild(runB);
+  runB.addEventListener("click", async () => {
+    err.style.display = missBox.style.display = okBox.style.display = "none";
+    if (!perI.value) { err.textContent = "اختر الشهر"; err.style.display = "block"; return; }
+    runB.disabled = true; runB.textContent = "جارٍ التوليد…";
+    try {
+      const r = await sbRpc("recharge_run", { p_pin: user.pin, p_period: perI.value });
+      runB.disabled = false; runB.textContent = "توليد فواتير الفترة 🔁";
+      if (r && r.success) { pipeTabRecharge(body, user); return; }
+      if (r && r.missingRates) {
+        missBox.style.display = "block";
+        const names = { plant: "المصنع", milling: "القشط", garage: "الكراج" };
+        missBox.innerHTML = "⚠️ <b>أسعار ناقصة — أضفها في recharge_rates ثم أعد التوليد:</b><br>" +
+          r.missingRates.map(m => `• ${names[m.vendor] || m.vendor}: <b>${m.item}</b>`).join("<br>");
+        return;
+      }
+      err.textContent = "تعذّر التوليد — راجع البيانات"; err.style.display = "block";
+    } catch {
+      runB.disabled = false; runB.textContent = "توليد فواتير الفترة 🔁";
+      err.textContent = "حدث خطأ — حاول مجدداً"; err.style.display = "block";
+    }
+  });
+  const rateHint = el("div", "field-hint"); rateHint.style.marginTop = ".6rem";
+  rateHint.textContent = rates.length
+    ? `الأسعار المعتمدة: ${rates.map(r => `${r.item} = ${r.rate} د.ك/${r.unit || "وحدة"}`).join(" · ")}`
+    : "لا توجد أسعار معتمدة بعد — تُضاف في recharge_rates (جدول الإعدادات) بعد اجتماع 14 يوليو.";
+  card.appendChild(rateHint);
+  body.appendChild(card);
+
+  if (!invoices.length) {
+    const e = el("div", "info-box"); e.textContent = "لا توجد فواتير داخلية بعد."; body.appendChild(e); return;
+  }
+  const h = el("div", "prog-day-head"); h.textContent = "الفواتير الداخلية"; body.appendChild(h);
+  invoices.forEach(v => {
+    const c = el("div", "card req-card");
+    const top = el("div", "prog-top");
+    const no = el("div", "req-client"); no.textContent = `${v.inv_no} · ${v.period}`;
+    top.appendChild(no); top.appendChild(pipeStatusChip(v.status));
+    c.appendChild(top);
+    const l1 = el("div", "req-line");
+    l1.textContent = `${(v.vendors && v.vendors.name) || "—"} ← ${v.cost_centers ? pipeCcLabel(v.cost_centers) : "—"}`;
+    c.appendChild(l1);
+    (Array.isArray(v.lines) ? v.lines : []).forEach(ln => {
+      const r = el("div", "req-line");
+      r.innerHTML = `${ln.item}: <b>${ln.qty} ${ln.unit} × ${ln.rate} = ${pipeKD(ln.amount)}</b>`;
+      c.appendChild(r);
+    });
+    const lt = el("div", "req-line"); lt.innerHTML = `الإجمالي: <b>${pipeKD(v.total)}</b>`;
+    c.appendChild(lt);
+    if (v.status === "مسودة") {
+      const acts = el("div", "prog-actions");
+      const issueB = el("button", "btn-primary"); issueB.type = "button"; issueB.textContent = "إصدار ✓";
+      issueB.addEventListener("click", async () => {
+        issueB.disabled = true;
+        try { await sbRpc("internal_invoice_issue", { p_pin: user.pin, p_id: v.id }); } catch {}
+        pipeTabRecharge(body, user);
+      });
+      acts.appendChild(issueB); c.appendChild(acts);
+    }
+    body.appendChild(c);
+  });
+}
+
+// ── Tab: SpectroNova export (0016) — file adapter. A batch freezes all
+// pending rows; the CSV built here IS the export (and the audit copy
+// once the API adapter exists). Ack ticks are the reconciliation.
+async function pipeTabExport(body, user) {
+  body.innerHTML = "";
+  const info = el("div", "info-box"); info.textContent = "جارٍ التحميل…"; body.appendChild(info);
+  let pending = [], batches = [], rows = [];
+  try {
+    [pending, batches] = await Promise.all([
+      sbGet("export_pending?select=source,source_id"),
+      sbGet("export_batches?order=created_at.desc&limit=15"),
+    ]);
+    if (batches.length) {
+      rows = await sbGet(`export_rows?batch_id=in.(${batches.map(b => b.id).join(",")})&order=id`);
+    }
+  } catch {
+    body.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل البيانات — تحقق من الاتصال</div>`; return;
+  }
+  body.innerHTML = "";
+
+  const card = el("div", "card");
+  card.appendChild(sectionTitle("التصدير إلى SpectroNova"));
+  const st = el("div", "req-line");
+  st.innerHTML = `حركات بانتظار التصدير: <b>${pending.length}</b>`;
+  card.appendChild(st);
+  const err = el("div", "error-msg"); err.style.display = "none"; card.appendChild(err);
+  const mkB = el("button", "btn-primary"); mkB.type = "button";
+  mkB.textContent = "إنشاء دفعة تصدير 📤"; mkB.style.width = "100%";
+  mkB.disabled = !pending.length;
+  mkB.addEventListener("click", async () => {
+    mkB.disabled = true; mkB.textContent = "جارٍ الإنشاء…";
+    try {
+      const r = await sbRpc("export_batch_create", { p_pin: user.pin, p_note: "" });
+      if (r && r.success) { pipeTabExport(body, user); return; }
+      err.textContent = (r && r.error === "nothing to export") ? "لا توجد حركات للتصدير" : "تعذّر إنشاء الدفعة";
+      err.style.display = "block";
+    } catch { err.textContent = "حدث خطأ — حاول مجدداً"; err.style.display = "block"; }
+    mkB.disabled = false; mkB.textContent = "إنشاء دفعة تصدير 📤";
+  });
+  card.appendChild(mkB);
+  const hint = el("div", "field-hint"); hint.style.marginTop = ".6rem";
+  hint.textContent = "ملف CSV لكل دفعة (المسار الحالي) — الإرسال عبر واجهة SpectroNova يُفعَّل بنفس الدفعات عند وصول وثائق الـ API.";
+  card.appendChild(hint);
+  body.appendChild(card);
+
+  if (!batches.length) {
+    const e = el("div", "info-box"); e.textContent = "لا توجد دفعات تصدير بعد."; body.appendChild(e); return;
+  }
+  const h = el("div", "prog-day-head"); h.textContent = "الدفعات"; body.appendChild(h);
+  const CSV_COLS = [["date", "التاريخ"], ["contactId", "ContactID"], ["vendor", "المورد"],
+                    ["costCenter", "مركز التكلفة"], ["glAccount", "حساب GL"], ["amount", "المبلغ"],
+                    ["commitmentRef", "الالتزام"], ["sourceId", "المصدر"], ["refNo", "المرجع"]];
+  batches.forEach(b => {
+    const bRows = rows.filter(r => r.batch_id === b.id);
+    const acked = bRows.filter(r => r.acked).length;
+    const c = el("div", "card req-card");
+    const top = el("div", "prog-top");
+    const no = el("div", "req-client"); no.textContent = b.batch_no;
+    const chip = el("span", "plant-chip");
+    chip.textContent = `${acked}/${bRows.length} مُرحَّل`;
+    chip.style.background = acked === bRows.length && bRows.length ? "rgba(0,166,81,.12)" : "var(--surface-2)";
+    chip.style.color = acked === bRows.length && bRows.length ? "var(--green)" : "var(--text-2)";
+    top.appendChild(no); top.appendChild(chip);
+    c.appendChild(top);
+    const l1 = el("div", "req-line");
+    l1.textContent = `أنشأها ${b.created_by || "—"} · ${fmtKW(b.created_at)}`;
+    c.appendChild(l1);
+    const dlB = el("button", "btn-secondary"); dlB.type = "button";
+    dlB.textContent = "تنزيل CSV ⬇️"; dlB.style.cssText = "width:auto;margin:.5rem 0";
+    dlB.addEventListener("click", () => {
+      const esc = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
+      // UTF-8 BOM so Excel opens the Arabic columns correctly
+      const csv = "﻿" + CSV_COLS.map(([, ar]) => esc(ar)).join(",") + "\n" +
+        bRows.map(r => CSV_COLS.map(([k]) => esc(r.payload[k])).join(",")).join("\n");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      a.download = `spectronova-${b.batch_no}.csv`;
+      a.click(); URL.revokeObjectURL(a.href);
+    });
+    c.appendChild(dlB);
+    bRows.forEach(r => {
+      const row = el("div", "req-line");
+      row.style.cssText = "display:flex;gap:.5rem;align-items:center";
+      const chk = el("input"); chk.type = "checkbox"; chk.checked = r.acked;
+      chk.addEventListener("change", async () => {
+        chk.disabled = true;
+        try { await sbRpc("export_row_ack", { p_pin: user.pin, p_row_id: r.id, p_acked: chk.checked }); }
+        catch { chk.checked = !chk.checked; }
+        chk.disabled = false;
+      });
+      const t = el("span");
+      t.innerHTML = `${r.payload.date} · ${r.payload.vendor} · <b>${pipeKD(r.payload.amount)}</b> · ${r.payload.commitmentRef || "—"} (${r.payload.refNo})`;
+      row.appendChild(chk); row.appendChild(t);
+      c.appendChild(row);
+    });
     body.appendChild(c);
   });
 }

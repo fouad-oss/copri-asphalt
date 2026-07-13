@@ -170,7 +170,15 @@ export function dispatchToWorklog(
         .filter(Boolean) as string[]
       for (const num of nums) {
         const exact = idx.byExact.get(`${site}|${r.block}|${num}`)
-        if (exact) units.add(exact)
+        if (exact) {
+          units.add(exact)
+          continue
+        }
+        // main roads span blocks and live under one site-wide unit — take
+        // the site|num match only when it is UNAMBIGUOUS (ش1 exists in
+        // every block, so a multi-hit must stay unresolved, not guessed)
+        const hits = idx.bySiteNum.get(`${site}|${num}`)
+        if (hits && hits.length === 1) units.add(hits[0])
       }
       if (!units.size && idx.blockUnits.has(`${site}|${r.block}|*`)) {
         units.add(`${site}|${r.block}|*`)

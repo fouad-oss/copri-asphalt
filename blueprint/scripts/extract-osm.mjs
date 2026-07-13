@@ -227,25 +227,50 @@ async function main() {
         rawName: (el.tags['name:ar'] || el.tags.name || '').trim(),
       })
     }
-    const groups = new Map() // (block|normname|num) → ways
+    // Grouping rules (each group = one street unit):
+    //  - numbered streets (شارع N) are BLOCK-scoped — ش1 in ق1 ≠ ش1 in ق2
+    //  - جادات are their own units ("شارع 3 جادة 2" is a lane of ش3, NOT
+    //    ش3 itself — streetNum would grab the 3 and swallow the lane);
+    //    they carry no street_num so "ق5 ش3" can never match them
+    //  - proper-named streets merge SITE-wide — main roads cross blocks
+    //    (ش57 previously fragmented into ق3/ق4/بلا with restarting chainage)
+    const groups = new Map()
     for (const w of wayList) {
       const { coords, mid, rawName } = w
       const blk = blocks.find((b) => pointInRing(mid, b.ring))
-      const num = streetNum(rawName)
+      const blkNum = blk ? blk.num : ''
+      const isJada = /جاد[ةه]/.test(rawName)
       const nn = rawName ? normName(rawName) : ''
-      const key = `${blk ? blk.num : ''}|${num || nn || 'w' + w.id}`
+      let num = null
+      let key
+      let jtok = null
+      if (isJada) {
+        const digits = String(rawName).replace(/[٠-٩]/g, (d) => AR_DIGITS[d]).match(/\d+/g)
+        jtok = `j${digits ? digits.join('-') : nn}`
+        key = `${blkNum}|${jtok}`
+      } else {
+        num = streetNum(rawName)
+        key = num ? `${blkNum}|${num}` : nn ? `~|${nn}` : `${blkNum}|w${w.id}`
+      }
       const g = groups.get(key) || {
-        block: blk ? blk.num : '',
+        blocks: new Set(),
         name: rawName,
         num,
         norm: nn,
+        jtok,
         width: WIDTHS[w.highway] || 8,
         ways: [],
       }
+      g.blocks.add(blkNum)
       g.width = Math.max(g.width, WIDTHS[w.highway] || 8)
       if (!g.name && rawName) g.name = rawName
       g.ways.push(coords)
       groups.set(key, g)
+    }
+    // a group's block: the single block it lives in, or '' when it spans
+    for (const g of groups.values()) {
+      const set = [...g.blocks].filter(Boolean)
+      g.block = set.length === 1 && g.blocks.size === 1 ? set[0] : ''
     }
 
     // apply number aliases (renamed streets clerks know by number)
@@ -262,14 +287,19 @@ async function main() {
     }
 
     let areaSegs = 0
-    let sIdx = 0
+    let gIdx = 0
     for (const g of groups.values()) {
-      const chains = chainWays(g.ways)
+      // Order disjoint chains by proximity and CONTINUE the chainage across
+      // them — one street = one monotonic chainage. Ids are unique by
+      // construction (they used to collide: every chain of a numbered
+      // street restarted at ch 0 under the same st-token).
+      const chains = orderChains(chainWays(g.ways))
       streetsTotal++
+      gIdx++
+      const stok = g.jtok ? g.jtok : g.num ? `st${g.num}` : g.norm ? `n${gIdx}` : `u${gIdx}`
+      const unit = g.name ? `${area.site}|${g.block}|${g.num || g.norm}` : null
+      let ch = 0
       for (const chain of chains) {
-        sIdx++
-        const stok = g.num ? `st${g.num}` : g.norm ? `n${sIdx}` : `u${sIdx}`
-        const unit = g.name ? `${area.site}|${g.block}|${g.num || g.norm}` : null
         areaSegs += cutSegments(chain, {
           site: area.site,
           code: area.code,
@@ -279,7 +309,10 @@ async function main() {
           unit,
           width: g.width,
           stok,
+          startCh: ch,
         }, segFeatures)
+        // next chain starts on the next clean 100 m boundary
+        ch = Math.max(Math.ceil((ch + Math.round(chainLen(chain))) / 100) * 100, ch + 100)
       }
     }
     console.log(`  ${area.site}: blocks ${blocks.length} · street groups ${groups.size} · segments +${areaSegs}`)
@@ -396,6 +429,32 @@ function chainLen(chain) {
   let len = 0
   for (let i = 1; i < chain.length; i++) len += dist(chain[i - 1], chain[i])
   return len
+}
+
+// Longest chain first, then greedily append whichever remaining chain
+// starts (or, reversed, ends) nearest the running tail — so a street's
+// disjoint pieces read in spatial order and chainage stays meaningful.
+function orderChains(chains) {
+  if (chains.length < 2) return chains
+  const pool = [...chains].sort((a, b) => chainLen(b) - chainLen(a))
+  const ordered = [pool.shift()]
+  while (pool.length) {
+    const tail = ordered[ordered.length - 1]
+    const end = tail[tail.length - 1]
+    let best = 0
+    let bestD = Infinity
+    let rev = false
+    pool.forEach((c, i) => {
+      const d0 = dist(end, c[0])
+      const d1 = dist(end, c[c.length - 1])
+      if (d0 < bestD) { bestD = d0; best = i; rev = false }
+      if (d1 < bestD) { bestD = d1; best = i; rev = true }
+    })
+    const c = pool.splice(best, 1)[0]
+    if (rev) c.reverse()
+    ordered.push(c)
+  }
+  return ordered
 }
 
 // cut a chain into 100 m segments; the tail keeps its true length.

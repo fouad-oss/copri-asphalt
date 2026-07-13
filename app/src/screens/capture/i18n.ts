@@ -1,0 +1,131 @@
+import i18n from "@/lib/i18n"
+
+/* Capture-module strings, registered as their own namespace so the module
+   stays separable (skill: ALL strings via i18n, Arabic primary). */
+
+const AR = {
+  title: "استلام المواد",
+  login: {
+    title: "تسجيل الدخول — استلام المواد",
+    hint: "اختر اسمك وأدخل الرمز السري للمتابعة",
+    name: "الاسم", namePick: "اختر اسمك",
+    pin: "الرمز السري", enter: "دخول",
+    pickName: "يرجى اختيار اسمك", needPin: "يرجى إدخال الرمز السري",
+    badPin: "رمز سري خاطئ",
+    noReceivers: "لا توجد قائمة مستلمين — تحقق من الاتصال ثم أعد المحاولة",
+  },
+  home: {
+    portal: "بوابة استلام المواد", logout: "خروج",
+    newReceipt: "استلام جديد", mine: "استلاماتي",
+    empty: "لا توجد استلامات بعد — ابدأ باستلام جديد.",
+    offlineNote: "لا اتصال — تظهر الاستلامات المحفوظة على هذا الجهاز فقط",
+    photo: "عرض صورة الإيصال",
+    pending: "بانتظار الإرسال: {{n}}",
+  },
+  sync: {
+    queued: "في قائمة الإرسال", syncing: "جارٍ الإرسال…",
+    synced: "أُرسل ✓", failed: "تعذّر الإرسال — سيُعاد تلقائياً",
+    retryNow: "إعادة الآن",
+    offlineQueued: "لا اتصال حالياً — سُجّل على الجهاز وسيُرسل تلقائياً عند عودة الاتصال",
+  },
+  form: {
+    title: "استلام مواد جديد",
+    project: "المشروع", projectPick: "اختر المشروع",
+    site: "الموقع", sitePick: "اختر الموقع",
+    blocksTab: "قطعة وشارع", namedTab: "اسم الشارع",
+    block: "القطعة", blockPh: "رقم القطعة",
+    street: "الشارع / الجادة", streetPh: "اختياري",
+    namedStreet: "اسم الشارع / الجادة", namedPick: "اختر الشارع",
+    kmFrom: "من الكيلومتر", kmTo: "إلى الكيلومتر",
+    woLabel: "أمر العمل", woNone: "لم يصدر أمر عمل بعد", woNA: "لا ينطبق",
+    category: "المادة (فئة عامة)", categoryPick: "اختر الفئة",
+    material: "المادة (تفصيلي)", materialPick: "اختر المادة",
+    cantFindMaterial: "لا أجد المادة في القائمة",
+    backToList: "عودة إلى القائمة",
+    freeMaterialPh: "اكتب اسم المادة كما في السند",
+    quantity: "الكمية", unit: "الوحدة",
+    supplier: "المورد", supplierPick: "اختر المورد",
+    cantFindSupplier: "لا أجد المورد في القائمة",
+    freeSupplierPh: "اكتب اسم المورد كما في السند",
+    subcontractor: "المقاول من الباطن", subPick: "اختر المقاول",
+    photo: "صورة الإيصال الورقي", photoTake: "التقاط صورة الإيصال 📷",
+    photoRetake: "إعادة التقاط الصورة", photoHint: "التقط أو أرفق صورة سند الاستلام",
+    photoFail: "تعذّرت معالجة الصورة — أعد المحاولة",
+    remarks: "ملاحظات", remarksPh: "اختياري…",
+    receiver: "اسم المستلم",
+    submit: "تسجيل الاستلام",
+    required: "يرجى تعبئة جميع الحقول المطلوبة",
+    needPhoto: "يرجى إرفاق صورة الإيصال",
+    cancel: "إلغاء",
+  },
+  done: {
+    title: "تم تسجيل الاستلام", receiptNo: "رقم الاستلام",
+    another: "استلام جديد آخر", back: "عودة",
+  },
+} as const
+
+const EN = {
+  title: "Materials receipt",
+  login: {
+    title: "Sign in — materials receipt",
+    hint: "Pick your name and enter your PIN",
+    name: "Name", namePick: "Pick your name",
+    pin: "PIN", enter: "Sign in",
+    pickName: "Pick your name", needPin: "Enter your PIN",
+    badPin: "Wrong PIN",
+    noReceivers: "No receiver list available — check the connection and retry",
+  },
+  home: {
+    portal: "Materials receipt portal", logout: "Sign out",
+    newReceipt: "New receipt", mine: "My receipts",
+    empty: "No receipts yet — start with a new one.",
+    offlineNote: "Offline — showing receipts saved on this device only",
+    photo: "View receipt photo",
+    pending: "Awaiting send: {{n}}",
+  },
+  sync: {
+    queued: "Queued to send", syncing: "Sending…",
+    synced: "Sent ✓", failed: "Send failed — will retry automatically",
+    retryNow: "Retry now",
+    offlineQueued: "No connection — saved on this device and will send automatically when back online",
+  },
+  form: {
+    title: "New materials receipt",
+    project: "Project", projectPick: "Pick the project",
+    site: "Site", sitePick: "Pick the site",
+    blocksTab: "Block & street", namedTab: "Street name",
+    block: "Block", blockPh: "Block number",
+    street: "Street / avenue", streetPh: "Optional",
+    namedStreet: "Street / avenue name", namedPick: "Pick the street",
+    kmFrom: "From km", kmTo: "To km",
+    woLabel: "Work order", woNone: "No work order issued yet", woNA: "Not applicable",
+    category: "Material (category)", categoryPick: "Pick a category",
+    material: "Material (detailed)", materialPick: "Pick the material",
+    cantFindMaterial: "I can't find the material in the list",
+    backToList: "Back to the list",
+    freeMaterialPh: "Type the material exactly as on the note",
+    quantity: "Quantity", unit: "Unit",
+    supplier: "Supplier", supplierPick: "Pick the supplier",
+    cantFindSupplier: "I can't find the supplier in the list",
+    freeSupplierPh: "Type the supplier exactly as on the note",
+    subcontractor: "Subcontractor", subPick: "Pick the subcontractor",
+    photo: "Paper receipt photo", photoTake: "Take the receipt photo 📷",
+    photoRetake: "Retake the photo", photoHint: "Capture or attach the delivery note photo",
+    photoFail: "Could not process the photo — try again",
+    remarks: "Remarks", remarksPh: "Optional…",
+    receiver: "Receiver name",
+    submit: "Record receipt",
+    required: "Fill the required fields",
+    needPhoto: "Attach the receipt photo",
+    cancel: "Cancel",
+  },
+  done: {
+    title: "Receipt recorded", receiptNo: "Receipt no.",
+    another: "Another receipt", back: "Back",
+  },
+} as const
+
+i18n.addResourceBundle("ar", "capture", AR, true, true)
+i18n.addResourceBundle("en", "capture", EN, true, true)
+
+export default i18n

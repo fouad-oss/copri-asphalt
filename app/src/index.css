@@ -1,0 +1,177 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/inter";
+@import "@fontsource/ibm-plex-sans-arabic/400.css";
+@import "@fontsource/ibm-plex-sans-arabic/600.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/600.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+    --font-heading: var(--font-sans);
+    /* Latin + Arabic in one stack (copri-frontend-SKILL): weights 400/600 only */
+    --font-sans: 'Inter Variable', 'IBM Plex Sans Arabic', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+    --color-sidebar-ring: var(--sidebar-ring);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar: var(--sidebar);
+    --color-chart-5: var(--chart-5);
+    --color-chart-4: var(--chart-4);
+    --color-chart-3: var(--chart-3);
+    --color-chart-2: var(--chart-2);
+    --color-chart-1: var(--chart-1);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    /* semantic status tokens (skill): warnings/exceptions are the ONLY
+       colored surfaces on a screen */
+    --color-success: var(--success);
+    --color-info: var(--info);
+    --color-warning: var(--warning);
+    --color-warning-surface: var(--warning-surface);
+    --color-danger: var(--danger);
+    --color-danger-surface: var(--danger-surface);
+    --color-brand-ink: var(--brand-ink);
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* COPRI tokens (copri-frontend-SKILL.md).
+   Brand sampled from the copri.com brochure vectors — the site logo is a
+   white knockout, the brochure carries the real marks: green #00833E
+   (351/169 fill counts: navy #0C2E6D structure + green accents). Green is
+   the action accent (AA on white ≈ 4.9:1); navy is brand-ink for
+   headers/secondary. Ink/Paper/Canvas per the skill. */
+:root {
+    --background: #F5F6F7;            /* Canvas */
+    --foreground: #1A2733;            /* Ink */
+    --card: #FFFFFF;                  /* Paper */
+    --card-foreground: #1A2733;
+    --popover: #FFFFFF;
+    --popover-foreground: #1A2733;
+    --primary: #00833E;               /* brand green — ONE use per view */
+    --primary-foreground: #FFFFFF;
+    --secondary: #EDEFF1;
+    --secondary-foreground: #1A2733;
+    --muted: #EDEFF1;
+    --muted-foreground: #5A6873;
+    --accent: #EDEFF1;
+    --accent-foreground: #1A2733;
+    --destructive: #B03A2E;
+    --border: #E3E6E8;                /* hairline borders, flat surfaces */
+    --input: #E3E6E8;
+    --ring: #00833E;
+    --brand-ink: #0C2E6D;             /* brochure navy */
+    --success: #1E8449;
+    --info: #2471A3;
+    --warning: #B7791F;
+    --warning-surface: #FDF3E3;
+    --danger: #B03A2E;
+    --danger-surface: #FBEAE8;
+    --chart-1: #0C2E6D;
+    --chart-2: #00833E;
+    --chart-3: #2471A3;
+    --chart-4: #B7791F;
+    --chart-5: #5A6873;
+    --radius: 0.5rem;
+    --sidebar: #FFFFFF;
+    --sidebar-foreground: #1A2733;
+    --sidebar-primary: #00833E;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-accent: #EDEFF1;
+    --sidebar-accent-foreground: #1A2733;
+    --sidebar-border: #E3E6E8;
+    --sidebar-ring: #00833E;
+}
+
+.dark {
+    --background: #10161C;
+    --foreground: #E8ECEF;
+    --card: #1A2733;
+    --card-foreground: #E8ECEF;
+    --popover: #1A2733;
+    --popover-foreground: #E8ECEF;
+    --primary: #17A55C;
+    --primary-foreground: #08110B;
+    --secondary: #24303B;
+    --secondary-foreground: #E8ECEF;
+    --muted: #24303B;
+    --muted-foreground: #96A3AD;
+    --accent: #24303B;
+    --accent-foreground: #E8ECEF;
+    --destructive: #E06055;
+    --border: #FFFFFF1A;
+    --input: #FFFFFF26;
+    --ring: #17A55C;
+    --brand-ink: #7C96D6;
+    --success: #34B36B;
+    --info: #5CA3D6;
+    --warning: #D69A3F;
+    --warning-surface: #3A2E14;
+    --danger: #E06055;
+    --danger-surface: #3A1D19;
+    --chart-1: #7C96D6;
+    --chart-2: #34B36B;
+    --chart-3: #5CA3D6;
+    --chart-4: #D69A3F;
+    --chart-5: #96A3AD;
+    --sidebar: #1A2733;
+    --sidebar-foreground: #E8ECEF;
+    --sidebar-primary: #17A55C;
+    --sidebar-primary-foreground: #08110B;
+    --sidebar-accent: #24303B;
+    --sidebar-accent-foreground: #E8ECEF;
+    --sidebar-border: #FFFFFF1A;
+    --sidebar-ring: #17A55C;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    }
+  body {
+    @apply bg-background text-foreground;
+    /* office density default: 14px body; field screens opt into 16px */
+    font-size: 14px;
+    }
+  html {
+    @apply font-sans;
+    }
+  /* density modes (skill): office = dense desktop, field = 16px + 48px targets */
+  .density-field {
+    font-size: 16px;
+    }
+  /* reference codes & quantities: always monospace, always LTR */
+  .ref-code {
+    @apply font-mono;
+    direction: ltr;
+    unicode-bidi: isolate;
+    }
+}

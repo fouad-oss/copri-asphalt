@@ -990,8 +990,12 @@ def apply_stage(master, cfg, args):
 
 # ── items master (0020: items + item_spectronova_ids) ───────────────────
 
-ITEM_EXCLUDE = DEC_EXCLUDE | {"NOT MATERIAL", "NON MATERIAL", "NON-MATERIAL",
-                              "NOT A MATERIAL", "NOT AN ITEM", "REMOVE", "DROP", "DELETE"}
+# NOTE: bare "CONFIRM" means confirm-the-EXCLUSION on the vendors
+# EXCLUSIONS sheet (DEC_EXCLUDE), but confirm-the-SUGGESTED-UOM here —
+# subtract it so the exclude check (which runs first) never eats it.
+ITEM_EXCLUDE = (DEC_EXCLUDE - {"CONFIRM"}) | {
+    "NOT MATERIAL", "NON MATERIAL", "NON-MATERIAL",
+    "NOT A MATERIAL", "NOT AN ITEM", "REMOVE", "DROP", "DELETE"}
 ITEM_CONFIRM = {"OK", "YES", "CONFIRM", "CONFIRMED", "KEEP", "APPROVE", "APPROVED"}
 
 

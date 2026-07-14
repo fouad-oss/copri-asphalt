@@ -23,6 +23,8 @@ deleted; shelved pages lost only their routes and navigation.
 | Dispatch flow (plant clerk → receiving engineer) | `/dispatch`, `/?role=engineer`, `/?note=…` |
 | Material capture on site | `/?matRole=receiver` |
 | Asphalt plant dashboard + board picker (Fouad) | `/?dash=plant`, `/?dash` |
+| Plant-manager portal (Salah) | `/?plantRole=manager` |
+| Finance recipient-request desk (Jimmy) | `/?financeRole=manager` |
 | Approvals / accountant portal (being rebuilt by this pivot) | `/?rf=1` |
 | Printer calibration | `/?printTest=1` |
 | Blueprint map (separate track, separate brief) | `/map` |
@@ -30,8 +32,6 @@ deleted; shelved pages lost only their routes and navigation.
 ### Shelved (code preserved, routes removed → "موقوفة مؤقتاً" notice)
 
 - Milling portals + public milling report (`?millingRole=…`, `?millingReport=…`)
-- Plant-manager portal (`?plantRole=manager`)
-- Finance recipient-request desk (`?financeRole=manager`)
 - Work-orders reference portal (`?wo`)
 - Exec / project / accountant-materials boards (`?dash=exec|project|acct`)
 - **The React front-end rebuild under `app/`** — removed from the Vercel

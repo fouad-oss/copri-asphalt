@@ -7568,16 +7568,21 @@ const matRole       = _mparams.get("matRole");
 const note = getNoteFromURL();
 
 // ── SHELVED ROUTES (accounting pivot 2026-07, tag `full-build-2026-07`).
-// Milling, plant-manager, finance-desk, WO-reference portals and the
-// exec/project/acct boards are parked: module code is untouched below,
-// only these dispatch branches were re-pointed at renderShelved().
-// To un-shelve a portal, restore its branch from the tag.
+// Milling portals, the WO-reference portal and the exec/project/acct
+// boards are parked: module code is untouched below, only these dispatch
+// branches were re-pointed at renderShelved(). The plant-manager and
+// finance portals stay live (Fouad, step-1 review). To un-shelve a
+// portal, restore its branch from the tag.
 if (millingReport || millingRole) {
   renderShelved();                                        // milling module — shelved
 } else if (_mparams.get("plantRole") === "manager") {
-  renderShelved();                                        // plant-manager portal — shelved
+  const plantSession = getPlantSession();
+  if (plantSession) renderPlantHome(plantSession.name);
+  else renderPlantPINScreen(name => renderPlantHome(name));
 } else if (_mparams.get("financeRole") === "manager") {
-  renderShelved();                                        // finance recipient desk — shelved
+  const finSession = getFinanceSession();
+  if (finSession) renderFinanceHome(finSession.name);
+  else renderFinancePINScreen(name => renderFinanceHome(name));
 } else if (_mparams.has("wo")) {
   renderShelved();                                        // WO reference portal — shelved
 } else if (_mparams.has("printTest")) {

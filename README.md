@@ -27,6 +27,7 @@ deleted; shelved pages lost only their routes and navigation.
 | Finance recipient-request desk (Jimmy) | `/?financeRole=manager` |
 | Approvals / accountant portal (being rebuilt by this pivot) | `/?rf=1` |
 | Printer calibration | `/?printTest=1` |
+| SpectroNova data page (external, token access) | `/?sn=<token>` |
 | Blueprint map (separate track, separate brief) | `/map` |
 
 ### Shelved (code preserved, routes removed → "موقوفة مؤقتاً" notice)

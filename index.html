@@ -8515,6 +8515,179 @@ function _woPortalPage(main, allRows) {
   paint();
 }
 
+// ── SN DATA PAGE (?sn=<token>) — external, read-only (brief Part 5) ──
+// Published bundles only, token access (rotation = edit the single
+// sn_page_token settings row and share the new link). SN staff's ONLY
+// write is the per-bundle import confirmation. The column layout is a
+// FROZEN CONTRACT agreed with SN staff: additions at the END only,
+// nothing renamed or reordered — treat like an API contract.
+const SN_HEADS = ["Supplier", "PO Number", "PO Line", "Item Code", "Item Description", "Qty",
+                  "UOM", "Unit Price", "Amount", "Delivery Date", "Supplier DN Number", "Site"];
+const SN_TOKEN_KEY = "copri_sn_token";
+function snRowCells(r) {
+  const n3 = (v) => v == null ? "" : Number(v).toFixed(3);
+  return [r.supplier, r.po_number, r.po_line, r.item_code, r.description, r.qty,
+          r.uom, n3(r.unit_price), n3(r.amount), r.delivery_date, r.supplier_dn, r.site];
+}
+async function renderSnPage(urlToken) {
+  const main = renderShell("بيانات SpectroNova");
+  let token = (urlToken && urlToken !== "1") ? urlToken : (localStorage.getItem(SN_TOKEN_KEY) || "");
+
+  function tokenScreen(msg) {
+    main.innerHTML = "";
+    const card = el("div", "card");
+    card.appendChild(sectionTitle("صفحة بيانات SpectroNova"));
+    const info = el("div", "info-box");
+    info.textContent = "أدخل رمز الوصول المزوَّد من مكتب كوبري.";
+    card.appendChild(info);
+    const tI = input("text", "رمز الوصول");
+    card.appendChild(fieldGroup("الرمز", tI, true).group);
+    const err = el("div", "error-msg"); err.style.display = msg ? "block" : "none"; err.textContent = msg || "";
+    card.appendChild(err);
+    const go = el("button", "btn-primary"); go.type = "button"; go.textContent = "دخول"; go.style.width = "100%";
+    go.addEventListener("click", () => { if (tI.value.trim()) load(tI.value.trim()); });
+    tI.addEventListener("keydown", e => { if (e.key === "Enter") go.click(); });
+    card.appendChild(go);
+    main.appendChild(card);
+  }
+
+  async function load(tk) {
+    main.innerHTML = `<div class="card"><div class="info-box">جارٍ التحميل…</div></div>`;
+    let data;
+    try { data = await sbRpc("sn_page_data", { p_token: tk }); } catch { data = null; }
+    if (!data || !data.success) {
+      localStorage.removeItem(SN_TOKEN_KEY);
+      tokenScreen(data && data.error === "bad token" ? "رمز غير صحيح — راجع مكتب كوبري" : "تعذّر الاتصال — حاول مجدداً");
+      return;
+    }
+    localStorage.setItem(SN_TOKEN_KEY, tk);
+    paint(tk, data.rows || []);
+  }
+
+  function paint(tk, rows) {
+    main.innerHTML = "";
+    const head = el("div", "card");
+    head.appendChild(sectionTitle("حزم كوبري المنشورة — للنقل إلى SpectroNova"));
+    const info = el("div", "info-box");
+    info.textContent = "صفحة قراءة فقط: تُدخلون الحزم في SpectroNova يدوياً، ثم تسجلون مرجع الاستيراد هنا — هذا هو التعديل الوحيد المتاح.";
+    head.appendChild(info);
+    main.appendChild(head);
+
+    // pending-import queue — visible to both sides
+    const byBundle = {}; const order = [];
+    rows.forEach(r => { if (!byBundle[r.bundle_id]) { byBundle[r.bundle_id] = []; order.push(r.bundle_id); } byBundle[r.bundle_id].push(r); });
+    const pendingIds = order.filter(id => !byBundle[id][0].imported_flag);
+    const pCard = el("div", "card");
+    pCard.appendChild(sectionTitle(`بانتظار الاستيراد (${pendingIds.length})`));
+    if (!pendingIds.length) {
+      const ok = el("div", "info-box"); ok.textContent = "لا حزم بانتظار الاستيراد — كل شيء مسجّل. ✔";
+      pCard.appendChild(ok);
+    } else {
+      pendingIds.forEach(id => {
+        const f = byBundle[id][0];
+        const d = el("div", "req-line");
+        d.innerHTML = `<b>${f.bundle_no}</b> · ${f.po_number} · ${byBundle[id].length} سطر · نُشرت ${f.published_at ? fmtKW(f.published_at).slice(0, 10) : ""}`;
+        pCard.appendChild(d);
+      });
+    }
+    main.appendChild(pCard);
+
+    // filters + CSV
+    const fCard = el("div", "card");
+    fCard.appendChild(sectionTitle("تصفية وتنزيل"));
+    const fRow = el("div"); fRow.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:.4rem;margin-bottom:.4rem";
+    const fromI = input("date", ""); const toI = input("date", "");
+    fRow.appendChild(fieldGroup("من تاريخ التوريد", fromI, false).group);
+    fRow.appendChild(fieldGroup("إلى تاريخ التوريد", toI, false).group);
+    fCard.appendChild(fRow);
+    const fRow2 = el("div"); fRow2.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:.4rem;margin-bottom:.4rem";
+    const poSel = el("select"); const pd = el("option"); pd.value = ""; pd.textContent = "كل أوامر الشراء"; poSel.appendChild(pd);
+    [...new Set(rows.map(r => r.po_number))].sort().forEach(p => { const o = el("option"); o.value = p; o.textContent = p; poSel.appendChild(o); });
+    const siteSel = el("select"); const sd = el("option"); sd.value = ""; sd.textContent = "كل المواقع"; siteSel.appendChild(sd);
+    [...new Set(rows.map(r => r.site).filter(Boolean))].sort().forEach(s => { const o = el("option"); o.value = s; o.textContent = s; siteSel.appendChild(o); });
+    fRow2.appendChild(fieldGroup("أمر الشراء", poSel, false).group);
+    fRow2.appendChild(fieldGroup("الموقع", siteSel, false).group);
+    fCard.appendChild(fRow2);
+    const csvBtn = el("button", "btn-secondary"); csvBtn.type = "button"; csvBtn.style.width = "100%";
+    fCard.appendChild(csvBtn);
+    main.appendChild(fCard);
+
+    const listWrap = el("div"); main.appendChild(listWrap);
+
+    const filteredRows = () => rows.filter(r =>
+      (!fromI.value || (r.delivery_date || "") >= fromI.value) &&
+      (!toI.value || (r.delivery_date || "") <= toI.value) &&
+      (!poSel.value || r.po_number === poSel.value) &&
+      (!siteSel.value || r.site === siteSel.value));
+
+    csvBtn.addEventListener("click", () => {
+      const list = filteredRows();
+      const q = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
+      const csv = "﻿" + [SN_HEADS.map(q).join(",")]
+        .concat(list.map(r => snRowCells(r).map(q).join(","))).join("\r\n");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      a.download = `copri-sn-bundles-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click(); URL.revokeObjectURL(a.href);
+    });
+
+    function paintList() {
+      const list = filteredRows();
+      csvBtn.textContent = `⬇️ تنزيل CSV / Excel (${list.length} سطر)`;
+      listWrap.innerHTML = "";
+      if (!list.length) { listWrap.innerHTML = `<div class="card"><div class="info-box">لا نتائج مطابقة للتصفية.</div></div>`; return; }
+      const g = {}; const ord = [];
+      list.forEach(r => { if (!g[r.bundle_id]) { g[r.bundle_id] = []; ord.push(r.bundle_id); } g[r.bundle_id].push(r); });
+      const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+      ord.forEach(id => {
+        const bl = g[id]; const f = bl[0];
+        const amt = bl.reduce((s, r) => s + Number(r.amount || 0), 0);
+        const c = el("div", "card");
+        const top = el("div", "prog-top");
+        const t = el("div", "req-client"); t.textContent = f.bundle_no;
+        top.appendChild(t);
+        const chip = el("span");
+        chip.style.cssText = `font-size:.72rem;font-weight:700;border-radius:99px;padding:.1rem .55rem;border:1px solid ${f.imported_flag ? "var(--green)" : "var(--amber)"};color:${f.imported_flag ? "var(--green)" : "var(--amber)"}`;
+        chip.textContent = f.imported_flag ? "✔ مستوردة" : "بانتظار الاستيراد";
+        top.appendChild(chip); c.appendChild(top);
+        const l1 = el("div", "field-hint");
+        l1.textContent = `نُشرت ${f.published_at ? fmtKW(f.published_at).slice(0, 10) : "—"}` +
+          (f.imported_flag && f.sn_reference ? ` · مرجع SN: ${f.sn_reference}` : "");
+        c.appendChild(l1);
+        const wrap = el("div"); wrap.style.cssText = "overflow-x:auto;direction:ltr;margin-top:.5rem";
+        wrap.innerHTML = `<table style="border-collapse:collapse;font-size:.72rem;white-space:nowrap">` +
+          `<thead><tr>${SN_HEADS.map(h => `<th style="border:1px solid var(--text-3);padding:.25rem .5rem;background:var(--surface-2);text-align:left">${h}</th>`).join("")}</tr></thead>` +
+          `<tbody>` + bl.map(r =>
+            `<tr>${snRowCells(r).map(v => `<td style="border:1px solid var(--text-3);padding:.25rem .5rem;text-align:left">${esc(v)}</td>`).join("")}</tr>`).join("") +
+          `<tr><td colspan="8" style="border:1px solid var(--text-3);padding:.25rem .5rem;text-align:left;font-weight:700">Total (KWD)</td>` +
+          `<td style="border:1px solid var(--text-3);padding:.25rem .5rem;text-align:left;font-weight:700">${amt.toFixed(3)}</td><td colspan="3" style="border:1px solid var(--text-3)"></td></tr>` +
+          `</tbody></table>`;
+        c.appendChild(wrap);
+        if (!f.imported_flag) {
+          const row = el("div"); row.style.cssText = "display:flex;gap:.4rem;margin-top:.5rem";
+          const refI = input("text", "INVSI/… أو Stock_Receipt/…"); refI.style.flex = "1";
+          const go = el("button", "btn-primary"); go.type = "button"; go.textContent = "تسجيل الاستيراد"; go.style.width = "auto";
+          go.addEventListener("click", async () => {
+            if (!refI.value.trim()) { alert("أدخل مرجع الاستيراد"); return; }
+            go.disabled = true;
+            try {
+              const r = await sbRpc("sn_import_confirm", { p_token: tk, p_bundle_id: id, p_sn_reference: refI.value.trim() });
+              if (!r || !r.success) throw new Error();
+              load(tk);
+            } catch { go.disabled = false; alert("تعذّر الحفظ — حاول مجدداً"); }
+          });
+          row.appendChild(refI); row.appendChild(go); c.appendChild(row);
+        }
+        listWrap.appendChild(c);
+      });
+    }
+    [fromI, toI, poSel, siteSel].forEach(i => i.addEventListener("change", paintList));
+    paintList();
+  }
+
+  if (token) load(token); else tokenScreen();
+}
+
 // ── Router — runs after the cached reference overlay ──
 function runRouter() {
 const _mparams = new URLSearchParams(window.location.search);
@@ -8543,6 +8716,8 @@ if (millingReport || millingRole) {
   renderShelved();                                        // WO reference portal — shelved
 } else if (_mparams.has("printTest")) {
   renderPrintTest();                                      // printer calibration, no PIN, no DB write
+} else if (_mparams.has("sn")) {
+  renderSnPage(_mparams.get("sn") || "");                 // SpectroNova data page — TOKEN access, not PIN
 } else if (_mparams.has("dash")) {
   // Kept: board picker (Fouad's desk selection; PIN gate waits for the auth
   // phase) + plant board. Other boards are shelved with the pivot.

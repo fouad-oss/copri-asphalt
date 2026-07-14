@@ -20,6 +20,8 @@ import type { Profile } from "@/lib/session"
    blanket request carries proposed item lines (qty is the control). */
 
 type Line = { item: string; unit: string; qty: string; rate: string }
+// Per-unit request line (0023): item from the canonical master or free text
+type ReqLine = { itemId: string; itemText: string; unit: string; qty: string; rate: string }
 
 export default function NewRequest() {
   const { t } = useTranslation()
@@ -43,24 +45,27 @@ export default function NewRequest() {
   const [from, setFrom] = useState("")
   const [to, setTo] = useState("")
   const [lines, setLines] = useState<Line[]>([])
+  const [reqLines, setReqLines] = useState<ReqLine[]>([])
   const [desc, setDesc] = useState("")
   const [value, setValue] = useState("")
 
   const load = useCallback(async () => {
     setErr(""); setM(null)
     try {
-      const [ccs, vendors, blankets, lineDraw, cats] = await Promise.all([
+      const [ccs, vendors, blankets, lineDraw, cats, items] = await Promise.all([
         supabase.from("cost_centers").select("*").eq("active", true).order("kind", { ascending: false }).order("code"),
         supabase.from("vendors").select("id,name,kind").eq("active", true).order("name"),
         supabase.from("blanket_lpos").select("*,vendors(name),commitments!blanket_lpos_commitment_id_fkey(number)").eq("status", "نشط"),
         supabase.from("blanket_line_drawdown").select("*").order("line_no"),
         supabase.from("list_options").select("value").eq("kind", "blanket_category").order("sort_order"),
+        supabase.from("items").select("id,name,unit").eq("active", true).order("name").limit(1000),
       ])
       if (ccs.error || vendors.error) throw ccs.error || vendors.error
       const bl = (blankets.data || []).map((b: any) => ({
         ...b, lines: (lineDraw.data || []).filter((l: any) => l.blanket_id === b.id),
       }))
-      setM({ ccs: ccs.data || [], vendors: vendors.data || [], blankets: bl, cats: (cats.data || []).map((c: any) => c.value) })
+      setM({ ccs: ccs.data || [], vendors: vendors.data || [], blankets: bl,
+             cats: (cats.data || []).map((c: any) => c.value), items: items.data || [] })
       if (user.costCenterId) setCc(String(user.costCenterId))
     } catch { setErr(t("common.error")) }
   }, [t, user.costCenterId])
@@ -72,8 +77,11 @@ export default function NewRequest() {
 
   const linesTotal = useMemo(() =>
     lines.reduce((s, L) => s + (parseFloat(L.qty) || 0) * (parseFloat(L.rate) || 0), 0), [lines])
+  const reqLinesTotal = useMemo(() =>
+    reqLines.reduce((s, L) => s + (parseFloat(L.qty) || 0) * (parseFloat(L.rate) || 0), 0), [reqLines])
   const derived = ln ? (parseFloat(blQty) || 0) * ln.agreed_rate
-    : isBlanket && lines.length ? linesTotal : null
+    : isBlanket && lines.length ? linesTotal
+    : reqLines.length ? reqLinesTotal : null
   const shownValue = derived != null ? derived.toFixed(3) : value
 
   const vendorKinds: Record<string, string[] | null> =
@@ -111,6 +119,21 @@ export default function NewRequest() {
       }
       if (!payload.length) return fail(t("req.addLine"))
     }
+    // Per-unit request lines (0023)
+    const reqPayload: any[] = []
+    if (!isBlanket && !ln && !blanket) {
+      for (const L of reqLines) {
+        const name = L.itemId === "free" ? L.itemText.trim()
+          : (m.items.find((x: any) => String(x.id) === L.itemId)?.name || "")
+        if (!name) return fail(t("req.itemPick"))
+        if (!(parseFloat(L.qty) > 0) || !(parseFloat(L.rate) >= 0))
+          return fail(t("req.reqLinesTitle"))
+        reqPayload.push({
+          item: name, item_id: L.itemId === "free" ? null : Number(L.itemId),
+          unit: L.unit.trim(), qty: parseFloat(L.qty), rate: parseFloat(L.rate),
+        })
+      }
+    }
     setBusy(true)
     try {
       const r = await rpc("request_submit", {
@@ -126,6 +149,8 @@ export default function NewRequest() {
         p_blanket_line_id: ln ? Number(blLine) : null,
         p_qty: ln ? parseFloat(blQty) : null,
         p_blanket_lines: payload,
+        // omitted entirely when empty so pre-0023 servers still resolve
+        ...(reqPayload.length ? { p_lines: reqPayload } : {}),
       })
       if (r?.success) setDone(r)
       else if (r?.error === "ceiling exceeded") fail(t("req.errCeiling", { v: kd(r.remaining) }))
@@ -230,11 +255,64 @@ export default function NewRequest() {
         </Select>
       </F>
 
+      {/* Per-unit request lines (0023) — every request type, unless this
+          is a call-off (lines come from the blanket) or a blanket request
+          (which has its own lines editor below). */}
+      {!bl && !isBlanket && (
+        <div className="flex flex-col gap-2 rounded-lg border p-3">
+          <div className="text-sm font-semibold">{t("req.reqLinesTitle")}</div>
+          {reqLines.map((L, i) => {
+            const set = (patch: Partial<ReqLine>) =>
+              setReqLines((o) => o.map((x, j) => j === i ? { ...x, ...patch } : x))
+            return (
+              <div key={i} className="flex flex-col gap-2 rounded-md border p-2">
+                <Select value={L.itemId} onValueChange={(v) => {
+                  const it = m.items.find((x: any) => String(x.id) === v)
+                  set({ itemId: v, itemText: it ? it.name : "", unit: it?.unit || L.unit })
+                }}>
+                  <SelectTrigger><SelectValue placeholder={t("req.itemPick")} /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="free">{t("req.freeText")}</SelectItem>
+                    {m.items.map((it: any) => (
+                      <SelectItem key={it.id} value={String(it.id)}>
+                        {it.name}{it.unit ? ` (${it.unit})` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {L.itemId === "free" && (
+                  <Input placeholder={t("req.freeItemPh")} value={L.itemText}
+                    onChange={(e) => set({ itemText: e.target.value })} />
+                )}
+                <div className="grid grid-cols-3 gap-2">
+                  <Input placeholder={t("req.lineUnit")} value={L.unit}
+                    onChange={(e) => set({ unit: e.target.value })} />
+                  <Input placeholder={t("grn.qty")} dir="ltr" inputMode="decimal" value={L.qty}
+                    onChange={(e) => set({ qty: e.target.value })} />
+                  <Input placeholder={t("req.lineRate")} dir="ltr" inputMode="decimal" value={L.rate}
+                    onChange={(e) => set({ rate: e.target.value })} />
+                </div>
+                <button type="button" className="self-start text-xs text-danger underline"
+                  onClick={() => setReqLines((o) => o.filter((_, j) => j !== i))}>
+                  {t("req.removeLine")}
+                </button>
+              </div>
+            )
+          })}
+          <Button type="button" variant="secondary" size="sm"
+            onClick={() => setReqLines((o) => [...o, { itemId: "", itemText: "", unit: "", qty: "", rate: "" }])}>
+            {t("req.addLine")}
+          </Button>
+          {reqLines.length > 0 && <div className="text-sm">{t("req.linesTotal", { v: kd(reqLinesTotal) })}</div>}
+        </div>
+      )}
+
       {type === "LPO" && !bl && (
         <div className="flex flex-col gap-3 rounded-lg border p-3">
           <label className="flex cursor-pointer items-center gap-2 text-sm">
             <Checkbox checked={isBlanket} onCheckedChange={(v) => {
               setIsBlanket(!!v)
+              if (v) setReqLines([])
               if (v && !lines.length) setLines([{ item: "", unit: "", qty: "", rate: "" }])
             }} />
             {t("req.isBlanket")}

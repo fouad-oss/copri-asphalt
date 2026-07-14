@@ -40,6 +40,11 @@ function ReqCard({ r, children }: { r: Req; children?: React.ReactNode }) {
           {r.vendors?.name || "—"} · {cc ? `${cc.name_ar || cc.name_en || ""} (${cc.code})` : "—"} · <b>{kd(r.estimated_value)}</b>
         </div>
         <div className="text-sm text-muted-foreground">{r.description}</div>
+        {(r.request_lines || []).map((l: any, i: number) => (
+          <div key={i} className="text-xs text-muted-foreground">
+            • {l.item} — <span className="tabular-nums" dir="ltr">{l.qty} {l.unit || ""} × {l.rate}</span>
+          </div>
+        ))}
         <div className="text-xs text-muted-foreground">
           {r.requested_by || "—"} · {fmtKW(r.created_at)}
           {r.decided_by ? <> · {r.decided_by}</> : null}

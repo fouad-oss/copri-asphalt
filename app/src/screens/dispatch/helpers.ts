@@ -211,7 +211,8 @@ export async function dbSubmitReceipt(p: {
 // Receipt link — the new-app route form (/dispatch/note/:id). The QR and the
 // WhatsApp message both carry this.
 export function receiptLinkFor(note: string) {
-  return `${window.location.origin}/dispatch/note/${encodeURIComponent(note)}`
+  const base = import.meta.env.BASE_URL.replace(/\/$/, "")
+  return `${window.location.origin}${base}/dispatch/note/${encodeURIComponent(note)}`
 }
 
 // Pre-filled WhatsApp message (URL-encoded) for a dispatch — verbatim legacy.

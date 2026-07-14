@@ -94,7 +94,7 @@ const router = createBrowserRouter([
       { path: "admin", element: <AdminPanel /> },
     ],
   },
-])
+], { basename: import.meta.env.BASE_URL.replace(/\/$/, "") || "/" })
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -102,3 +102,4 @@ createRoot(document.getElementById("root")!).render(
     <Toaster position="top-center" />
   </StrictMode>,
 )
+

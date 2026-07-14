@@ -353,7 +353,7 @@ function whatsappUrl(js: JustSent, who: string, t: (k: string, o?: Record<string
     js.items.map((it) => `- ${it.mix}: ${it.qty} طن × ${it.rate} د.ك`).join("\n") + "\n" +
     (js.details ? `${t("req.waDetails")}: ${js.details}\n` : "") +
     `${t("req.waBy")}: ${who}\n` +
-    `${t("req.waApprove")}: ${location.origin}/boards/desk/finance`,
+    `${t("req.waApprove")}: ${location.origin}${import.meta.env.BASE_URL.replace(/\/$/, "")}/boards/desk/finance`,
   )
   return `https://wa.me/${js.financePhone}?text=${msg}`
 }

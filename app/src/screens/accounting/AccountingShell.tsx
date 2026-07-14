@@ -12,6 +12,8 @@ import logoInk from "@/assets/brand/copri-logo-ink.png"
 const NAV: { to: string; label: string }[] = [
   { to: "/accounting", label: L.nav.audit },
   { to: "/accounting/po-register", label: L.nav.poRegister },
+  { to: "/accounting/bundling", label: L.nav.bundling },
+  { to: "/accounting/bundles", label: L.nav.bundles },
 ]
 
 export default function AccountingShell() {

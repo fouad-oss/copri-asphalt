@@ -97,6 +97,150 @@ export async function addPoLines(
   if (!r?.success) throw new Error(r?.error || "failed")
 }
 
+/* ── Bundling (screens 3–4) ─────────────────────────────────────────── */
+
+export type ReadyNote = {
+  ref: number
+  noteNo: string
+  date: string | null
+  site: string
+  item: string
+  itemId: number | null
+  qty: number
+}
+
+export type PoLineOption = {
+  lineId: number
+  commitmentId: number
+  po: string
+  lineNo: number
+  item: string
+  itemId: number | null
+  unit: string
+  remaining: number | null
+}
+
+export type BundleRow = {
+  id: number
+  bundleNo: string
+  status: "draft" | "verified" | "published"
+  adjusts: number | null
+  po: string
+  lineNo: number | null
+  lineItem: string
+  notes: number
+  qty: number
+  amount: number
+  imported: boolean
+  snReference: string
+  createdAt: string
+}
+
+let _plantIds: Set<number> | null = null
+/** Vendor ids mapped to the plant's SN supplier (settings row is the
+ *  config point; 5205 only as fallback). */
+export async function plantVendorIds(): Promise<Set<number>> {
+  if (_plantIds) return _plantIds
+  const { data: setting } = await supabase.from("pipeline_settings")
+    .select("value").eq("key", "plant_dispatch_supplier").maybeSingle()
+  const contact = (setting?.value as any)?.contact_id || "5205"
+  const { data, error } = await supabase.from("vendor_spectronova_ids")
+    .select("vendor_id").eq("contact_id", contact)
+  if (error) throw error
+  _plantIds = new Set((data ?? []).map((r) => r.vendor_id))
+  return _plantIds
+}
+
+/** Matched notes not yet in a bundle, oldest first. */
+export async function readyNotes(channel: Channel): Promise<ReadyNote[]> {
+  let q = supabase.from("note_bundle_ready")
+    .select("note_ref,note_no,delivery_date,site,item_text,item_id,bill_qty")
+    .eq("note_source", channel === "asphalt" ? "dispatch" : "material")
+    .order("delivery_date", { ascending: true })
+    .limit(400)
+  if (channel === "asphalt") q = q.in("company", await copriNames())
+  const { data, error } = await q
+  if (error) throw error
+  return (data ?? []).map((r: any) => ({
+    ref: r.note_ref, noteNo: r.note_no, date: r.delivery_date,
+    site: r.site ?? "", item: r.item_text ?? "", itemId: r.item_id,
+    qty: Number(r.bill_qty ?? 0),
+  }))
+}
+
+/** Active PO lines offered for bundling on this channel. */
+export async function poLineOptions(channel: Channel): Promise<PoLineOption[]> {
+  const [plant, { data, error }] = await Promise.all([
+    plantVendorIds(),
+    supabase.from("po_line_balance")
+      .select("line_id,commitment_id,po_number,sn_po,line_no,item,item_id,unit,remaining_qty,vendor_id,po_status")
+      .order("line_no", { ascending: true })
+      .limit(2000),
+  ])
+  if (error) throw error
+  return (data ?? [])
+    .filter((r: any) => (r.po_status ?? "نشط") === "نشط" &&
+      (channel === "asphalt" ? plant.has(r.vendor_id) : !plant.has(r.vendor_id)))
+    .map((r: any) => ({
+      lineId: r.line_id, commitmentId: r.commitment_id,
+      po: r.sn_po || r.po_number, lineNo: r.line_no, item: r.item,
+      itemId: r.item_id, unit: r.unit ?? "", remaining: r.remaining_qty,
+    }))
+}
+
+/** Last-used PO line per item PER PO, newest first (the suggestion). */
+export async function lastUsedLines(): Promise<{ itemId: number; lineId: number }[]> {
+  const { data, error } = await supabase.from("bundle_last_line")
+    .select("item_id,commitment_line_id,created_at")
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return (data ?? []).map((r: any) => ({ itemId: r.item_id, lineId: r.commitment_line_id }))
+}
+
+export async function bundlesList(channel: Channel): Promise<BundleRow[]> {
+  const { data, error } = await supabase.from("bundles")
+    .select("id,bundle_no,status,adjusts_bundle_id,imported_flag,sn_reference,created_at," +
+      "bundle_lines(qty,amount),commitment_lines(line_no,item,commitments(number,sn_po))")
+    .eq("source", channel)
+    .order("created_at", { ascending: false })
+    .limit(200)
+  if (error) throw error
+  return (data ?? []).map((r: any) => {
+    const bl = r.bundle_lines ?? []
+    const cl = r.commitment_lines
+    return {
+      id: r.id, bundleNo: r.bundle_no, status: r.status,
+      adjusts: r.adjusts_bundle_id,
+      po: cl?.commitments?.sn_po || cl?.commitments?.number || "—",
+      lineNo: cl?.line_no ?? null, lineItem: cl?.item ?? "",
+      notes: bl.length,
+      qty: bl.reduce((s: number, x: any) => s + Number(x.qty || 0), 0),
+      amount: bl.reduce((s: number, x: any) => s + Number(x.amount || 0), 0),
+      imported: !!r.imported_flag, snReference: r.sn_reference ?? "",
+      createdAt: r.created_at,
+    }
+  })
+}
+
+async function callRpc(fn: string, args: Record<string, unknown>) {
+  const { rpc } = await import("@/lib/supabase")
+  const r = await rpc(fn, args)
+  if (!r?.success) throw new Error(r?.error || "failed")
+  return r
+}
+export async function createBundle(pin: string, lineId: number, channel: Channel, refs: number[]) {
+  return callRpc("bundle_create", {
+    p_pin: pin, p_commitment_line_id: lineId, p_source: channel,
+    p_notes: refs.map((ref) => ({ ref })),
+  })
+}
+export async function setBundleStatus(pin: string, id: number, status: string) {
+  return callRpc("bundle_status_set", { p_pin: pin, p_bundle_id: id, p_status: status })
+}
+export async function deleteBundle(pin: string, id: number) {
+  return callRpc("bundle_delete", { p_pin: pin, p_bundle_id: id })
+}
+
 let _copriNames: string[] | null = null
 async function copriNames(): Promise<string[]> {
   if (_copriNames) return _copriNames

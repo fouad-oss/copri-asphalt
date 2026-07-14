@@ -5790,6 +5790,7 @@ function renderPipeHome(user) {
   defs.push(["📋 طلباتي", () => pipeTabMyRequests(body, user)]);
   if (user.requester) defs.push(["📄 أمر شراء يدوي", () => pipeTabManualPO(body, user)]);
   if (user.requester) defs.push(["📦 استلام GRN", () => pipeTabGRN(body, user)]);
+  if (user.accountant || user.admin) defs.push(["🧮 التسوية والتجميع", () => pipeTabApprovals(body, user)]);
   if (user.accountant) defs.push(["☑️ الاعتماد اليومي", () => pipeTabDaily(body, user)]);
   if (canDecide) defs.push(["✅ قائمة الاعتماد", () => pipeTabQueue(body, user)]);
   defs.push(["📚 سجل الالتزامات", () => pipeTabRegister(body)]);
@@ -6684,6 +6685,21 @@ async function pipeTabManualPO(body, user) {
   const descI = textarea("موضوع أمر الشراء", 2);
   card.appendChild(fieldGroup("الوصف", descI, true).group);
 
+  // SN PO number: soft-validated PO/\d{3,5} — WARN, never block (brief).
+  // PO numbers reset each fiscal year, so the date is the real reference.
+  const snPoI = input("text", "PO/1234");
+  const gSnPo = fieldGroup("رقم الأمر في SpectroNova", snPoI, false, "كما يظهر في النظام").group;
+  const snPoWarn = el("div", "field-hint"); snPoWarn.style.cssText = "color:var(--amber);display:none";
+  snPoWarn.textContent = "⚠️ الصيغة المعتادة PO/123 إلى PO/12345 — تحقق من الرقم (لن يمنع التسجيل)";
+  gSnPo.appendChild(snPoWarn);
+  snPoI.addEventListener("input", () => {
+    const v = snPoI.value.trim();
+    snPoWarn.style.display = v && !/^PO\/\d{3,5}$/.test(v) ? "" : "none";
+  });
+  card.appendChild(gSnPo);
+  const poDateI = input("date", "");
+  card.appendChild(fieldGroup("تاريخ الأمر", poDateI, false, "أرقام الأوامر تتكرر بين السنوات المالية — التاريخ هو المرجع الزمني").group);
+
   // Lines editor — item / qty / unit / rate rows; amount = qty × rate
   card.appendChild(sectionTitle("البنود (اختياري)"));
   const linesWrap = el("div");
@@ -6750,11 +6766,14 @@ async function pipeTabManualPO(body, user) {
     }
     sendBtn.disabled = true; sendBtn.textContent = "جارٍ التسجيل…";
     try {
+      // sn_po/po_date ride along only when filled (pre-0026 tolerance)
       const r = await sbRpc("po_entry", {
         p_pin: user.pin, p_client_ref: clientRef, p_type: typeSel.value,
         p_cost_center_id: Number(ccSel.value), p_vendor_id: Number(vSel.value),
         p_description: descI.value.trim(), p_value: val,
         p_lines: pLines, p_note: noteI.value.trim(),
+        ...(snPoI.value.trim() ? { p_sn_po: snPoI.value.trim() } : {}),
+        ...(poDateI.value ? { p_po_date: poDateI.value } : {}),
       });
       if (!r || !r.success) {
         sendBtn.disabled = false; sendBtn.textContent = "تسجيل الأمر 📄";
@@ -6888,6 +6907,305 @@ async function pipeTabMatch(body, user) {
     });
     body.appendChild(c);
   });
+}
+
+// ── Tab: approvals page (accounting pivot, brief Part 3) ─────────────
+// Channel switch (asphalt = plant dispatch/receipt logs · materials =
+// capture flow) + views. Step 4: rectification queue + PO line balances;
+// step 5 adds bundling + the transcription summary. Divergence is a
+// data-quality SIGNAL — surfaced, never blocking. A DN date before the
+// PO date is NORMAL and never flagged.
+const RECON_META = {
+  qty_mismatch:            { label: "⚠️ فرق كمية",              color: "var(--amber)", open: true },
+  dispatched_not_received: { label: "🚚 أُرسلت ولم تُستلم",      color: "var(--red)",   open: true },
+  received_not_dispatched: { label: "📥 استُلمت دون إرسال مطابق", color: "var(--amber)", open: true },
+  matched:                 { label: "✅ مطابقة",                 color: "var(--green)", open: false },
+};
+const RECON_ORDER = ["qty_mismatch", "dispatched_not_received", "received_not_dispatched", "matched"];
+
+async function pipeTabApprovals(body, user) {
+  const state = { channel: "asphalt", view: "queue" };
+  body.innerHTML = "";
+
+  const chTabs = el("div", "history-tabs");
+  const chA = el("button", "history-tab active"); chA.type = "button"; chA.textContent = "🛣 الأسفلت";
+  const chM = el("button", "history-tab");        chM.type = "button"; chM.textContent = "🧱 المواد";
+  chTabs.appendChild(chA); chTabs.appendChild(chM); body.appendChild(chTabs);
+
+  const vTabs = el("div", "history-tabs");
+  const vQ = el("button", "history-tab active"); vQ.type = "button"; vQ.textContent = "قائمة التسوية";
+  const vB = el("button", "history-tab");        vB.type = "button"; vB.textContent = "أرصدة بنود الشراء";
+  vTabs.appendChild(vQ); vTabs.appendChild(vB); body.appendChild(vTabs);
+
+  const host = el("div"); body.appendChild(host);
+  function paint() {
+    chA.classList.toggle("active", state.channel === "asphalt");
+    chM.classList.toggle("active", state.channel === "materials");
+    vQ.classList.toggle("active", state.view === "queue");
+    vB.classList.toggle("active", state.view === "balance");
+    if (state.view === "queue") pipeApprovalsQueue(host, user, state.channel);
+    else pipeApprovalsBalances(host, user, state.channel);
+  }
+  chA.addEventListener("click", () => { state.channel = "asphalt"; paint(); });
+  chM.addEventListener("click", () => { state.channel = "materials"; paint(); });
+  vQ.addEventListener("click", () => { state.view = "queue"; paint(); });
+  vB.addEventListener("click", () => { state.view = "balance"; paint(); });
+  paint();
+}
+
+// View 1: rectification queue — notes grouped by recon status, the
+// dispatched vs received legs side by side, one-click follow-up marker.
+async function pipeApprovalsQueue(host, user, channel) {
+  host.innerHTML = `<div class="info-box">جارٍ التحميل…</div>`;
+  const src = channel === "asphalt" ? "dispatch" : "material";
+  let rows = [], copriNames = [];
+  try {
+    [rows, copriNames] = await Promise.all([
+      sbGet(`note_recon?note_source=eq.${src}&order=delivery_date.desc&limit=600`),
+      channel === "asphalt" ? sbGet("companies?is_copri=eq.true&select=name") : Promise.resolve([]),
+    ]);
+  } catch {
+    host.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل البيانات — تحقق من الاتصال</div>`; return;
+  }
+  // External-client loads are sales, never get receipts and never bill
+  // against our POs — the asphalt queue is Copri supply only.
+  if (channel === "asphalt") {
+    const copri = new Set(copriNames.map(c => c.name));
+    rows = rows.filter(r => copri.has(r.company));
+  }
+  host.innerHTML = "";
+
+  const search = input("text", "بحث برقم السند أو الموقع…");
+  search.style.marginBottom = ".6rem";
+  host.appendChild(search);
+
+  const counts = el("div", "req-line"); counts.style.marginBottom = ".6rem";
+  host.appendChild(counts);
+  const groupsWrap = el("div"); host.appendChild(groupsWrap);
+
+  function noteRow(r) {
+    const c = el("div", "card"); c.style.cssText = "padding:.55rem .7rem;margin:.35rem 0";
+    const top = el("div"); top.style.cssText = "display:flex;justify-content:space-between;gap:.5rem;align-items:center";
+    const id = el("div"); id.innerHTML = `<b>${r.note_no}</b> <span class="field-hint">${r.delivery_date || ""}</span>`;
+    const fu = el("button", "btn-secondary"); fu.type = "button"; fu.style.cssText = "width:auto;padding:.25rem .6rem;font-size:.78rem";
+    const paintFu = () => {
+      fu.textContent = r.followup_flag ? "🔔 قيد المتابعة" : "🔕 متابعة مع المهندس";
+      fu.style.borderColor = r.followup_flag ? "var(--amber)" : "";
+    };
+    paintFu();
+    fu.addEventListener("click", async () => {
+      const want = !r.followup_flag;
+      r.followup_flag = want; paintFu(); fu.disabled = true;
+      try {
+        const res = await sbRpc("note_followup_set", { p_pin: user.pin, p_source: r.note_source, p_ref: r.note_ref, p_flag: want });
+        if (!res || !res.success) throw new Error();
+      } catch { r.followup_flag = !want; paintFu(); alert("تعذّر حفظ المتابعة — أعد المحاولة (يتطلب ترقية 0026)"); }
+      fu.disabled = false;
+    });
+    top.appendChild(id); top.appendChild(fu); c.appendChild(top);
+    const where = el("div", "field-hint");
+    where.textContent = [r.project, r.site].filter(Boolean).join(" · ") + (r.item_text ? ` · ${r.item_text}` : "");
+    c.appendChild(where);
+    const cmp = el("div", "req-line");
+    if (r.note_source === "dispatch") {
+      const d = r.qty_dispatched, rc = r.qty_received;
+      const diff = d != null && rc != null && Number(d) !== Number(rc);
+      cmp.innerHTML = `صادر: <b>${d == null ? "—" : d + " طن"}</b> ⇄ مستلم: ` +
+        `<b style="${diff ? "color:var(--red)" : ""}">${rc == null ? "—" : rc + " طن"}</b>` +
+        (r.state_text ? ` · ${r.state_text}` : "");
+    } else {
+      cmp.innerHTML = `الكمية: <b>${r.qty_received == null ? "—" : r.qty_received}</b>` +
+        (r.state_text ? ` · حالة الاعتماد: ${r.state_text}` : "");
+    }
+    c.appendChild(cmp);
+    return c;
+  }
+
+  function paintGroups() {
+    const q = search.value.trim();
+    const shown = q ? rows.filter(r =>
+      String(r.note_no).includes(q) || (r.site || "").includes(q) || (r.project || "").includes(q)) : rows;
+    const by = {}; shown.forEach(r => { (by[r.recon_status] = by[r.recon_status] || []).push(r); });
+    counts.innerHTML = RECON_ORDER
+      .map(s => `<span style="color:${RECON_META[s].color}">${RECON_META[s].label}: <b>${(by[s] || []).length}</b></span>`)
+      .join(" · ");
+    groupsWrap.innerHTML = "";
+    RECON_ORDER.forEach(status => {
+      const list = by[status] || [];
+      if (!list.length) return;
+      const meta = RECON_META[status];
+      const head = el("div", "prog-day-head"); head.style.cursor = "pointer";
+      const bodyWrap = el("div");
+      let open = meta.open && !q ? true : !!q;
+      const paintHead = () => { head.innerHTML = `${meta.label} (${list.length}) ${open ? "▾" : "◂"}`; bodyWrap.style.display = open ? "" : "none"; };
+      head.addEventListener("click", () => { open = !open; paintHead(); });
+      groupsWrap.appendChild(head); groupsWrap.appendChild(bodyWrap);
+      let rendered = 0;
+      const chunk = () => {
+        list.slice(rendered, rendered + 40).forEach(r => bodyWrap.appendChild(noteRow(r)));
+        rendered = Math.min(rendered + 40, list.length);
+        if (rendered < list.length) {
+          const more = el("button", "btn-secondary"); more.type = "button"; more.style.width = "100%";
+          more.textContent = `عرض المزيد (${list.length - rendered})`;
+          more.addEventListener("click", () => { more.remove(); chunk(); });
+          bodyWrap.appendChild(more);
+        }
+      };
+      chunk(); paintHead();
+      if (channel === "materials" && status === "received_not_dispatched") {
+        const hint = el("div", "field-hint"); hint.style.margin = ".2rem 0 .6rem";
+        hint.textContent = "الربط بأمر الشراء والاعتماد يتمان من تبويب «الاعتماد اليومي» — عندها يصبح السند مطابقاً.";
+        bodyWrap.prepend(hint);
+      }
+    });
+    if (!shown.length) groupsWrap.innerHTML = `<div class="info-box">لا سندات${q ? " مطابقة للبحث" : ""}.</div>`;
+  }
+  search.addEventListener("input", paintGroups);
+  paintGroups();
+}
+
+// View 2 (the page's CORE): PO line balances — order / bundled /
+// remaining PER LINE, never aggregated per PO. Asphalt = POs on vendors
+// mapped to SN supplier 5205; materials = everything else. The SN
+// imports carried headers only, so every PO card (line-less included)
+// offers the accountant's line editor (po_lines_add).
+async function pipeApprovalsBalances(host, user, channel) {
+  host.innerHTML = `<div class="info-box">جارٍ التحميل…</div>`;
+  let cmts = [], rows = [], vendors = [], plantMap = [];
+  try {
+    [cmts, rows, vendors, plantMap] = await Promise.all([
+      sbGet(`commitments?status=${sbEq("نشط")}&order=po_date.desc.nullslast,created_at.desc&limit=2000`),
+      sbGet("po_line_balance?order=line_no.asc&limit=2000"),
+      sbGet("vendors?select=id,name"),
+      sbGet("vendor_spectronova_ids?contact_id=eq.5205&select=vendor_id"),
+    ]);
+  } catch {
+    host.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل البيانات — تحقق من الاتصال</div>`; return;
+  }
+  host.innerHTML = "";
+  const vById = {}; vendors.forEach(v => { vById[v.id] = v.name; });
+  const plantIds = new Set(plantMap.map(m => m.vendor_id));
+  cmts = cmts.filter(c => channel === "asphalt" ? plantIds.has(c.vendor_id) : !plantIds.has(c.vendor_id));
+  const linesByPo = {}; rows.forEach(l => { (linesByPo[l.commitment_id] = linesByPo[l.commitment_id] || []).push(l); });
+  const canEdit = user.accountant || user.requester || user.admin;
+
+  const search = input("text", "بحث برقم الأمر أو المورد أو البند…");
+  search.style.marginBottom = ".6rem";
+  host.appendChild(search);
+  const summary = el("div", "req-line"); summary.style.marginBottom = ".6rem"; host.appendChild(summary);
+  const listWrap = el("div"); host.appendChild(listWrap);
+
+  function lineRow(l) {
+    const d = el("div", "req-line");
+    if (l.order_qty == null) {
+      d.innerHTML = `${l.line_no}. ${l.item} — <span class="field-hint">مبلغ مقطوع${l.rate != null ? ` · ${pipeKD(l.rate)}` : ""}</span>`;
+      return d;
+    }
+    const rem = Number(l.remaining_qty);
+    const remHtml = rem > 0 ? `<span style="color:var(--amber)">متبقٍ ${rem}</span>`
+      : rem < 0 ? `<span style="color:var(--red)">تجاوز بـ${Math.abs(rem)}</span>`
+      : `<span style="color:var(--green)">✅ مكتمل</span>`;
+    d.innerHTML = `${l.line_no}. ${l.item}` + (l.rate != null ? ` <span class="field-hint">(${pipeKD(l.rate)}/${l.unit || "وحدة"})</span>` : "") +
+      ` — طلب <b>${l.order_qty} ${l.unit || ""}</b> · مُجمّع <b>${Number(l.published_qty) + Number(l.pending_qty)}</b>` +
+      (Number(l.pending_qty) ? ` <span class="field-hint">(${l.pending_qty} قيد الإعداد)</span>` : "") +
+      ` · ${remHtml}`;
+    return d;
+  }
+
+  // Inline append-only lines editor (manual-PO editor pattern).
+  function linesEditor(cmt, hostDiv, onSaved) {
+    hostDiv.innerHTML = "";
+    const eds = [];
+    const wrap = el("div");
+    function addRow() {
+      const row = el("div"); row.style.cssText = "display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:.4rem;margin:.3rem 0";
+      const item = input("text", "البند"); const qty = input("number", "الكمية", "decimal"); qty.step = "0.01";
+      const unit = input("text", "الوحدة"); const rate = input("number", "السعر", "decimal"); rate.step = "0.001";
+      [item, qty, unit, rate].forEach(i => row.appendChild(i));
+      eds.push({ item, qty, unit, rate }); wrap.appendChild(row);
+    }
+    addRow();
+    hostDiv.appendChild(wrap);
+    const bar = el("div"); bar.style.cssText = "display:flex;gap:.4rem;margin-top:.3rem";
+    const plus = el("button", "btn-secondary"); plus.type = "button"; plus.textContent = "بند آخر ➕"; plus.style.width = "auto";
+    plus.addEventListener("click", addRow);
+    const save = el("button", "btn-primary"); save.type = "button"; save.textContent = "حفظ البنود"; save.style.width = "auto";
+    const err = el("div", "error-msg"); err.style.display = "none";
+    save.addEventListener("click", async () => {
+      err.style.display = "none";
+      const pLines = [];
+      for (const e of eds) {
+        if (!e.item.value.trim()) { if (e.qty.value || e.rate.value) { err.textContent = "كل بند يحتاج اسماً"; err.style.display = "block"; return; } continue; }
+        pLines.push({ item: e.item.value.trim(), qty: e.qty.value ? parseFloat(e.qty.value) : null,
+                      unit: e.unit.value.trim(), rate: e.rate.value ? parseFloat(e.rate.value) : null });
+      }
+      if (!pLines.length) { err.textContent = "أدخل بنداً واحداً على الأقل"; err.style.display = "block"; return; }
+      save.disabled = true; save.textContent = "جارٍ الحفظ…";
+      try {
+        const r = await sbRpc("po_lines_add", { p_pin: user.pin, p_commitment_id: cmt.id, p_lines: pLines });
+        if (!r || !r.success) throw new Error();
+        onSaved();
+      } catch {
+        save.disabled = false; save.textContent = "حفظ البنود";
+        err.textContent = "تعذّر الحفظ — أعد المحاولة (يتطلب ترقية 0026)"; err.style.display = "block";
+      }
+    });
+    bar.appendChild(plus); bar.appendChild(save); hostDiv.appendChild(bar); hostDiv.appendChild(err);
+  }
+
+  function poCard(cmt) {
+    const lines = linesByPo[cmt.id] || [];
+    const c = el("div", "card req-card");
+    const top = el("div", "prog-top");
+    const no = el("div", "req-client"); no.textContent = cmt.sn_po || cmt.number;
+    top.appendChild(no); c.appendChild(top);
+    const l1 = el("div", "req-line");
+    l1.textContent = `${vById[cmt.vendor_id] || "—"}` +
+      (cmt.sn_po && cmt.sn_po !== cmt.number ? ` · ${cmt.number}` : "") +
+      (cmt.po_date ? ` · بتاريخ ${cmt.po_date}` : " · بدون تاريخ");
+    c.appendChild(l1);
+    if (lines.length) lines.forEach(l => c.appendChild(lineRow(l)));
+    else { const h = el("div", "field-hint"); h.textContent = "لا بنود مسجلة بعد — الرصيد يُحسب على مستوى البند."; c.appendChild(h); }
+    if (canEdit) {
+      const edHost = el("div"); edHost.style.display = "none"; edHost.style.marginTop = ".5rem";
+      const edBtn = el("button", "btn-secondary"); edBtn.type = "button"; edBtn.style.cssText = "width:auto;margin-top:.4rem;font-size:.8rem";
+      edBtn.textContent = lines.length ? "➕ إضافة بنود" : "➕ تسجيل البنود";
+      edBtn.addEventListener("click", () => {
+        if (edHost.style.display === "none") { edHost.style.display = ""; linesEditor(cmt, edHost, () => pipeApprovalsBalances(host, user, channel)); }
+        else edHost.style.display = "none";
+      });
+      c.appendChild(edBtn); c.appendChild(edHost);
+    }
+    return c;
+  }
+
+  function paintList() {
+    const q = search.value.trim();
+    const match = (cmt) => {
+      if (!q) return true;
+      if ((cmt.sn_po || "").includes(q) || (cmt.number || "").includes(q) || (vById[cmt.vendor_id] || "").includes(q)) return true;
+      return (linesByPo[cmt.id] || []).some(l => (l.item || "").includes(q));
+    };
+    const shown = cmts.filter(match);
+    const nLines = shown.reduce((s, c) => s + (linesByPo[c.id] || []).length, 0);
+    summary.innerHTML = `${shown.length} أمر شراء · ${nLines} بند`;
+    listWrap.innerHTML = "";
+    if (!shown.length) { listWrap.innerHTML = `<div class="info-box">لا أوامر${q ? " مطابقة للبحث" : ""}.</div>`; return; }
+    let rendered = 0;
+    const chunk = () => {
+      shown.slice(rendered, rendered + 30).forEach(cmt => listWrap.appendChild(poCard(cmt)));
+      rendered = Math.min(rendered + 30, shown.length);
+      if (rendered < shown.length) {
+        const more = el("button", "btn-secondary"); more.type = "button"; more.style.width = "100%";
+        more.textContent = `عرض المزيد (${shown.length - rendered})`;
+        more.addEventListener("click", () => { more.remove(); chunk(); });
+        listWrap.appendChild(more);
+      }
+    };
+    chunk();
+  }
+  search.addEventListener("input", paintList);
+  paintList();
 }
 
 // ── Tab: accountant daily batch (0018) — yesterday's captures in one

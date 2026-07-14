@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useState } from "react"
-import { useOutletContext } from "react-router-dom"
+import { Link, useOutletContext } from "react-router-dom"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { RefCode } from "@/components/patterns"
-import { kd, qty } from "@/lib/format"
+import { qty } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { Profile } from "@/lib/session"
-import { L } from "./labels"
+import { kwd, L } from "./labels"
 import { bundlesList, deleteBundle, setBundleStatus, type BundleRow, type Channel } from "./data"
 
 /* ── Screen 4: Bundles list ───────────────────────────────────────────
@@ -70,7 +70,7 @@ export default function BundlesList() {
       <div className="flex justify-end gap-1">
         <Button size="sm" disabled={busy}
           onClick={() => {
-            if (confirm(L.bundles.confirmPublish(b.bundleNo, kd(b.amount))))
+            if (confirm(L.bundles.confirmPublish(b.bundleNo, kwd(b.amount))))
               void act(b, () => setBundleStatus(pin, b.id, "published"))
           }}>
           {L.bundles.publish}
@@ -134,7 +134,9 @@ export default function BundlesList() {
             {rows.map((b) => (
               <TableRow key={b.id}>
                 <TableCell className="ref-code font-semibold">
-                  {b.bundleNo}
+                  <Link to={`/accounting/bundles/${b.id}`} className="underline-offset-2 hover:underline">
+                    {b.bundleNo}
+                  </Link>
                   {b.adjusts != null && (
                     <span className="ms-2 text-xs font-normal text-muted-foreground">({L.bundles.adjusting})</span>
                   )}
@@ -144,7 +146,7 @@ export default function BundlesList() {
                   {b.lineNo != null && <span className="ms-1 text-xs text-muted-foreground">/ {b.lineNo}</span>}
                   {b.lineItem && <span className="ms-2 text-xs text-muted-foreground">{b.lineItem}</span>}
                 </TableCell>
-                <TableCell className="text-end tabular-nums">{qty(b.qty)} · {kd(b.amount)}</TableCell>
+                <TableCell className="text-end tabular-nums">{qty(b.qty)} · {kwd(b.amount)}</TableCell>
                 <TableCell><LifecycleBadge status={b.status} /></TableCell>
                 <TableCell>
                   {b.snReference

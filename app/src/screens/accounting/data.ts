@@ -222,16 +222,98 @@ export async function bundlesList(channel: Channel): Promise<BundleRow[]> {
   })
 }
 
+/* ── Bundle detail (screen 5) ─────────────────────────────────────────
+   The FROZEN column contract (agreed with SN staff — implement
+   LITERALLY, additions at the END only, never rename or reorder). */
+export const SN_COLUMNS = [
+  "Supplier", "PO Number", "PO Line", "Item Code", "Item Description",
+  "Qty", "UOM", "Unit Price", "Amount", "Delivery Date",
+  "Supplier DN Number", "Site",
+] as const
+
+export type TranscriptionRow = {
+  line_id: number
+  supplier: string
+  po_number: string
+  po_line: number
+  item_code: string
+  description: string
+  qty: number
+  uom: string
+  unit_price: number | null
+  amount: number
+  delivery_date: string | null
+  supplier_dn: string
+  site: string
+}
+
+export type BundleDetailData = {
+  id: number
+  bundleNo: string
+  status: "draft" | "verified" | "published"
+  source: Channel
+  adjusts: number | null
+  imported: boolean
+  snReference: string
+  publishedAt: string | null
+  commitmentLineId: number
+  rows: TranscriptionRow[]
+}
+
+export function snCells(r: TranscriptionRow): (string | number)[] {
+  const n3 = (v: number | null) => (v == null ? "" : Number(v).toFixed(3))
+  return [r.supplier, r.po_number, r.po_line, r.item_code, r.description, r.qty,
+          r.uom, n3(r.unit_price), n3(r.amount), r.delivery_date ?? "", r.supplier_dn, r.site]
+}
+
+export async function bundleDetail(id: number): Promise<BundleDetailData | null> {
+  const [{ data: b, error: be }, { data: rows, error: re }] = await Promise.all([
+    supabase.from("bundles")
+      .select("id,bundle_no,status,source,adjusts_bundle_id,imported_flag,sn_reference,published_at,commitment_line_id")
+      .eq("id", id).maybeSingle(),
+    supabase.from("bundle_transcription")
+      .select("line_id,supplier,po_number,po_line,item_code,description,qty,uom,unit_price,amount,delivery_date,supplier_dn,site")
+      .eq("bundle_id", id).order("line_id", { ascending: true }),
+  ])
+  if (be) throw be
+  if (re) throw re
+  if (!b) return null
+  return {
+    id: b.id, bundleNo: b.bundle_no, status: b.status, source: b.source,
+    adjusts: b.adjusts_bundle_id, imported: !!b.imported_flag,
+    snReference: b.sn_reference ?? "", publishedAt: b.published_at,
+    commitmentLineId: b.commitment_line_id,
+    rows: (rows ?? []) as TranscriptionRow[],
+  }
+}
+
+/** Original note refs of a bundle — the adjusting editor's source. */
+export async function bundleNoteRefs(id: number): Promise<{ ref: number; noteNo: string; qty: number }[]> {
+  const { data, error } = await supabase.from("bundle_lines")
+    .select("note_ref,note_no,qty").eq("bundle_id", id).order("id", { ascending: true })
+  if (error) throw error
+  return (data ?? []).map((r: any) => ({ ref: r.note_ref, noteNo: r.note_no, qty: Number(r.qty ?? 0) }))
+}
+
+export async function importConfirm(pin: string, id: number, snReference: string) {
+  return callRpc("bundle_import_confirm", { p_pin: pin, p_bundle_id: id, p_sn_reference: snReference })
+}
+
 async function callRpc(fn: string, args: Record<string, unknown>) {
   const { rpc } = await import("@/lib/supabase")
   const r = await rpc(fn, args)
   if (!r?.success) throw new Error(r?.error || "failed")
   return r
 }
-export async function createBundle(pin: string, lineId: number, channel: Channel, refs: number[]) {
+/** notes: qty override is the ADJUSTING mechanism only (negative =
+ *  deduction); normal bundles pass refs without qty. */
+export async function createBundle(
+  pin: string, lineId: number, channel: Channel,
+  notes: { ref: number; qty?: number }[], adjusts?: number,
+) {
   return callRpc("bundle_create", {
     p_pin: pin, p_commitment_line_id: lineId, p_source: channel,
-    p_notes: refs.map((ref) => ({ ref })),
+    p_notes: notes, ...(adjusts != null ? { p_adjusts: adjusts } : {}),
   })
 }
 export async function setBundleStatus(pin: string, id: number, status: string) {

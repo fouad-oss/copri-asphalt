@@ -11,6 +11,7 @@ import AuditQueue from "@/screens/accounting/AuditQueue"
 import PoRegister from "@/screens/accounting/PoRegister"
 import Bundling from "@/screens/accounting/Bundling"
 import BundlesList from "@/screens/accounting/BundlesList"
+import BundleDetail from "@/screens/accounting/BundleDetail"
 
 /* ── ACCOUNTING REBUILD (BRIEF-accounting-rebuild-final.md) ───────────
    This deploy exposes ONLY the accounting section (+ login). The other
@@ -33,6 +34,7 @@ const router = createBrowserRouter([
       { path: "po-register", element: <PoRegister /> },
       { path: "bundling", element: <Bundling /> },
       { path: "bundles", element: <BundlesList /> },
+      { path: "bundles/:id", element: <BundleDetail /> },
     ],
   },
   { path: "*", element: <Navigate to="/accounting" replace /> },

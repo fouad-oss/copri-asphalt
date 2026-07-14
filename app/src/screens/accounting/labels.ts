@@ -9,6 +9,13 @@
    switch now. Statuses and lifecycle labels remain English in all
    languages. */
 
+/** KWD, 3 decimals, English label — accounting screens never follow the
+ *  i18n language (the shared kd() does, and would render د.ك here). */
+export function kwd(v: number | string | null | undefined): string {
+  const n = Number(v || 0)
+  return `KD ${n.toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}`
+}
+
 export const L = {
   app: {
     title: "Accounting",
@@ -111,6 +118,41 @@ export const L = {
       `Publish ${no} (${amount})? Published bundles are immutable — corrections need an adjusting bundle.`,
     confirmDelete: (no: string) => `Delete draft ${no}?`,
     actionFailed: "Action failed",
+  },
+  detail: {
+    notFound: "Bundle not found.",
+    back: "Back to bundles",
+    grn: "GRN",
+    grnSoon: "GRN printing lands in the next step.",
+    excel: "Excel",
+    fieldSupplier: "Supplier",
+    fieldPo: "PO Number",
+    fieldPoLine: "PO Line",
+    fieldDate: "Delivery Date",
+    colDn: "Supplier DN No.",
+    colItemCode: "Item Code",
+    colQty: "Qty",
+    colUom: "UOM",
+    colUnitPrice: "Unit Price",
+    colAmount: "Amount",
+    totals: (notes: number, q: string) => `${notes} notes · qty ${q} · total KWD`,
+    previewNote: "Preview — this bundle is not published and is not visible to SN staff.",
+    importedTitle: "Imported to SN",
+    importedRef: "SN reference",
+    importPlaceholder: "INVSI/… and/or Stock_Receipt/…",
+    importSave: "Save",
+    importSaving: "Saving…",
+    importNeedRef: "Enter the SN reference.",
+    importFailed: "Couldn't save the import confirmation",
+    adjustOpen: "Create adjusting bundle",
+    adjustHint: "Enter the qty difference per note (negative = deduction); zero rows are skipped. The adjusting bundle publishes on its own.",
+    adjustLine: "Target PO line",
+    adjustCreate: "Create adjusting bundle",
+    adjustCreating: "Creating…",
+    adjustNeedDiff: "Enter at least one non-zero difference.",
+    adjustNeedLine: "Pick the target PO line.",
+    adjustFailed: "Couldn't create the adjusting bundle",
+    adjustsRef: (no: string) => `Adjusts ${no}`,
   },
   audit: {
     heading: "Audit queue",

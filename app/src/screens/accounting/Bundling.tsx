@@ -73,7 +73,7 @@ export default function Bundling() {
     if (!lineId) { toast.error(L.bundling.needLine); return }
     setBusy(true)
     try {
-      const r = await createBundle(user.pin ?? "", Number(lineId), channel, [...picked])
+      const r = await createBundle(user.pin ?? "", Number(lineId), channel, [...picked].map((ref) => ({ ref })))
       toast.success(L.bundling.created(r.bundleNo))
       nav("/accounting/bundles")
     } catch (e: any) {

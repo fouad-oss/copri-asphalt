@@ -4,10 +4,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Bar, RefCode } from "@/components/patterns"
-import { kd, qty } from "@/lib/format"
+import { qty } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { Profile } from "@/lib/session"
-import { L } from "./labels"
+import { kwd, L } from "./labels"
 import { addPoLines, poLines, poList, type Po, type PoLine } from "./data"
 
 /* ── Screen 2: PO register / line balances ────────────────────────────
@@ -36,7 +36,7 @@ function LineCard({ l }: { l: PoLine }) {
         </div>
         <div className="flex items-center gap-3 text-xs">
           {l.item_code && <RefCode>{l.item_code}</RefCode>}
-          {l.rate != null && <RefCode>{kd(l.rate)}{l.unit ? ` / ${l.unit}` : ""}</RefCode>}
+          {l.rate != null && <RefCode>{kwd(l.rate)}{l.unit ? ` / ${l.unit}` : ""}</RefCode>}
         </div>
       </div>
       {ordered == null ? (

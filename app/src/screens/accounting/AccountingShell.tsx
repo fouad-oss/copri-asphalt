@@ -1,5 +1,5 @@
 import { useEffect } from "react"
-import { NavLink, Outlet, useNavigate } from "react-router-dom"
+import { Navigate, NavLink, Outlet, useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { getSession, logout } from "@/lib/session"
 import { cn } from "@/lib/utils"
@@ -11,6 +11,7 @@ import logoInk from "@/assets/brand/copri-logo-ink.png"
 
 const NAV: { to: string; label: string }[] = [
   { to: "/accounting", label: L.nav.audit },
+  { to: "/accounting/po-register", label: L.nav.poRegister },
 ]
 
 export default function AccountingShell() {
@@ -24,7 +25,7 @@ export default function AccountingShell() {
     document.documentElement.dir = "ltr"
   }, [])
 
-  if (!user) { nav("/login"); return null }
+  if (!user) return <Navigate to="/login" replace />
   if (!user.accountant && !user.admin) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-background p-4">

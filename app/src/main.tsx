@@ -8,6 +8,7 @@ import { getSession } from "@/lib/session"
 import Login from "@/screens/Login"
 import AccountingShell from "@/screens/accounting/AccountingShell"
 import AuditQueue from "@/screens/accounting/AuditQueue"
+import PoRegister from "@/screens/accounting/PoRegister"
 
 /* ── ACCOUNTING REBUILD (BRIEF-accounting-rebuild-final.md) ───────────
    This deploy exposes ONLY the accounting section (+ login). The other
@@ -27,6 +28,7 @@ const router = createBrowserRouter([
     element: <Guard><AccountingShell /></Guard>,
     children: [
       { index: true, element: <AuditQueue /> },
+      { path: "po-register", element: <PoRegister /> },
     ],
   },
   { path: "*", element: <Navigate to="/accounting" replace /> },

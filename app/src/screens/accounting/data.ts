@@ -25,6 +25,78 @@ export type AuditRow = {
   ts: string | null
 }
 
+export type Po = {
+  id: number
+  number: string
+  sn_po: string
+  po_date: string | null
+  status: string
+  vendor: string
+}
+
+export type PoLine = {
+  line_id: number
+  line_no: number
+  item: string
+  item_code: string | null
+  unit: string
+  rate: number | null
+  order_qty: number | null
+  remarks: string
+  published_qty: number
+  pending_qty: number
+  remaining_qty: number | null
+}
+
+/** Active POs for the register selector (newest by DATE — PO numbers
+ *  reset each fiscal year and must never imply recency). */
+export async function poList(): Promise<Po[]> {
+  const { data, error } = await supabase.from("commitments")
+    .select("id,number,sn_po,po_date,status,vendors:vendor_id(name)")
+    .eq("status", "نشط")
+    .order("po_date", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(2000)
+  if (error) throw error
+  return (data ?? []).map((r: any) => ({
+    id: r.id, number: r.number, sn_po: r.sn_po ?? "", po_date: r.po_date,
+    status: r.status, vendor: r.vendors?.name ?? "—",
+  }))
+}
+
+/** Per-LINE balances — never aggregated per PO or per item code. */
+export async function poLines(commitmentId: number): Promise<PoLine[]> {
+  const [{ data, error }, codes] = await Promise.all([
+    supabase.from("po_line_balance")
+      .select("line_id,line_no,item,item_id,unit,rate,order_qty,remarks,published_qty,pending_qty,remaining_qty")
+      .eq("commitment_id", commitmentId)
+      .order("line_no", { ascending: true }),
+    supabase.from("item_spectronova_ids").select("item_id,item_code"),
+  ])
+  if (error) throw error
+  if (codes.error) throw codes.error
+  const codeByItem: Record<number, string> = {}
+  ;(codes.data ?? []).forEach((c: any) => { if (!(c.item_id in codeByItem)) codeByItem[c.item_id] = c.item_code })
+  return (data ?? []).map((r: any) => ({
+    line_id: r.line_id, line_no: r.line_no, item: r.item,
+    item_code: r.item_id != null ? codeByItem[r.item_id] ?? null : null,
+    unit: r.unit ?? "", rate: r.rate, order_qty: r.order_qty,
+    remarks: r.remarks ?? "",
+    published_qty: Number(r.published_qty ?? 0), pending_qty: Number(r.pending_qty ?? 0),
+    remaining_qty: r.remaining_qty,
+  }))
+}
+
+/** Append register lines to an existing PO (accountant manual entry). */
+export async function addPoLines(
+  pin: string, commitmentId: number,
+  lines: { item: string; qty: number | null; unit: string; rate: number | null; remarks: string }[],
+): Promise<void> {
+  const { rpc } = await import("@/lib/supabase")
+  const r = await rpc("po_lines_add", { p_pin: pin, p_commitment_id: commitmentId, p_lines: lines })
+  if (!r?.success) throw new Error(r?.error || "failed")
+}
+
 let _copriNames: string[] | null = null
 async function copriNames(): Promise<string[]> {
   if (_copriNames) return _copriNames

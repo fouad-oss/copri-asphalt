@@ -3672,6 +3672,32 @@ function clearMatSession()    { sessionStorage.removeItem("mat_session"); }
 function matReceiverByName(name) { return (CONFIG.materialReceivers || []).find(r => r.name === name) || null; }
 function matCatByName(cat)       { return (CONFIG.materialCatalog || []).find(c => c.category === cat) || null; }
 
+// ── Canonization (0025): capture dropdowns show canonical master
+// entries (items / vendors via ref_payload v3) when the payload carries
+// them; pre-0025 payloads fall back to the legacy CONFIG lists, and the
+// DB trigger still norm-matches the text to its canonical id either way.
+function matCatalogView() {
+  const canon = CONFIG.canonItems || [];
+  if (canon.length) {
+    const by = {};
+    canon.forEach(i => {
+      const c = i.category || "أخرى";
+      (by[c] = by[c] || []).push({ name: i.name, unit: i.unit || "" });
+    });
+    return Object.keys(by).map(c => ({ category: c, unit: (by[c][0] || {}).unit || "", items: by[c] }));
+  }
+  return (CONFIG.materialCatalog || []).map(c => ({
+    category: c.category, unit: c.unit || "",
+    items: (c.items || []).map(n => ({ name: n, unit: c.unit || "" })),
+  }));
+}
+function matViewByName(cat) { return matCatalogView().find(c => c.category === cat) || null; }
+function matVendorNames(kind) {
+  const canon = kind === "supplier" ? CONFIG.canonSuppliers : CONFIG.canonSubcontractors;
+  if ((canon || []).length) return canon.map(v => v.name);
+  return kind === "supplier" ? (CONFIG.materialSuppliers || []) : (CONFIG.materialSubcontractors || []);
+}
+
 // Materials reads — same shapes as the old endpoints, from material_receipts.
 async function matGet(params) {
   try {
@@ -3914,21 +3940,23 @@ function renderMaterialReceiptForm(name, onDone) {
   refreshMatWO();
 
   // General material (category) → drives the detailed material dropdown + unit.
-  const { group: gCat, input: catInput } = fieldGroup("المادة (فئة عامة)", select((CONFIG.materialCatalog || []).map(c => c.category), "اختر الفئة"), true);
+  // Canonical items master when the payload carries it (0025).
+  const { group: gCat, input: catInput } = fieldGroup("المادة (فئة عامة)", select(matCatalogView().map(c => c.category), "اختر الفئة"), true);
   card.appendChild(gCat);
 
   // Detailed material (rebuilt when category changes)
   const matWrap = el("div"); let matInput = null;
   function buildMat() {
     matWrap.innerHTML = "";
-    const cat = matCatByName(catInput.value);
-    const { group, input: m } = fieldGroup("المادة (تفصيلي)", select((cat && cat.items) || [], "اختر المادة"), true);
+    const cat = matViewByName(catInput.value);
+    const { group, input: m } = fieldGroup("المادة (تفصيلي)", select(((cat && cat.items) || []).map(i => i.name), "اختر المادة"), true);
     matInput = m; matWrap.appendChild(group);
+    matInput.addEventListener("change", refreshUnit);
   }
   buildMat();
   card.appendChild(matWrap);
 
-  // Quantity + unit (unit auto-set from the category, read-only)
+  // Quantity + unit (auto-set from the selected item, read-only)
   const qtyRow = el("div", "field-row-2");
   const { group: gQty, input: qtyInput } = fieldGroup("الكمية", input("number", "0", "decimal"), true); qtyInput.step = "0.01"; qtyInput.min = "0";
   const { group: gUnit, input: unitInput } = fieldGroup("الوحدة", input("text", "—"), false);
@@ -3937,13 +3965,17 @@ function renderMaterialReceiptForm(name, onDone) {
 
   // Rate/amount deliberately absent — pricing returns later with billing.
 
-  function refreshUnit() { const cat = matCatByName(catInput.value); unitInput.value = cat ? cat.unit : ""; }
+  function refreshUnit() {
+    const cat = matViewByName(catInput.value);
+    const it = cat && cat.items.find(i => i.name === (matInput ? matInput.value : ""));
+    unitInput.value = it ? it.unit : (cat ? cat.unit : "");
+  }
   catInput.addEventListener("change", () => { buildMat(); refreshUnit(); });
 
-  // Supplier + subcontractor
-  const { group: gSup, input: supInput } = fieldGroup("المورد", select(CONFIG.materialSuppliers || [], "اختر المورد"), true);
+  // Supplier + subcontractor (canonical vendors master when present, 0025)
+  const { group: gSup, input: supInput } = fieldGroup("المورد", select(matVendorNames("supplier"), "اختر المورد"), true);
   card.appendChild(gSup);
-  const { group: gSub, input: subInput } = fieldGroup("المقاول من الباطن", select(CONFIG.materialSubcontractors || [], "اختر المقاول"), true);
+  const { group: gSub, input: subInput } = fieldGroup("المقاول من الباطن", select(matVendorNames("subcontractor"), "اختر المقاول"), true);
   card.appendChild(gSub);
 
   // Capture is RAW (v2 brief / 0020): the engineer records exactly what
@@ -4143,6 +4175,11 @@ function applyReferenceData(ref) {
   if ((ref.rejectionReasons || []).length) CONFIG.rejectionReasons = ref.rejectionReasons;
   if ((ref.suppliers || []).length)        CONFIG.materialSuppliers = ref.suppliers;
   if ((ref.subcontractors || []).length)   CONFIG.materialSubcontractors = ref.subcontractors;
+
+  // Canonical masters (0025 payload v3) — capture dropdown sources.
+  if ((ref.canonItems || []).length)          CONFIG.canonItems = ref.canonItems;
+  if ((ref.canonSuppliers || []).length)      CONFIG.canonSuppliers = ref.canonSuppliers;
+  if ((ref.canonSubcontractors || []).length) CONFIG.canonSubcontractors = ref.canonSubcontractors;
 
   // Materials catalog (Category → items + unit).
   if ((ref.catalog || []).length) {

@@ -42,3 +42,7 @@ One line each: what was assumed and why. Newest at the bottom.
 - One-note-bills-once enforced by partial unique index on bundle_lines(note_source, note_ref) excluding adjusting bundles (corrections re-reference the original notes, negative qty allowed).
 - bundle_lines snapshot delivery_date/note_no/site at bundling time so published bundles stay byte-stable regardless of later note edits.
 - Supplier 5205 mapping seeded onto the existing internal vendor 'كوبري — مصنع الأسفلت' + a `plant_dispatch_supplier` settings row as the single client-readable config point.
+- Canonization (0025) resolves ids SERVER-SIDE: BEFORE-INSERT triggers norm-match raw text to items/vendors, so canonical links exist regardless of client version — the frontend only swaps dropdown sources (canonical masters when ref_payload v3 carries them, legacy CONFIG lists otherwise; deploy order can't break capture either way).
+- Asphalt canonization = mix→item mapping (`asphalt_mix_item`): Type III matched before II before I (substring containment); non-Type mixes stay unmapped. Trigger fires on insert + `update of mix` only, so receipt-status patches don't touch it.
+- material_catalog / suppliers / subcontractors ref tables demoted to pre-0025 fallback; staff edit the items/vendors masters going forward (README+CLAUDE.md note).
+- Unit on the capture form now follows the selected ITEM (canonical per-item UOM), falling back to the category unit on the legacy path.

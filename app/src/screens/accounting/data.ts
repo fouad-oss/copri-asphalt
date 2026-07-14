@@ -266,6 +266,40 @@ export function snCells(r: TranscriptionRow): (string | number)[] {
           r.uom, n3(r.unit_price), n3(r.amount), r.delivery_date ?? "", r.supplier_dn, r.site]
 }
 
+/** The frozen contract as CSV bytes (BOM so Excel opens Arabic sites). */
+export function buildSnCsv(rows: TranscriptionRow[]): Blob {
+  const q = (v: string | number) => `"${String(v ?? "").replace(/"/g, '""')}"`
+  const csv = "﻿" + [SN_COLUMNS.map(q).join(",")]
+    .concat(rows.map((r) => snCells(r).map(q).join(",")))
+    .join("\r\n")
+  return new Blob([csv], { type: "text/csv;charset=utf-8" })
+}
+
+/* ── SN data page (screen 7 — external, token access) ─────────────────
+   Reads go through the token-gated SECURITY DEFINER RPC (published rows
+   only); the token rides the URL — no localStorage. */
+
+export type SnPageRow = TranscriptionRow & {
+  bundle_id: number
+  bundle_no: string
+  imported_flag: boolean
+  sn_reference: string
+  published_at: string | null
+}
+
+export async function snPageData(token: string): Promise<SnPageRow[]> {
+  const { rpc } = await import("@/lib/supabase")
+  const r = await rpc("sn_page_data", { p_token: token })
+  if (!r?.success) throw new Error(r?.error === "bad token" ? "badToken" : "failed")
+  return (r.rows ?? []) as SnPageRow[]
+}
+
+export async function snImportConfirm(token: string, bundleId: number, snReference: string) {
+  const { rpc } = await import("@/lib/supabase")
+  const r = await rpc("sn_import_confirm", { p_token: token, p_bundle_id: bundleId, p_sn_reference: snReference })
+  if (!r?.success) throw new Error(r?.error || "failed")
+}
+
 export async function bundleDetail(id: number): Promise<BundleDetailData | null> {
   const [{ data: b, error: be }, { data: rows, error: re }] = await Promise.all([
     supabase.from("bundles")
@@ -353,7 +387,10 @@ export type GrnNoteDetail = {
   extraValue: string
 }
 
-const kwDay = (iso: string | null | undefined) =>
+/** Kuwait calendar day as YYYY-MM-DD — i18n-independent (the shared
+ *  fmtKWDate follows the saved language; its Arabic-locale RTL marks
+ *  scramble inside these LTR English screens). */
+export const kwDay = (iso: string | null | undefined) =>
   iso ? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kuwait" }).format(new Date(iso)) : ""
 
 /** DN → PO map through bundle membership (anon sees published only). */

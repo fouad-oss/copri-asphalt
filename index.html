@@ -8761,7 +8761,7 @@ if (millingReport || millingRole) {
 } else if (_mparams.has("printTest")) {
   renderPrintTest();                                      // printer calibration, no PIN, no DB write
 } else if (_mparams.has("sn")) {
-  renderSnPage(_mparams.get("sn") || "");                 // SpectroNova data page — TOKEN access, not PIN
+  renderShelved();  // SN data page moved to the React app: /app/sn?token=…
 } else if (_mparams.has("dash")) {
   // Kept: board picker (Fouad's desk selection; PIN gate waits for the auth
   // phase) + plant board. Other boards are shelved with the pivot.

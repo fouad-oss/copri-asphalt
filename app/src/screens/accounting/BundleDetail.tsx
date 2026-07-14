@@ -17,7 +17,7 @@ import { LifecycleBadge } from "./BundlesList"
 import { printBundleGrn } from "./GrnScreen"
 import {
   bundleDetail, bundleNoteRefs, createBundle, importConfirm, poLineOptions,
-  snCells, SN_COLUMNS, type BundleDetailData, type PoLineOption,
+  buildSnCsv, type BundleDetailData, type PoLineOption,
 } from "./data"
 
 /* ── Screen 5: Bundle detail — the transcription layout ───────────────
@@ -26,12 +26,8 @@ import {
    footer; adjusting bundles start here (published bundles only). ── */
 
 function downloadExcel(b: BundleDetailData) {
-  const q = (v: string | number) => `"${String(v ?? "").replace(/"/g, '""')}"`
-  const csv = "﻿" + [SN_COLUMNS.map(q).join(",")]
-    .concat(b.rows.map((r) => snCells(r).map(q).join(",")))
-    .join("\r\n")
   const a = document.createElement("a")
-  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }))
+  a.href = URL.createObjectURL(buildSnCsv(b.rows))
   a.download = `${b.bundleNo}.csv`
   a.click()
   URL.revokeObjectURL(a.href)

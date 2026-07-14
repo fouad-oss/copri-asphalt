@@ -13,6 +13,7 @@ import Bundling from "@/screens/accounting/Bundling"
 import BundlesList from "@/screens/accounting/BundlesList"
 import BundleDetail from "@/screens/accounting/BundleDetail"
 import GrnScreen from "@/screens/accounting/GrnScreen"
+import SnDataPage from "@/screens/accounting/SnDataPage"
 
 /* ── ACCOUNTING REBUILD (BRIEF-accounting-rebuild-final.md) ───────────
    This deploy exposes ONLY the accounting section (+ login). The other
@@ -27,6 +28,7 @@ function Guard({ children }: { children: React.ReactNode }) {
 
 const router = createBrowserRouter([
   { path: "/login", element: <Login /> },
+  { path: "/sn", element: <SnDataPage /> },   // external, TOKEN access — outside the guard
   {
     path: "/accounting",
     element: <Guard><AccountingShell /></Guard>,

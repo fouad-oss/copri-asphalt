@@ -3968,7 +3968,8 @@ function renderMaterialReceiptForm(name, onDone) {
   function refreshUnit() {
     const cat = matViewByName(catInput.value);
     const it = cat && cat.items.find(i => i.name === (matInput ? matInput.value : ""));
-    unitInput.value = it ? it.unit : (cat ? cat.unit : "");
+    // an item with a blank canonical unit falls back to the category unit
+    unitInput.value = (it && it.unit) || (cat ? cat.unit : "");
   }
   catInput.addEventListener("change", () => { buildMat(); refreshUnit(); });
 
@@ -6923,6 +6924,38 @@ const RECON_META = {
 };
 const RECON_ORDER = ["qty_mismatch", "dispatched_not_received", "received_not_dispatched", "matched"];
 
+// Shared channel context for the approvals views: vendor names, the
+// plant-vendor set (via the plant_dispatch_supplier settings row — the
+// single config point, 5205 only as fallback), the Copri company list
+// and its server-side PostgREST filter. Cached for the session so tab
+// switches don't refetch static reference data.
+let _pipeChanCtx = null;
+async function pipeChannelContext() {
+  if (_pipeChanCtx) return _pipeChanCtx;
+  const [vendors, setting, copri] = await Promise.all([
+    sbGet("vendors?select=id,name"),
+    sbGet("pipeline_settings?key=eq.plant_dispatch_supplier&select=value").catch(() => []),
+    sbGet("companies?is_copri=eq.true&select=name"),
+  ]);
+  const cfg = (setting[0] && setting[0].value) || {};
+  const contact = cfg.contact_id || "5205";
+  const plantMap = await sbGet(`vendor_spectronova_ids?contact_id=eq.${encodeURIComponent(contact)}&select=vendor_id`);
+  const vById = {}; vendors.forEach(v => { vById[v.id] = v.name; });
+  const plantIds = new Set(plantMap.map(m => m.vendor_id));
+  const copriNames = copri.map(c => c.name);
+  // asphalt notes = Copri loads only (external-client loads are sales) —
+  // filtered SERVER-side so the fetch limit is spent on relevant rows
+  const copriParam = copriNames.length
+    ? `&company=in.(${encodeURIComponent(copriNames.map(n => `"${n.replace(/"/g, '""')}"`).join(","))})`
+    : "";
+  _pipeChanCtx = {
+    vById, plantIds, copriParam,
+    plantSnName: cfg.sn_name || "Asphalt Plant Amghara",
+    plantName: (plantMap[0] && vById[plantMap[0].vendor_id]) || "مصنع الأسفلت",
+  };
+  return _pipeChanCtx;
+}
+
 async function pipeTabApprovals(body, user) {
   const state = { channel: "asphalt", view: "queue" };
   body.innerHTML = "";
@@ -6964,20 +6997,13 @@ async function pipeTabApprovals(body, user) {
 async function pipeApprovalsQueue(host, user, channel) {
   host.innerHTML = `<div class="info-box">جارٍ التحميل…</div>`;
   const src = channel === "asphalt" ? "dispatch" : "material";
-  let rows = [], copriNames = [];
+  let rows = [];
   try {
-    [rows, copriNames] = await Promise.all([
-      sbGet(`note_recon?note_source=eq.${src}&order=delivery_date.desc&limit=600`),
-      channel === "asphalt" ? sbGet("companies?is_copri=eq.true&select=name") : Promise.resolve([]),
-    ]);
+    const ctx = await pipeChannelContext();
+    rows = await sbGet(`note_recon?note_source=eq.${src}` +
+      (channel === "asphalt" ? ctx.copriParam : "") + `&order=delivery_date.desc&limit=600`);
   } catch {
     host.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل البيانات — تحقق من الاتصال</div>`; return;
-  }
-  // External-client loads are sales, never get receipts and never bill
-  // against our POs — the asphalt queue is Copri supply only.
-  if (channel === "asphalt") {
-    const copri = new Set(copriNames.map(c => c.name));
-    rows = rows.filter(r => copri.has(r.company));
   }
   host.innerHTML = "";
 
@@ -7077,20 +7103,18 @@ async function pipeApprovalsQueue(host, user, channel) {
 // offers the accountant's line editor (po_lines_add).
 async function pipeApprovalsBalances(host, user, channel) {
   host.innerHTML = `<div class="info-box">جارٍ التحميل…</div>`;
-  let cmts = [], rows = [], vendors = [], plantMap = [];
+  let cmts = [], rows = [], ctx;
   try {
-    [cmts, rows, vendors, plantMap] = await Promise.all([
+    [ctx, cmts, rows] = await Promise.all([
+      pipeChannelContext(),
       sbGet(`commitments?status=${sbEq("نشط")}&order=po_date.desc.nullslast,created_at.desc&limit=2000`),
       sbGet("po_line_balance?order=line_no.asc&limit=2000"),
-      sbGet("vendors?select=id,name"),
-      sbGet("vendor_spectronova_ids?contact_id=eq.5205&select=vendor_id"),
     ]);
   } catch {
     host.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل البيانات — تحقق من الاتصال</div>`; return;
   }
   host.innerHTML = "";
-  const vById = {}; vendors.forEach(v => { vById[v.id] = v.name; });
-  const plantIds = new Set(plantMap.map(m => m.vendor_id));
+  const vById = ctx.vById, plantIds = ctx.plantIds;
   cmts = cmts.filter(c => channel === "asphalt" ? plantIds.has(c.vendor_id) : !plantIds.has(c.vendor_id));
   const linesByPo = {}; rows.forEach(l => { (linesByPo[l.commitment_id] = linesByPo[l.commitment_id] || []).push(l); });
   const canEdit = user.accountant || user.requester || user.admin;
@@ -7233,32 +7257,31 @@ function pipeBundleChip(status) {
 async function pipeApprovalsBundling(host, user, channel) {
   host.innerHTML = `<div class="info-box">جارٍ التحميل…</div>`;
   const src = channel === "asphalt" ? "dispatch" : "material";
-  let ready = [], lines = [], lastLine = [], bundles = [], vendors = [], plantMap = [], copriNames = [];
+  let ready = [], lines = [], lastLine = [], bundles = [], ctx;
   try {
-    [ready, lines, lastLine, bundles, vendors, plantMap, copriNames] = await Promise.all([
-      sbGet(`note_bundle_ready?note_source=eq.${src}&order=delivery_date.asc&limit=500`),
+    ctx = await pipeChannelContext();
+    [ready, lines, lastLine, bundles] = await Promise.all([
+      sbGet(`note_bundle_ready?note_source=eq.${src}` +
+        (channel === "asphalt" ? ctx.copriParam : "") + `&order=delivery_date.asc&limit=500`),
       sbGet("po_line_balance?order=line_no.asc&limit=2000"),
-      sbGet("bundle_last_line").catch(() => []),
+      sbGet("bundle_last_line?order=created_at.desc").catch(() => []),
       sbGet(`bundles?source=eq.${channel}&order=created_at.desc&limit=200` +
         `&select=*,bundle_lines(note_ref,note_no,qty,amount),commitment_lines(line_no,item,rate,unit,commitments(number,sn_po))`),
-      sbGet("vendors?select=id,name"),
-      sbGet("vendor_spectronova_ids?contact_id=eq.5205&select=vendor_id"),
-      channel === "asphalt" ? sbGet("companies?is_copri=eq.true&select=name") : Promise.resolve([]),
     ]);
   } catch {
     host.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل البيانات — يتطلب ترقية 0027</div>`; return;
   }
   host.innerHTML = "";
-  if (channel === "asphalt") {
-    const copri = new Set(copriNames.map(c => c.name));
-    ready = ready.filter(r => copri.has(r.company));
-  }
-  const vById = {}; vendors.forEach(v => { vById[v.id] = v.name; });
-  const plantIds = new Set(plantMap.map(m => m.vendor_id));
-  lines = lines.filter(l => channel === "asphalt" ? plantIds.has(l.vendor_id) : !plantIds.has(l.vendor_id));
-  const lastByItem = {}; lastLine.forEach(x => { lastByItem[x.item_id] = x.commitment_line_id; });
+  const plantIds = ctx.plantIds;
+  // channel split + only ACTIVE POs are bundle-able (po_status is a
+  // 0029 column — tolerate its absence pre-paste)
+  lines = lines.filter(l => (l.po_status === undefined || l.po_status === "نشط") &&
+    (channel === "asphalt" ? plantIds.has(l.vendor_id) : !plantIds.has(l.vendor_id)));
+  // 0029: bundle_last_line is per item PER PO, newest first
+  const lastByItem = {}; lastLine.forEach(x => { (lastByItem[x.item_id] = lastByItem[x.item_id] || []).push(x); });
   const refresh = () => pipeApprovalsBundling(host, user, channel);
-  const billQty = (r) => r.qty_received != null ? Number(r.qty_received) : Number(r.qty_dispatched || 0);
+  const billQty = (r) => r.bill_qty != null ? Number(r.bill_qty)
+    : (r.qty_received != null ? Number(r.qty_received) : Number(r.qty_dispatched || 0));
 
   // ── selection + PO line assignment ──
   const selCard = el("div", "card");
@@ -7280,12 +7303,21 @@ async function pipeApprovalsBundling(host, user, channel) {
     selSummary.innerHTML = picked.length
       ? `المحدد: <b>${picked.length}</b> سند · الكمية <b>${Math.round(qty * 100) / 100}</b>`
       : "لم يُحدد أي سند بعد.";
-    // last-used-line suggestion: all picked notes share one canonical item
+    // last-used-line suggestion (per item per PO, brief Part 3): all
+    // picked notes share one canonical item → preselect the most recent
+    // line that is actually offered on this channel; the accountant
+    // confirms — the option label carries the PO so a cross-PO default
+    // is visible, and the hint flags when other POs used this item too.
     const items = [...new Set(picked.map(r => r.item_id).filter(Boolean))];
     if (picked.length && items.length === 1 && lastByItem[items[0]] && !lineSel.value) {
-      lineSel.value = String(lastByItem[items[0]]);
-      suggestHint.style.display = "";
-      suggestHint.textContent = "💡 مقترح: آخر بند استُخدم لهذا الصنف — أكّد أو غيّر";
+      const cands = lastByItem[items[0]];
+      const hit = cands.find(x => [...lineSel.options].some(o => o.value === String(x.commitment_line_id)));
+      if (hit) {
+        lineSel.value = String(hit.commitment_line_id);
+        suggestHint.style.display = "";
+        suggestHint.textContent = "💡 مقترح: آخر بند استُخدم لهذا الصنف — أكّد أو غيّر" +
+          (new Set(cands.map(x => x.commitment_id)).size > 1 ? " (استُخدمت بنود أوامر أخرى لهذا الصنف أيضاً)" : "");
+      }
     }
   }
   syncSelection();
@@ -7478,11 +7510,6 @@ async function pipeApprovalsSummary(host, user, channel) {
 
   function paintTable(id) {
     const list = byBundle[id]; const f = list[0];
-    const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
-    const n3 = (v) => v == null ? "" : Number(v).toFixed(3);
-    const amt = list.reduce((s, r) => s + Number(r.amount || 0), 0);
-    const HEADS = ["Supplier", "PO Number", "PO Line", "Item Code", "Description", "Qty", "UOM",
-                   "Unit Price", "Amount", "Delivery Date", "Supplier DN Number", "Site"];
     tableHost.innerHTML = "";
     const c = el("div", "card");
     const top = el("div", "prog-top");
@@ -7493,15 +7520,7 @@ async function pipeApprovalsSummary(host, user, channel) {
       c.appendChild(w);
     }
     const wrap = el("div"); wrap.style.cssText = "overflow-x:auto;direction:ltr;margin-top:.5rem";
-    wrap.innerHTML = `<table style="border-collapse:collapse;font-size:.72rem;white-space:nowrap">` +
-      `<thead><tr>${HEADS.map(h => `<th style="border:1px solid var(--text-3);padding:.25rem .5rem;background:var(--surface-2);text-align:left">${h}</th>`).join("")}</tr></thead>` +
-      `<tbody>` + list.map(r =>
-        `<tr>${[r.supplier, r.po_number, r.po_line, r.item_code, r.description, r.qty, r.uom,
-                n3(r.unit_price), n3(r.amount), r.delivery_date, r.supplier_dn, r.site]
-          .map(v => `<td style="border:1px solid var(--text-3);padding:.25rem .5rem;text-align:left">${esc(v)}</td>`).join("")}</tr>`).join("") +
-      `<tr><td colspan="8" style="border:1px solid var(--text-3);padding:.25rem .5rem;text-align:left;font-weight:700">Total (KWD)</td>` +
-      `<td style="border:1px solid var(--text-3);padding:.25rem .5rem;text-align:left;font-weight:700">${n3(amt)}</td><td colspan="3" style="border:1px solid var(--text-3)"></td></tr>` +
-      `</tbody></table>`;
+    wrap.innerHTML = snTableHtml(list);
     c.appendChild(wrap);
     if (f.status === "published") {
       if (f.imported_flag) {
@@ -7656,21 +7675,18 @@ async function pipeGrnPrintBundle(bundleId) {
 async function pipeApprovalsGrn(host, user, channel) {
   host.innerHTML = `<div class="info-box">جارٍ التحميل…</div>`;
   const src = channel === "asphalt" ? "dispatch" : "material";
-  let notes = [], trans = [], copriNames = [];
+  let notes = [], trans = [], ctx;
   try {
-    [notes, trans, copriNames] = await Promise.all([
-      sbGet(`note_recon?note_source=eq.${src}&order=delivery_date.desc&limit=600`),
+    ctx = await pipeChannelContext();
+    [notes, trans] = await Promise.all([
+      sbGet(`note_recon?note_source=eq.${src}` +
+        (channel === "asphalt" ? ctx.copriParam : "") + `&order=delivery_date.desc&limit=600`),
       sbGet(`bundle_transcription?source=eq.${channel}&order=bundle_id.desc,line_id.asc&limit=2000`).catch(() => []),
-      channel === "asphalt" ? sbGet("companies?is_copri=eq.true&select=name") : Promise.resolve([]),
     ]);
   } catch {
     host.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل البيانات — تحقق من الاتصال</div>`; return;
   }
   host.innerHTML = "";
-  if (channel === "asphalt") {
-    const copri = new Set(copriNames.map(c => c.name));
-    notes = notes.filter(r => copri.has(r.company));
-  }
   // GRN documents RECEIVED goods: dispatch notes need a received leg.
   notes = notes.filter(r => r.note_source === "material" || r.qty_received != null || r.recon_status === "matched");
   const poByDn = {}; trans.forEach(t => { if (!poByDn[t.supplier_dn]) poByDn[t.supplier_dn] = t; });
@@ -7775,6 +7791,7 @@ async function pipeApprovalsGrn(host, user, channel) {
 // Full note details for the per-note sheets (engineer names, units, WO).
 async function grnNoteDetails(picked, src, poByDn) {
   const ids = picked.map(r => r.note_ref);
+  const ctx = await pipeChannelContext();
   if (src === "dispatch") {
     const loads = await sbGet(`dispatch_loads?id=in.(${ids.join(",")})`);
     const noteNos = loads.map(d => d.note);
@@ -7789,7 +7806,7 @@ async function grnNoteDetails(picked, src, poByDn) {
         date: r.ts ? fmtKW(r.ts).slice(0, 10) : fmtKW(d.ts).slice(0, 10),
         project: d.project, site: [d.site, d.block && "ق" + d.block, d.street && "ش" + d.street].filter(Boolean).join(" "),
         po: poByDn[d.note] ? poByDn[d.note].po_number : "",
-        supplier: "Asphalt Plant Amghara — مصنع الأسفلت",
+        supplier: `${ctx.plantSnName} — ${ctx.plantName}`,
         item: d.mix, qty: r.weight_arrival != null ? r.weight_arrival : d.weight, unit: "طن",
         engineer: r.engineer || "",
         extra: ["أمر العمل", d.work_order && d.work_order !== "*" ? d.work_order : ""],
@@ -8529,6 +8546,20 @@ function snRowCells(r) {
   return [r.supplier, r.po_number, r.po_line, r.item_code, r.description, r.qty,
           r.uom, n3(r.unit_price), n3(r.amount), r.delivery_date, r.supplier_dn, r.site];
 }
+// THE table renderer for the frozen layout — the accountant's
+// transcription tab and the external SN page must show the exact same
+// thing, so they both call this (and the CSV uses the same two helpers).
+function snTableHtml(rows) {
+  const amt = rows.reduce((s, r) => s + Number(r.amount || 0), 0);
+  const th = (h) => `<th style="border:1px solid var(--text-3);padding:.25rem .5rem;background:var(--surface-2);text-align:left">${h}</th>`;
+  const td = (v, extra) => `<td style="border:1px solid var(--text-3);padding:.25rem .5rem;text-align:left${extra || ""}">${grnEsc(v)}</td>`;
+  return `<table style="border-collapse:collapse;font-size:.72rem;white-space:nowrap">` +
+    `<thead><tr>${SN_HEADS.map(th).join("")}</tr></thead><tbody>` +
+    rows.map(r => `<tr>${snRowCells(r).map(v => td(v)).join("")}</tr>`).join("") +
+    `<tr><td colspan="8" style="border:1px solid var(--text-3);padding:.25rem .5rem;text-align:left;font-weight:700">Total (KWD)</td>` +
+    `<td style="border:1px solid var(--text-3);padding:.25rem .5rem;text-align:left;font-weight:700">${amt.toFixed(3)}</td>` +
+    `<td colspan="3" style="border:1px solid var(--text-3)"></td></tr></tbody></table>`;
+}
 async function renderSnPage(urlToken) {
   const main = renderShell("بيانات SpectroNova");
   let token = (urlToken && urlToken !== "1") ? urlToken : (localStorage.getItem(SN_TOKEN_KEY) || "");
@@ -8556,8 +8587,23 @@ async function renderSnPage(urlToken) {
     let data;
     try { data = await sbRpc("sn_page_data", { p_token: tk }); } catch { data = null; }
     if (!data || !data.success) {
-      localStorage.removeItem(SN_TOKEN_KEY);
-      tokenScreen(data && data.error === "bad token" ? "رمز غير صحيح — راجع مكتب كوبري" : "تعذّر الاتصال — حاول مجدداً");
+      // only a REJECTED token clears the cache — a network blip must not
+      // lock staff out of their bookmarked link
+      if (data && data.error === "bad token") {
+        localStorage.removeItem(SN_TOKEN_KEY);
+        tokenScreen("رمز غير صحيح — راجع مكتب كوبري");
+      } else {
+        main.innerHTML = "";
+        const card = el("div", "card");
+        const err = el("div", "error-msg"); err.style.display = "block";
+        err.textContent = "تعذّر الاتصال — تحقق من الشبكة وحاول مجدداً";
+        card.appendChild(err);
+        const retry = el("button", "btn-primary"); retry.type = "button";
+        retry.textContent = "إعادة المحاولة 🔄"; retry.style.width = "100%";
+        retry.addEventListener("click", () => load(tk));
+        card.appendChild(retry);
+        main.appendChild(card);
+      }
       return;
     }
     localStorage.setItem(SN_TOKEN_KEY, tk);
@@ -8638,10 +8684,8 @@ async function renderSnPage(urlToken) {
       if (!list.length) { listWrap.innerHTML = `<div class="card"><div class="info-box">لا نتائج مطابقة للتصفية.</div></div>`; return; }
       const g = {}; const ord = [];
       list.forEach(r => { if (!g[r.bundle_id]) { g[r.bundle_id] = []; ord.push(r.bundle_id); } g[r.bundle_id].push(r); });
-      const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
       ord.forEach(id => {
         const bl = g[id]; const f = bl[0];
-        const amt = bl.reduce((s, r) => s + Number(r.amount || 0), 0);
         const c = el("div", "card");
         const top = el("div", "prog-top");
         const t = el("div", "req-client"); t.textContent = f.bundle_no;
@@ -8655,13 +8699,7 @@ async function renderSnPage(urlToken) {
           (f.imported_flag && f.sn_reference ? ` · مرجع SN: ${f.sn_reference}` : "");
         c.appendChild(l1);
         const wrap = el("div"); wrap.style.cssText = "overflow-x:auto;direction:ltr;margin-top:.5rem";
-        wrap.innerHTML = `<table style="border-collapse:collapse;font-size:.72rem;white-space:nowrap">` +
-          `<thead><tr>${SN_HEADS.map(h => `<th style="border:1px solid var(--text-3);padding:.25rem .5rem;background:var(--surface-2);text-align:left">${h}</th>`).join("")}</tr></thead>` +
-          `<tbody>` + bl.map(r =>
-            `<tr>${snRowCells(r).map(v => `<td style="border:1px solid var(--text-3);padding:.25rem .5rem;text-align:left">${esc(v)}</td>`).join("")}</tr>`).join("") +
-          `<tr><td colspan="8" style="border:1px solid var(--text-3);padding:.25rem .5rem;text-align:left;font-weight:700">Total (KWD)</td>` +
-          `<td style="border:1px solid var(--text-3);padding:.25rem .5rem;text-align:left;font-weight:700">${amt.toFixed(3)}</td><td colspan="3" style="border:1px solid var(--text-3)"></td></tr>` +
-          `</tbody></table>`;
+        wrap.innerHTML = snTableHtml(bl);
         c.appendChild(wrap);
         if (!f.imported_flag) {
           const row = el("div"); row.style.cssText = "display:flex;gap:.4rem;margin-top:.5rem";

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
+import LangToggle from "@/components/LangToggle"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -130,6 +131,7 @@ export default function CaptureHome() {
           <div className="text-xs text-muted-foreground">{t("home.portal")}</div>
         </div>
         <div className="flex items-center gap-2">
+          <LangToggle />
           {pending > 0 && (
             <Badge variant="secondary" className="bg-warning-surface font-normal text-warning">
               {t("home.pending", { n: pending })}

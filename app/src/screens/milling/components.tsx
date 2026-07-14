@@ -13,6 +13,7 @@ import { RefCode } from "@/components/patterns"
 import { fmtKW, qty } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import logoInk from "@/assets/brand/copri-logo-ink.png"
+import LangToggle from "@/components/LangToggle"
 import { MILL_STATUS, STATUS_CODE } from "./lib"
 import type { AuditEvent, Program } from "./lib"
 
@@ -141,6 +142,7 @@ export function PinScreen({ title, names, validate, onSuccess }: {
     <div className="flex min-h-dvh items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardContent className="flex flex-col gap-4 pt-6">
+          <div className="flex justify-end"><LangToggle /></div>
           <div className="flex flex-col items-center gap-1 py-2">
             <img src={logoInk} alt="COPRI" className="h-10 w-auto" />
             <h2 className="text-base font-semibold">{title}</h2>
@@ -199,7 +201,10 @@ export function PortalShell({ title, subtitle, user, onLogout, field, children }
                 <div className="text-xs text-muted-foreground">{subtitle}</div>
               </div>
             </div>
-            <Button variant="secondary" size="sm" onClick={onLogout}>{t("common.logout")}</Button>
+            <div className="flex items-center gap-1">
+              <LangToggle />
+              <Button variant="secondary" size="sm" onClick={onLogout}>{t("common.logout")}</Button>
+            </div>
           </CardContent>
         </Card>
         {children}

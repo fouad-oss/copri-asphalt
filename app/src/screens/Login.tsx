@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { loginEmail, loginPin } from "@/lib/session"
 import logoInk from "@/assets/brand/copri-logo-ink.png"
+import LangToggle from "@/components/LangToggle"
 
 export default function Login() {
   const { t } = useTranslation()
@@ -35,6 +36,7 @@ export default function Login() {
       <Card className="w-full max-w-sm">
         <CardContent className="flex flex-col gap-4 pt-6">
           {/* Login carries the logo + tagline — nowhere else (skill §brand) */}
+          <div className="flex justify-end"><LangToggle /></div>
           <div className="flex flex-col items-center gap-1 py-2">
             <img src={logoInk} alt="COPRI" className="h-10 w-auto" />
             <div className="text-xs text-muted-foreground">{t("app.tagline")}</div>

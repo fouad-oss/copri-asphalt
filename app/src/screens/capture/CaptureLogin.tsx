@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/select"
 import { ErrorBox, LoadingList } from "@/components/patterns"
 import logoInk from "@/assets/brand/copri-logo-ink.png"
+import LangToggle from "@/components/LangToggle"
 import { useCaptureRef } from "./ref"
 import { setCaptureSession } from "./session"
 
@@ -42,6 +43,7 @@ export default function CaptureLogin() {
     <div className="flex min-h-dvh items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardContent className="flex flex-col gap-4 pt-6">
+          <div className="flex justify-end"><LangToggle /></div>
           <div className="flex flex-col items-center gap-1 py-2">
             <img src={logoInk} alt="COPRI" className="h-10 w-auto" />
             <div className="text-sm font-semibold">{t("login.title")}</div>

@@ -8,6 +8,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { ErrorBox, LoadingList } from "@/components/patterns"
+import LangToggle from "@/components/LangToggle"
 import { fetchManagers, setDeskSession, type Manager } from "./lib"
 
 /* ── Interim desk PIN gate — name + PIN validated against the
@@ -45,6 +46,7 @@ export default function PinGate({ kind, onSuccess }: {
   return (
     <Card className="py-4">
       <CardContent className="flex flex-col gap-3 px-4">
+        <div className="flex justify-end"><LangToggle /></div>
         <h2 className="text-base font-semibold">{t(kind === "plant" ? "pin.plantTitle" : "pin.financeTitle")}</h2>
         <div className="flex flex-col gap-1.5">
           <Label>{t("pin.name")}</Label>

@@ -1,6 +1,7 @@
 import { Navigate, Outlet, Route, Routes } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import logoInk from "@/assets/brand/copri-logo-ink.png"
+import LangToggle from "@/components/LangToggle"
 import "./i18n"
 import HomeBoard from "./HomeBoard"
 import PlantBoard from "./PlantBoard"
@@ -23,6 +24,7 @@ function Shell() {
         <div className="mx-auto flex max-w-3xl items-center gap-2 px-4 py-2">
           <img src={logoInk} alt="COPRI" className="h-7" />
           <span className="text-sm font-semibold">{t("title")}</span>
+          <LangToggle className="ms-auto" />
         </div>
       </header>
       <main className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-4 pb-10">

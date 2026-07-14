@@ -16,6 +16,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useDispatchRef } from "./reference"
 import logo from "@/assets/brand/copri-logo.png"
+import LangToggle from "@/components/LangToggle"
 
 export function PortalShell({ badge, children }: { badge: string; children: ReactNode }) {
   const { t } = useTranslation("dispatch")
@@ -26,6 +27,7 @@ export function PortalShell({ badge, children }: { badge: string; children: Reac
         <div className="mx-auto flex w-full max-w-lg items-center justify-between gap-2 px-4 py-2.5">
           <img src={logo} alt="COPRI" className="h-8 w-auto" />
           <div className="flex items-center gap-2">
+            <LangToggle />
             <span className="rounded-md bg-secondary px-2.5 py-1 text-sm font-semibold text-secondary-foreground">
               {badge}
             </span>
@@ -136,6 +138,7 @@ export function PinScreen({ title, people, onSuccess }: {
   return (
     <Card className="mt-6">
       <CardContent className="flex flex-col gap-4 px-4 py-6">
+        <div className="flex justify-end"><LangToggle /></div>
         <div className="flex flex-col items-center gap-1 text-center">
           <img src={logo} alt="COPRI" className="h-9 w-auto" />
           <h2 className="mt-2 text-lg font-semibold">{title}</h2>

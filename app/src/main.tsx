@@ -12,6 +12,7 @@ import PoRegister from "@/screens/accounting/PoRegister"
 import Bundling from "@/screens/accounting/Bundling"
 import BundlesList from "@/screens/accounting/BundlesList"
 import BundleDetail from "@/screens/accounting/BundleDetail"
+import GrnScreen from "@/screens/accounting/GrnScreen"
 
 /* ── ACCOUNTING REBUILD (BRIEF-accounting-rebuild-final.md) ───────────
    This deploy exposes ONLY the accounting section (+ login). The other
@@ -35,6 +36,7 @@ const router = createBrowserRouter([
       { path: "bundling", element: <Bundling /> },
       { path: "bundles", element: <BundlesList /> },
       { path: "bundles/:id", element: <BundleDetail /> },
+      { path: "grn", element: <GrnScreen /> },
     ],
   },
   { path: "*", element: <Navigate to="/accounting" replace /> },

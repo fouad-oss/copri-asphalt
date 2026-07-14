@@ -14,6 +14,7 @@ import { qty as fmtQty } from "@/lib/format"
 import type { Profile } from "@/lib/session"
 import { kwd, L } from "./labels"
 import { LifecycleBadge } from "./BundlesList"
+import { printBundleGrn } from "./GrnScreen"
 import {
   bundleDetail, bundleNoteRefs, createBundle, importConfirm, poLineOptions,
   snCells, SN_COLUMNS, type BundleDetailData, type PoLineOption,
@@ -151,6 +152,7 @@ export default function BundleDetail() {
   const [b, setB] = useState<BundleDetailData | null | undefined>(undefined)
   const [error, setError] = useState(false)
   const [adjusting, setAdjusting] = useState(false)
+  const [grnBusy, setGrnBusy] = useState(false)
 
   const load = useCallback(async () => {
     setError(false); setB(undefined)
@@ -205,7 +207,15 @@ export default function BundleDetail() {
           </Link>
         )}
         <div className="flex-1" />
-        <Button variant="outline" size="sm" disabled title={L.detail.grnSoon}>{L.detail.grn}</Button>
+        <Button variant="outline" size="sm" disabled={grnBusy}
+          onClick={() => {
+            setGrnBusy(true)
+            printBundleGrn(user.pin ?? "", b.id)
+              .catch((e: any) => toast.error(`${L.grn.mintFailed}${e?.message ? ` — ${e.message}` : ""}`))
+              .finally(() => setGrnBusy(false))
+          }}>
+          {grnBusy ? L.grn.printing : L.detail.grn}
+        </Button>
         <Button variant="outline" size="sm" onClick={() => downloadExcel(b)}>{L.detail.excel}</Button>
       </div>
 

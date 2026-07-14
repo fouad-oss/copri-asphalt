@@ -323,6 +323,128 @@ export async function deleteBundle(pin: string, id: number) {
   return callRpc("bundle_delete", { p_pin: pin, p_bundle_id: id })
 }
 
+/* ── GRN generator (screen 6) ─────────────────────────────────────────
+   Numbers are REGISTERED (GRN-C-####, grn_docs + grn_doc_no RPC): one
+   per target, so a reprint carries the same number. */
+
+export type GrnNote = {
+  ref: number
+  noteNo: string
+  date: string          // Kuwait calendar day, YYYY-MM-DD
+  site: string
+  item: string
+  qty: number | null
+  po: string            // via bundle membership; "" when unbundled
+}
+
+export type GrnNoteDetail = {
+  ref: number
+  noteNo: string
+  date: string
+  project: string
+  site: string
+  po: string
+  supplier: string
+  item: string
+  qty: number | null
+  unit: string
+  engineer: string
+  extra: "wo" | "sub"    // print label picked from L.grn by the builder
+  extraValue: string
+}
+
+const kwDay = (iso: string | null | undefined) =>
+  iso ? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kuwait" }).format(new Date(iso)) : ""
+
+/** DN → PO map through bundle membership (anon sees published only). */
+export async function grnPoByDn(channel: Channel): Promise<Record<string, string>> {
+  const { data, error } = await supabase.from("bundle_transcription")
+    .select("supplier_dn,po_number").eq("source", channel).limit(2000)
+  if (error) throw error
+  const out: Record<string, string> = {}
+  ;(data ?? []).forEach((r: any) => { if (!(r.supplier_dn in out)) out[r.supplier_dn] = r.po_number })
+  return out
+}
+
+/** Received notes for per-note GRNs (asphalt: matched = receipted). */
+export async function grnNotes(channel: Channel): Promise<GrnNote[]> {
+  const [rows, poByDn] = await Promise.all([
+    auditRows(channel, channel === "asphalt" ? "matched" : null),
+    grnPoByDn(channel),
+  ])
+  return rows.map((r) => ({
+    ref: r.id, noteNo: r.noteNo,
+    date: channel === "asphalt" ? (r.ts ?? "") : kwDay(r.ts),
+    site: r.site, item: r.item, qty: r.qty,
+    po: poByDn[r.noteNo] ?? "",
+  }))
+}
+
+async function plantSupplierLabel(): Promise<string> {
+  const { data } = await supabase.from("pipeline_settings")
+    .select("value").eq("key", "plant_dispatch_supplier").maybeSingle()
+  return (data?.value as any)?.sn_name || "Asphalt Plant Amghara"
+}
+
+/** Full per-note rows for the printed sheets (engineer names, units). */
+export async function grnNoteDetails(channel: Channel, refs: number[]): Promise<GrnNoteDetail[]> {
+  const poByDn = await grnPoByDn(channel)
+  if (channel === "asphalt") {
+    const [{ data: loads, error }, supplier] = await Promise.all([
+      supabase.from("dispatch_loads")
+        .select("id,note,ts,project,site,block,street,mix,weight,work_order").in("id", refs),
+      plantSupplierLabel(),
+    ])
+    if (error) throw error
+    const notes = (loads ?? []).map((d: any) => d.note)
+    const { data: recs, error: re } = await supabase.from("receipts")
+      .select("note,engineer,ts").in("note", notes).order("ts", { ascending: true })
+    if (re) throw re
+    const recByNote: Record<string, any> = {}
+    ;(recs ?? []).forEach((r: any) => { recByNote[r.note] = r })  // ts.asc → latest wins
+    return (loads ?? []).map((d: any) => {
+      const r = recByNote[d.note] ?? {}
+      return {
+        ref: d.id, noteNo: d.note,
+        date: kwDay(r.ts ?? d.ts),
+        project: d.project ?? "", site: [d.site, d.block && `B${d.block}`, d.street && `St ${d.street}`].filter(Boolean).join(" "),
+        po: poByDn[d.note] ?? "",
+        supplier, item: d.mix ?? "", qty: d.weight, unit: "Tons",
+        engineer: r.engineer ?? "",
+        extra: "wo" as const, extraValue: d.work_order && d.work_order !== "*" ? d.work_order : "",
+      }
+    })
+  }
+  const { data, error } = await supabase.from("material_receipts")
+    .select("id,receipt_id,ts,project,site,block,street,material,quantity,unit,supplier,subcontractor,receiver,vendors:supplier_id(name)")
+    .in("id", refs)
+  if (error) throw error
+  return (data ?? []).map((m: any) => ({
+    ref: m.id, noteNo: m.receipt_id,
+    date: kwDay(m.ts),
+    project: m.project ?? "", site: [m.site, m.block && `B${m.block}`, m.street && `St ${m.street}`].filter(Boolean).join(" "),
+    po: poByDn[m.receipt_id] ?? "",
+    supplier: m.vendors?.name || m.supplier || "—",
+    item: m.material ?? "", qty: m.quantity, unit: m.unit ?? "",
+    engineer: m.receiver ?? "",
+    extra: "sub" as const, extraValue: m.subcontractor ?? "",
+  }))
+}
+
+/** Mint-or-return a registered GRN-C-#### number for one target. */
+export async function grnDocNo(
+  pin: string,
+  target: { bundleId?: number; dispatchId?: number; materialReceiptId?: number },
+): Promise<string> {
+  const r = await callRpc("grn_doc_no", {
+    p_pin: pin,
+    p_bundle_id: target.bundleId ?? null,
+    p_dispatch_id: target.dispatchId ?? null,
+    p_material_receipt_id: target.materialReceiptId ?? null,
+  })
+  return r.grnNo as string
+}
+
 let _copriNames: string[] | null = null
 async function copriNames(): Promise<string[]> {
   if (_copriNames) return _copriNames

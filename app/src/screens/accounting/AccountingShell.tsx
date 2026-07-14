@@ -14,6 +14,7 @@ const NAV: { to: string; label: string }[] = [
   { to: "/accounting/po-register", label: L.nav.poRegister },
   { to: "/accounting/bundling", label: L.nav.bundling },
   { to: "/accounting/bundles", label: L.nav.bundles },
+  { to: "/accounting/grn", label: L.nav.grn },
 ]
 
 export default function AccountingShell() {

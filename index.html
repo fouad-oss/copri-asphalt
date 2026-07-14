@@ -1774,6 +1774,24 @@ function renderRootLanding() {
   main.appendChild(card);
 }
 
+// ── Shelved-portal notice (accounting pivot 2026-07). The full build is
+// preserved at tag `full-build-2026-07`; module code stays in this file —
+// only the routes/nav were removed. Stale bookmarks land here instead of
+// silently falling through to the wrong screen. ──
+function renderShelved() {
+  const main = renderShell("بوابات كوبري");
+  const card = el("div", "card");
+  card.appendChild(sectionTitle("هذه البوابة موقوفة مؤقتاً"));
+  const info = el("div", "info-box");
+  info.textContent = "أُوقفت هذه الصفحة مؤقتاً ضمن إعادة تنظيم المنظومة. بياناتها محفوظة ولم تُحذف. للاستفسار يرجى مراجعة المكتب الرئيسي.";
+  card.appendChild(info);
+  const btn = el("button", "btn-primary");
+  btn.innerHTML = "🚛 بوابة إدخال الشحنات — كتبة المصنع";
+  btn.addEventListener("click", () => { window.location.href = "/dispatch"; });
+  card.appendChild(btn);
+  main.appendChild(card);
+}
+
 // ════════════════════════════════════════════════════════
 // HEADER & FOOTER
 // ════════════════════════════════════════════════════════
@@ -4591,13 +4609,11 @@ function _dashHome(main) {
     b.innerHTML = `<div class="project-btn-name">${name}</div><div class="project-btn-contract">${desc}</div>`;
     b.addEventListener("click", fn); card.appendChild(b);
   };
-  mk("الإدارة العامة", "نظرة شاملة — كل الوحدات والمشاريع", () => renderDashboard("exec"));
+  // Accounting pivot 2026-07: exec / project / acct boards + the WO-portal
+  // shortcut are shelved (tag `full-build-2026-07`) — plant board only.
   mk("المصنع", "الإرساليات حسب الشركة والموقع والخلطة", () => renderDashboard("plant"));
-  _refCopriProjectNames().forEach((pn) => mk(pn, "استلامات الأسفلت والمواد للمشروع", () => renderDashboard("project", pn)));
-  _refCopriProjectNames().forEach((pn) => mk("محاسبة المواد — " + pn, "كشف توريدات المواد بالتفصيل — للمحاسب", () => renderDashboard("acct", pn)));
-  mk("أوامر العمل", "دليل أوامر العمل — المواقع والأوصاف (أسفلت / مدني)", () => renderWoPortal());
   const soon = el("div", "field-hint"); soon.style.textAlign = "center"; soon.style.marginTop = ".6rem";
-  soon.textContent = "لوحة القشط — قريباً";
+  soon.textContent = "بقية اللوحات موقوفة مؤقتاً ضمن إعادة التنظيم";
   card.appendChild(soon);
   main.appendChild(card);
 }
@@ -7551,37 +7567,27 @@ const millingRole   = _mparams.get("millingRole");
 const matRole       = _mparams.get("matRole");
 const note = getNoteFromURL();
 
-if (millingReport) {
-  renderMillingReportView(millingReport);                 // public, no PIN
+// ── SHELVED ROUTES (accounting pivot 2026-07, tag `full-build-2026-07`).
+// Milling, plant-manager, finance-desk, WO-reference portals and the
+// exec/project/acct boards are parked: module code is untouched below,
+// only these dispatch branches were re-pointed at renderShelved().
+// To un-shelve a portal, restore its branch from the tag.
+if (millingReport || millingRole) {
+  renderShelved();                                        // milling module — shelved
+} else if (_mparams.get("plantRole") === "manager") {
+  renderShelved();                                        // plant-manager portal — shelved
+} else if (_mparams.get("financeRole") === "manager") {
+  renderShelved();                                        // finance recipient desk — shelved
+} else if (_mparams.has("wo")) {
+  renderShelved();                                        // WO reference portal — shelved
 } else if (_mparams.has("printTest")) {
   renderPrintTest();                                      // printer calibration, no PIN, no DB write
 } else if (_mparams.has("dash")) {
-  // Standalone (no PIN) for now — a dedicated management PIN gate comes later,
-  // driven by a new top-management reference file the user will create.
-  const dv = _mparams.get("dash"), dp = _mparams.get("dp");
-  renderDashboard(["plant", "exec", "project", "acct"].includes(dv) ? dv : null, dp || null);
-} else if (_mparams.has("wo")) {
-  renderWoPortal();                                       // WO mapping reference, no PIN
-} else if (millingRole === "engineer") {
-  const session = getEngineerSession();
-  if (session) renderMillingEngineerHome(session.name);
-  else renderPINScreen(name => renderMillingEngineerHome(name));
-} else if (millingRole === "pm") {
-  const pmSession = getPMSession();
-  if (pmSession) renderMillingPMHome(pmSession.name);
-  else renderMillingPMPINScreen(name => renderMillingPMHome(name));
-} else if (millingRole === "marco") {
-  const marcoSession = getMarcoSession();
-  if (marcoSession) renderMillingMarcoHome(marcoSession.name);
-  else renderMillingMarcoPINScreen(name => renderMillingMarcoHome(name));
-} else if (_mparams.get("plantRole") === "manager") {
-  const plantSession = getPlantSession();
-  if (plantSession) renderPlantHome(plantSession.name);
-  else renderPlantPINScreen(name => renderPlantHome(name));
-} else if (_mparams.get("financeRole") === "manager") {
-  const finSession = getFinanceSession();
-  if (finSession) renderFinanceHome(finSession.name);
-  else renderFinancePINScreen(name => renderFinanceHome(name));
+  // Kept: board picker (Fouad's desk selection; PIN gate waits for the auth
+  // phase) + plant board. Other boards are shelved with the pivot.
+  const dv = _mparams.get("dash");
+  if (["exec", "project", "acct"].includes(dv)) renderShelved();
+  else renderDashboard(dv === "plant" ? "plant" : null, null);
 } else if (_mparams.has("rf")) {
   const pipeSession = getPipeSession();
   if (pipeSession) renderPipeHome(pipeSession);

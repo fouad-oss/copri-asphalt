@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **ACCOUNTING PIVOT IN PROGRESS (2026-07, brief: `BRIEF-accounting-pivot.md`).**
+> The app was refocused as a pre-SpectroNova accounting workspace. Several
+> routes described below are SHELVED (code kept, routes → `renderShelved()`),
+> and the React `app/` track is out of the Vercel build — see `README.md`
+> for the reachable/shelved split. Full pre-pivot build: tag
+> `full-build-2026-07`.
+
 ## What this is
 
 A Progressive Web App for tracking asphalt deliveries (plant → site), milling works, and materials receipts for COPRI Construction, a Kuwait road-maintenance contractor for the Ministry of Public Works. All UI is Arabic / RTL. Moving parts:

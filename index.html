@@ -6916,13 +6916,19 @@ async function pipeTabMatch(body, user) {
 // step 5 adds bundling + the transcription summary. Divergence is a
 // data-quality SIGNAL — surfaced, never blocking. A DN date before the
 // PO date is NORMAL and never flagged.
+// Covers BOTH status eras: the pivot tokens (qty_mismatch,
+// received_not_dispatched for materials) and the rebuild tokens
+// (not_received / no_po, 0030 — no qty_mismatch anywhere). This legacy
+// queue survives only until the React accounting section replaces it.
 const RECON_META = {
   qty_mismatch:            { label: "⚠️ فرق كمية",              color: "var(--amber)", open: true },
   dispatched_not_received: { label: "🚚 أُرسلت ولم تُستلم",      color: "var(--red)",   open: true },
   received_not_dispatched: { label: "📥 استُلمت دون إرسال مطابق", color: "var(--amber)", open: true },
+  not_received:            { label: "⏳ بانتظار الاعتماد اليومي",  color: "var(--amber)", open: true },
+  no_po:                   { label: "🚩 بدون أمر شراء",          color: "var(--red)",   open: true },
   matched:                 { label: "✅ مطابقة",                 color: "var(--green)", open: false },
 };
-const RECON_ORDER = ["qty_mismatch", "dispatched_not_received", "received_not_dispatched", "matched"];
+const RECON_ORDER = ["qty_mismatch", "dispatched_not_received", "received_not_dispatched", "not_received", "no_po", "matched"];
 
 // Shared channel context for the approvals views: vendor names, the
 // plant-vendor set (via the plant_dispatch_supplier settings row — the
@@ -7084,7 +7090,7 @@ async function pipeApprovalsQueue(host, user, channel) {
         }
       };
       chunk(); paintHead();
-      if (channel === "materials" && status === "received_not_dispatched") {
+      if (channel === "materials" && (status === "received_not_dispatched" || status === "not_received")) {
         const hint = el("div", "field-hint"); hint.style.margin = ".2rem 0 .6rem";
         hint.textContent = "الربط بأمر الشراء والاعتماد يتمان من تبويب «الاعتماد اليومي» — عندها يصبح السند مطابقاً.";
         bodyWrap.prepend(hint);

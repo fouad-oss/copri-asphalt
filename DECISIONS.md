@@ -75,3 +75,8 @@ One line each: what was assumed and why. Newest at the bottom.
 - Bundle-detail header "Delivery Date" will render as a date range when a bundle's notes span dates (per-row dates stay in the frozen data-page contract).
 - "No localStorage": the SN page's token cache goes away — token rides the URL.
 - Follow-up marker (0026) is absent from the new audit-queue spec: DB columns kept, button dropped.
+- Rebuild step 1 (0030): dispatch_recon_compute keeps its 3-arg signature (weight/arrival params now unused) so the trigger call sites don't change; rejected receipts map to dispatched_not_received (Fouad's call — never bundleable, no mismatch bucket). Status check constraints tightened per channel AFTER the trigger-driven backfill migrates old tokens.
+- bundle_lines FK hardening: dispatch_id/material_receipt_id filled BY THE GUARD from note_source/note_ref (single write path keeps both representations in lockstep); guard trigger disabled around the one-shot backfill; partial unique indexes moved onto the FK columns (adjusting lines exempt), the old (note_source, note_ref) index kept.
+- GRN-C-#### numbers mint once per target into grn_docs (unique per bundle/note, race-safe via unique_violation re-select) — reprints return the same number; the derived GRN-DN-<note> scheme retires with the legacy GRN UI.
+- RLS: only bundle_transcription flips to security_invoker (anon → published rows only). note_recon/note_bundle_ready/po_line_balance deliberately stay owner views: field tables keep anon read, and the legacy portal's pending sums must not silently shrink mid-transition. sn_page_data (definer) unaffected.
+- Legacy queue got a both-eras RECON_META shim (old + new tokens) so it keeps rendering until the React accounting section replaces it.

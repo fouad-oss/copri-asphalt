@@ -2,11 +2,35 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **ACCOUNTING PIVOT IN PROGRESS (2026-07, brief: `BRIEF-accounting-pivot.md`).**
-> The app was refocused as a pre-SpectroNova accounting workspace. Several
-> routes described below are SHELVED (code kept, routes → `renderShelved()`),
-> and the React `app/` track is out of the Vercel build — see `README.md`
-> for the reachable/shelved split. Full pre-pivot build: tag
+> **ACCOUNTING REBUILD IN PROGRESS (2026-07, brief: `BRIEF-accounting-rebuild-final.md` — SUPERSEDES `BRIEF-accounting-pivot.md`).**
+> The app is a pre-SpectroNova accounting workspace. The pivot's DB layer
+> (migrations 0024–0029) stands; its legacy-shell accounting UI is being
+> REBUILT as an **Accounting section inside the React `app/`** (returning
+> to the Vercel build for that section only — other office sections stay
+> unreachable). Rules for all accounting screens:
+> - **`copri-frontend-SKILL.md` is the authority on look and feel**; the
+>   rebuild brief is the authority on layout, data, and behavior.
+> - **UI language: English only.** No language toggle, no RTL. Every UI
+>   string lives in ONE central labels object — never hardcoded inline
+>   (the approved Arabic dictionary in the brief's appendix is stored
+>   alongside for a future switch; statuses/lifecycle stay English in all
+>   languages). Vendor/item/master-data values display EXACTLY as in the
+>   SN masters — only UI chrome comes from the labels object.
+> - Status model (no qty_mismatch anywhere — a receipt confirms a load,
+>   it does not re-weigh it; note qty = the DISPATCHED weight): asphalt
+>   `matched | dispatched_not_received | received_not_dispatched`
+>   (rejected receipts stay un-matched → never bundleable); materials
+>   `matched | not_received | no_po` (matched = mapped + batch-approved;
+>   not_received = captured, pending the daily batch; no_po = the no-PO
+>   flag/exception path).
+> - Auth: accountant screens use Supabase Auth login (JWT); anon role is
+>   being restricted to PUBLISHED bundles only (SN data page posture).
+> - Physical tables KEEP their pipeline-v2 names (`vendors`, `items`,
+>   `commitments`, `commitment_lines`, `bundles`…) — the brief's
+>   `vendor_master`/`item_master`/`po_register` are logical names, not a
+>   rename.
+> Several legacy routes remain SHELVED (code kept, routes →
+> `renderShelved()`) — see `README.md`. Full pre-pivot build: tag
 > `full-build-2026-07`.
 
 ## What this is

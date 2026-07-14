@@ -6933,23 +6933,28 @@ async function pipeTabApprovals(body, user) {
   chTabs.appendChild(chA); chTabs.appendChild(chM); body.appendChild(chTabs);
 
   const vTabs = el("div", "history-tabs");
-  const vQ = el("button", "history-tab active"); vQ.type = "button"; vQ.textContent = "قائمة التسوية";
-  const vB = el("button", "history-tab");        vB.type = "button"; vB.textContent = "أرصدة بنود الشراء";
-  vTabs.appendChild(vQ); vTabs.appendChild(vB); body.appendChild(vTabs);
+  const views = [
+    ["queue",   "قائمة التسوية",    pipeApprovalsQueue],
+    ["balance", "أرصدة بنود الشراء", pipeApprovalsBalances],
+    ["bundle",  "التجميع",          pipeApprovalsBundling],
+    ["summary", "ملخص النقل إلى SN", pipeApprovalsSummary],
+  ];
+  const vBtns = views.map(([key, label]) => {
+    const b = el("button", "history-tab"); b.type = "button"; b.textContent = label;
+    b.addEventListener("click", () => { state.view = key; paint(); });
+    vTabs.appendChild(b); return b;
+  });
+  body.appendChild(vTabs);
 
   const host = el("div"); body.appendChild(host);
   function paint() {
     chA.classList.toggle("active", state.channel === "asphalt");
     chM.classList.toggle("active", state.channel === "materials");
-    vQ.classList.toggle("active", state.view === "queue");
-    vB.classList.toggle("active", state.view === "balance");
-    if (state.view === "queue") pipeApprovalsQueue(host, user, state.channel);
-    else pipeApprovalsBalances(host, user, state.channel);
+    views.forEach(([key], i) => vBtns[i].classList.toggle("active", state.view === key));
+    views.find(([key]) => key === state.view)[2](host, user, state.channel);
   }
   chA.addEventListener("click", () => { state.channel = "asphalt"; paint(); });
   chM.addEventListener("click", () => { state.channel = "materials"; paint(); });
-  vQ.addEventListener("click", () => { state.view = "queue"; paint(); });
-  vB.addEventListener("click", () => { state.view = "balance"; paint(); });
   paint();
 }
 
@@ -7206,6 +7211,319 @@ async function pipeApprovalsBalances(host, user, channel) {
   }
   search.addEventListener("input", paintList);
   paintList();
+}
+
+// View 3: bundling — select matched notes → assign to ONE PO line →
+// bundle. Suggests the last-used line per item (accountant confirms;
+// self-corrects). Lifecycle actions live on the bundle cards below.
+const BUNDLE_STATUS = {
+  draft:     ["مسودة", "var(--amber)"],
+  verified:  ["مُتحقَّق", "var(--green)"],
+  published: ["منشورة", "var(--green)"],
+};
+function pipeBundleChip(status) {
+  const [label, color] = BUNDLE_STATUS[status] || [status, "var(--text-3)"];
+  const s = el("span");
+  s.style.cssText = `font-size:.72rem;font-weight:700;color:${color};border:1px solid ${color};border-radius:99px;padding:.1rem .55rem`;
+  s.textContent = label;
+  return s;
+}
+
+async function pipeApprovalsBundling(host, user, channel) {
+  host.innerHTML = `<div class="info-box">جارٍ التحميل…</div>`;
+  const src = channel === "asphalt" ? "dispatch" : "material";
+  let ready = [], lines = [], lastLine = [], bundles = [], vendors = [], plantMap = [], copriNames = [];
+  try {
+    [ready, lines, lastLine, bundles, vendors, plantMap, copriNames] = await Promise.all([
+      sbGet(`note_bundle_ready?note_source=eq.${src}&order=delivery_date.asc&limit=500`),
+      sbGet("po_line_balance?order=line_no.asc&limit=2000"),
+      sbGet("bundle_last_line").catch(() => []),
+      sbGet(`bundles?source=eq.${channel}&order=created_at.desc&limit=200` +
+        `&select=*,bundle_lines(note_ref,note_no,qty,amount),commitment_lines(line_no,item,rate,unit,commitments(number,sn_po))`),
+      sbGet("vendors?select=id,name"),
+      sbGet("vendor_spectronova_ids?contact_id=eq.5205&select=vendor_id"),
+      channel === "asphalt" ? sbGet("companies?is_copri=eq.true&select=name") : Promise.resolve([]),
+    ]);
+  } catch {
+    host.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل البيانات — يتطلب ترقية 0027</div>`; return;
+  }
+  host.innerHTML = "";
+  if (channel === "asphalt") {
+    const copri = new Set(copriNames.map(c => c.name));
+    ready = ready.filter(r => copri.has(r.company));
+  }
+  const vById = {}; vendors.forEach(v => { vById[v.id] = v.name; });
+  const plantIds = new Set(plantMap.map(m => m.vendor_id));
+  lines = lines.filter(l => channel === "asphalt" ? plantIds.has(l.vendor_id) : !plantIds.has(l.vendor_id));
+  const lastByItem = {}; lastLine.forEach(x => { lastByItem[x.item_id] = x.commitment_line_id; });
+  const refresh = () => pipeApprovalsBundling(host, user, channel);
+  const billQty = (r) => r.qty_received != null ? Number(r.qty_received) : Number(r.qty_dispatched || 0);
+
+  // ── selection + PO line assignment ──
+  const selCard = el("div", "card");
+  selCard.appendChild(sectionTitle("سندات مطابقة جاهزة للتجميع"));
+  const selected = new Set();
+  const lineSel = el("select");
+  const lineDef = el("option"); lineDef.value = ""; lineDef.textContent = "اختر بند أمر الشراء"; lineSel.appendChild(lineDef);
+  lines.forEach(l => {
+    const o = el("option"); o.value = l.line_id;
+    o.textContent = `${l.sn_po || l.po_number} · بند ${l.line_no} · ${l.item}` +
+      (l.order_qty != null ? ` (متبقٍ ${l.remaining_qty})` : " (مبلغ مقطوع)");
+    lineSel.appendChild(o);
+  });
+  const suggestHint = el("div", "field-hint"); suggestHint.style.display = "none";
+  const selSummary = el("div", "req-line");
+  function syncSelection() {
+    const picked = ready.filter(r => selected.has(r.note_ref));
+    const qty = picked.reduce((s, r) => s + billQty(r), 0);
+    selSummary.innerHTML = picked.length
+      ? `المحدد: <b>${picked.length}</b> سند · الكمية <b>${Math.round(qty * 100) / 100}</b>`
+      : "لم يُحدد أي سند بعد.";
+    // last-used-line suggestion: all picked notes share one canonical item
+    const items = [...new Set(picked.map(r => r.item_id).filter(Boolean))];
+    if (picked.length && items.length === 1 && lastByItem[items[0]] && !lineSel.value) {
+      lineSel.value = String(lastByItem[items[0]]);
+      suggestHint.style.display = "";
+      suggestHint.textContent = "💡 مقترح: آخر بند استُخدم لهذا الصنف — أكّد أو غيّر";
+    }
+  }
+  syncSelection();
+
+  if (!ready.length) {
+    const e = el("div", "info-box"); e.textContent = "لا سندات مطابقة غير مجمّعة — عالج قائمة التسوية أولاً.";
+    selCard.appendChild(e);
+  } else {
+    const byItem = {};
+    ready.forEach(r => { const k = r.item_text || "غير محدد"; (byItem[k] = byItem[k] || []).push(r); });
+    Object.keys(byItem).forEach(item => {
+      const list = byItem[item];
+      const head = el("div", "prog-day-head"); head.style.cssText = "display:flex;justify-content:space-between;align-items:center";
+      const ht = el("span"); ht.textContent = `${item} (${list.length})`; head.appendChild(ht);
+      const all = el("button", "btn-secondary"); all.type = "button"; all.textContent = "تحديد الكل";
+      all.style.cssText = "width:auto;padding:.15rem .5rem;font-size:.72rem";
+      head.appendChild(all); selCard.appendChild(head);
+      const boxes = [];
+      list.forEach(r => {
+        const row = el("label"); row.style.cssText = "display:flex;gap:.5rem;align-items:center;padding:.3rem .2rem;cursor:pointer";
+        const cb = el("input"); cb.type = "checkbox"; boxes.push(cb);
+        cb.addEventListener("change", () => { cb.checked ? selected.add(r.note_ref) : selected.delete(r.note_ref); syncSelection(); });
+        const t = el("span");
+        t.innerHTML = `<b>${r.note_no}</b> · ${r.delivery_date || ""} · ${r.site || ""} · <b>${billQty(r)}</b>`;
+        row.appendChild(cb); row.appendChild(t); selCard.appendChild(row);
+      });
+      all.addEventListener("click", () => {
+        const on = boxes.some(b => !b.checked);
+        boxes.forEach((b, i) => { b.checked = on; on ? selected.add(list[i].note_ref) : selected.delete(list[i].note_ref); });
+        syncSelection();
+      });
+    });
+    selCard.appendChild(selSummary);
+    selCard.appendChild(fieldGroup("بند أمر الشراء", lineSel, true, "الحزمة تُنسب لبند واحد دائماً — لا تجميع على مستوى الأمر").group);
+    selCard.appendChild(suggestHint);
+    const err = el("div", "error-msg"); err.style.display = "none"; selCard.appendChild(err);
+    const mk = el("button", "btn-primary"); mk.type = "button"; mk.textContent = "إنشاء حزمة 📦"; mk.style.width = "100%";
+    mk.addEventListener("click", async () => {
+      err.style.display = "none";
+      if (!selected.size) { err.textContent = "حدد سنداً واحداً على الأقل"; err.style.display = "block"; return; }
+      if (!lineSel.value) { err.textContent = "اختر بند أمر الشراء"; err.style.display = "block"; return; }
+      mk.disabled = true; mk.textContent = "جارٍ الإنشاء…";
+      try {
+        const r = await sbRpc("bundle_create", {
+          p_pin: user.pin, p_commitment_line_id: Number(lineSel.value),
+          p_source: channel, p_notes: [...selected].map(ref => ({ ref })),
+        });
+        if (!r || !r.success) throw new Error(r && r.error);
+        refresh();
+      } catch (e) {
+        mk.disabled = false; mk.textContent = "إنشاء حزمة 📦";
+        err.textContent = `تعذّر الإنشاء${e && e.message ? " — " + e.message : ""}`; err.style.display = "block";
+      }
+    });
+    selCard.appendChild(mk);
+  }
+  host.appendChild(selCard);
+
+  // ── bundles + lifecycle ──
+  const listHead = el("div", "prog-day-head"); listHead.textContent = `الحزم (${bundles.length})`; host.appendChild(listHead);
+  if (!bundles.length) {
+    const e = el("div", "info-box"); e.textContent = "لا حزم بعد."; host.appendChild(e);
+  }
+  const act = async (rpc, params, confirmMsg) => {
+    if (confirmMsg && !confirm(confirmMsg)) return;
+    try {
+      const r = await sbRpc(rpc, { p_pin: user.pin, ...params });
+      if (!r || !r.success) throw new Error(r && r.error);
+      refresh();
+    } catch (e) { alert(`تعذّر التنفيذ${e && e.message ? " — " + e.message : ""}`); }
+  };
+  bundles.forEach(b => {
+    const cl = b.commitment_lines || {};
+    const cmtNo = (cl.commitments && (cl.commitments.sn_po || cl.commitments.number)) || "—";
+    const bl = b.bundle_lines || [];
+    const qty = bl.reduce((s, x) => s + Number(x.qty || 0), 0);
+    const amt = bl.reduce((s, x) => s + Number(x.amount || 0), 0);
+    const c = el("div", "card req-card");
+    const top = el("div", "prog-top");
+    const no = el("div", "req-client"); no.textContent = b.bundle_no;
+    top.appendChild(no); top.appendChild(pipeBundleChip(b.status)); c.appendChild(top);
+    const l1 = el("div", "req-line");
+    l1.textContent = `${cmtNo} · بند ${cl.line_no ?? "—"} · ${cl.item || ""}` +
+      (b.adjusts_bundle_id ? " · ➖ تصحيحية" : "");
+    c.appendChild(l1);
+    const l2 = el("div", "req-line");
+    l2.innerHTML = `<b>${bl.length}</b> سند · الكمية <b>${Math.round(qty * 100) / 100}</b> · القيمة <b>${pipeKD(amt)}</b>`;
+    c.appendChild(l2);
+    const l3 = el("div", "field-hint");
+    l3.textContent = `أنشأها ${b.created_by || "—"} · ${fmtKW(b.created_at)}` +
+      (b.imported_flag ? ` · ✔ مستوردة في SN (${b.sn_reference})` : "");
+    c.appendChild(l3);
+    const bar = el("div"); bar.style.cssText = "display:flex;gap:.4rem;margin-top:.5rem;flex-wrap:wrap";
+    const btn = (label, fn, primary) => {
+      const x = el("button", primary ? "btn-primary" : "btn-secondary"); x.type = "button";
+      x.textContent = label; x.style.cssText = "width:auto;padding:.3rem .7rem;font-size:.8rem";
+      x.addEventListener("click", fn); bar.appendChild(x);
+    };
+    if (b.status === "draft") {
+      btn("✅ تحقق", () => act("bundle_status_set", { p_bundle_id: b.id, p_status: "verified" }), true);
+      btn("🗑 حذف", () => act("bundle_delete", { p_bundle_id: b.id }, `حذف المسودة ${b.bundle_no}؟`));
+    } else if (b.status === "verified") {
+      btn("📤 نشر", () => act("bundle_status_set", { p_bundle_id: b.id, p_status: "published" },
+        `نشر ${b.bundle_no}؟ الحزمة المنشورة نهائية لا تُعدَّل — التصحيح بحزمة تصحيحية فقط.`), true);
+      btn("↩ مسودة", () => act("bundle_status_set", { p_bundle_id: b.id, p_status: "draft" }));
+    } else {
+      if (!b.imported_flag) btn("📌 تسجيل مرجع SN", () => {
+        const ref = prompt("مرجع SpectroNova (INVSI/… أو Stock_Receipt/…):");
+        if (ref && ref.trim()) act("bundle_import_confirm", { p_bundle_id: b.id, p_sn_reference: ref.trim() });
+      }, true);
+      btn("➖ حزمة تصحيحية", () => {
+        adjHost.style.display = adjHost.style.display === "none" ? "" : "none";
+        if (adjHost.style.display === "") paintAdjust();
+      });
+    }
+    c.appendChild(bar);
+    // Adjustment editor: original notes with qty overrides (negative =
+    // deduction); nonzero rows become the adjusting bundle's lines.
+    const adjHost = el("div"); adjHost.style.cssText = "display:none;margin-top:.5rem;border-top:1px dashed var(--text-3);padding-top:.5rem";
+    function paintAdjust() {
+      adjHost.innerHTML = "";
+      const hint = el("div", "field-hint");
+      hint.textContent = "أدخل فرق الكمية لكل سند (سالب للخصم) — الصفر يُتجاهل. تُنشر التصحيحية بدورها لتظهر لـ SN.";
+      adjHost.appendChild(hint);
+      const inputs = [];
+      bl.forEach(x => {
+        const row = el("div"); row.style.cssText = "display:flex;gap:.5rem;align-items:center;margin:.25rem 0";
+        const t = el("span"); t.style.flex = "1"; t.innerHTML = `<b>${x.note_no}</b> (${x.qty})`;
+        const qI = input("number", "0", "decimal"); qI.step = "0.01"; qI.style.maxWidth = "8rem";
+        inputs.push([x, qI]); row.appendChild(t); row.appendChild(qI); adjHost.appendChild(row);
+      });
+      const go = el("button", "btn-primary"); go.type = "button"; go.textContent = "إنشاء التصحيحية"; go.style.cssText = "width:auto;margin-top:.4rem";
+      go.addEventListener("click", () => {
+        const notes = inputs
+          .map(([x, qI]) => ({ ref: x.note_ref, qty: parseFloat(qI.value) }))
+          .filter(n => n.qty && n.qty !== 0);
+        if (!notes.length) { alert("أدخل فرقاً واحداً على الأقل"); return; }
+        act("bundle_create", { p_commitment_line_id: b.commitment_line_id, p_source: channel, p_notes: notes, p_adjusts: b.id });
+      });
+      adjHost.appendChild(go);
+    }
+    c.appendChild(adjHost);
+    host.appendChild(c);
+  });
+}
+
+// View 4: bundle summary — the transcription layout, SN's field names
+// in SN's order, built for side-by-side manual entry with zero mental
+// translation. Import confirmation is recorded here (accountant side).
+async function pipeApprovalsSummary(host, user, channel) {
+  host.innerHTML = `<div class="info-box">جارٍ التحميل…</div>`;
+  let rows = [];
+  try {
+    rows = await sbGet(`bundle_transcription?source=eq.${channel}&order=bundle_id.desc,line_id.asc&limit=2000`);
+  } catch {
+    host.innerHTML = `<div class="error-msg" style="display:block">تعذّر تحميل البيانات — يتطلب ترقية 0027</div>`; return;
+  }
+  host.innerHTML = "";
+  if (!rows.length) {
+    host.innerHTML = `<div class="info-box">لا حزم بعد — أنشئها من عرض «التجميع».</div>`; return;
+  }
+  const byBundle = {}; const order = [];
+  rows.forEach(r => { if (!byBundle[r.bundle_id]) { byBundle[r.bundle_id] = []; order.push(r.bundle_id); } byBundle[r.bundle_id].push(r); });
+  // published first (they are what SN staff transcribe), then the rest
+  order.sort((a, b) => {
+    const pa = byBundle[a][0].status === "published" ? 0 : 1;
+    const pb = byBundle[b][0].status === "published" ? 0 : 1;
+    return pa - pb || b - a;
+  });
+
+  const pick = el("div", "card");
+  pick.appendChild(sectionTitle("اختر الحزمة"));
+  const tableHost = el("div");
+  let activeBtn = null;
+  order.forEach(id => {
+    const f = byBundle[id][0];
+    const btn = el("button", "project-btn"); btn.type = "button";
+    btn.innerHTML = `<div class="project-btn-name">${f.bundle_no} — ${BUNDLE_STATUS[f.status] ? BUNDLE_STATUS[f.status][0] : f.status}` +
+      `${f.imported_flag ? " · ✔ مستوردة" : ""}</div>` +
+      `<div class="project-btn-contract">${f.po_number} · ${byBundle[id].length} سند · ${f.supplier}</div>`;
+    btn.addEventListener("click", () => {
+      if (activeBtn) activeBtn.style.outline = "";
+      activeBtn = btn; btn.style.outline = "2px solid var(--green)";
+      paintTable(id);
+    });
+    pick.appendChild(btn);
+  });
+  host.appendChild(pick); host.appendChild(tableHost);
+
+  function paintTable(id) {
+    const list = byBundle[id]; const f = list[0];
+    const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    const n3 = (v) => v == null ? "" : Number(v).toFixed(3);
+    const amt = list.reduce((s, r) => s + Number(r.amount || 0), 0);
+    const HEADS = ["Supplier", "PO Number", "PO Line", "Item Code", "Description", "Qty", "UOM",
+                   "Unit Price", "Amount", "Delivery Date", "Supplier DN Number", "Site"];
+    tableHost.innerHTML = "";
+    const c = el("div", "card");
+    const top = el("div", "prog-top");
+    const t = el("div", "req-client"); t.textContent = `${f.bundle_no} — للنقل إلى SpectroNova`;
+    top.appendChild(t); top.appendChild(pipeBundleChip(f.status)); c.appendChild(top);
+    if (f.status !== "published") {
+      const w = el("div", "info-box"); w.textContent = "معاينة — الحزمة غير منشورة بعد ولا تظهر لموظفي SN.";
+      c.appendChild(w);
+    }
+    const wrap = el("div"); wrap.style.cssText = "overflow-x:auto;direction:ltr;margin-top:.5rem";
+    wrap.innerHTML = `<table style="border-collapse:collapse;font-size:.72rem;white-space:nowrap">` +
+      `<thead><tr>${HEADS.map(h => `<th style="border:1px solid var(--text-3);padding:.25rem .5rem;background:var(--surface-2);text-align:left">${h}</th>`).join("")}</tr></thead>` +
+      `<tbody>` + list.map(r =>
+        `<tr>${[r.supplier, r.po_number, r.po_line, r.item_code, r.description, r.qty, r.uom,
+                n3(r.unit_price), n3(r.amount), r.delivery_date, r.supplier_dn, r.site]
+          .map(v => `<td style="border:1px solid var(--text-3);padding:.25rem .5rem;text-align:left">${esc(v)}</td>`).join("")}</tr>`).join("") +
+      `<tr><td colspan="8" style="border:1px solid var(--text-3);padding:.25rem .5rem;text-align:left;font-weight:700">Total (KWD)</td>` +
+      `<td style="border:1px solid var(--text-3);padding:.25rem .5rem;text-align:left;font-weight:700">${n3(amt)}</td><td colspan="3" style="border:1px solid var(--text-3)"></td></tr>` +
+      `</tbody></table>`;
+    c.appendChild(wrap);
+    if (f.status === "published") {
+      if (f.imported_flag) {
+        const okd = el("div", "info-box"); okd.style.marginTop = ".5rem";
+        okd.textContent = `✔ مستوردة في SpectroNova — المرجع: ${f.sn_reference}`;
+        c.appendChild(okd);
+      } else {
+        const row = el("div"); row.style.cssText = "display:flex;gap:.4rem;margin-top:.5rem";
+        const refI = input("text", "INVSI/… أو Stock_Receipt/…"); refI.style.flex = "1";
+        const go = el("button", "btn-primary"); go.type = "button"; go.textContent = "تأكيد الاستيراد"; go.style.width = "auto";
+        go.addEventListener("click", async () => {
+          if (!refI.value.trim()) { alert("أدخل مرجع SN"); return; }
+          try {
+            const r = await sbRpc("bundle_import_confirm", { p_pin: user.pin, p_bundle_id: id, p_sn_reference: refI.value.trim() });
+            if (!r || !r.success) throw new Error(r && r.error);
+            pipeApprovalsSummary(host, user, channel);
+          } catch (e) { alert(`تعذّر الحفظ${e && e.message ? " — " + e.message : ""}`); }
+        });
+        row.appendChild(refI); row.appendChild(go); c.appendChild(row);
+      }
+    }
+    tableHost.appendChild(c);
+  }
+  paintTable(order[0]);
 }
 
 // ── Tab: accountant daily batch (0018) — yesterday's captures in one

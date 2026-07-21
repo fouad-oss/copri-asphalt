@@ -2,6 +2,7 @@
 # Assembles the production output for Vercel (see vercel.json):
 #   dist/            ← legacy static site, exactly what shipped before
 #     index.html       (all query-param portals + /dispatch rewrite)
+#     home.html        (static landing page — 4 portal links)
 #     og-image.png
 #     map/             (blueprint map, prebuilt static)
 #     app/             ← the React build (base=/app/)
@@ -18,7 +19,7 @@ npm --prefix app run build
 
 rm -rf dist
 mkdir -p dist
-cp index.html og-image.png dist/
+cp index.html home.html og-image.png dist/
 cp -r map dist/map
 cp -r app/dist dist/app
 

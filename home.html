@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>كوبري — البوابات</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+    background: #fff;
+    color: #1a1a1a;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 16px;
+  }
+  header { text-align: center; margin-bottom: 36px; }
+  header h1 { color: #00833E; font-size: 2.2rem; letter-spacing: 0.5px; }
+  header p { color: #666; font-size: 0.95rem; margin-top: 6px; }
+  nav { width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 16px; }
+  nav a {
+    display: block;
+    text-decoration: none;
+    background: #00833E;
+    color: #fff;
+    border-radius: 14px;
+    padding: 22px 20px;
+    text-align: center;
+    -webkit-tap-highlight-color: rgba(0,0,0,0.15);
+  }
+  nav a:active { background: #006B33; }
+  nav a .ar { font-size: 1.35rem; font-weight: 700; display: block; }
+  nav a .en { font-size: 0.9rem; opacity: 0.85; display: block; margin-top: 4px; direction: ltr; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>كوبري</h1>
+    <p>Copri — بوابات العمل</p>
+  </header>
+  <nav>
+    <a href="/app/accounting">
+      <span class="ar">المحاسبة والتجميع</span>
+      <span class="en">Accounting &amp; Bundling</span>
+    </a>
+    <a href="/?plantRole=manager">
+      <span class="ar">لوحة المصنع</span>
+      <span class="en">Plant Dashboard</span>
+    </a>
+    <a href="/?matRole=receiver">
+      <span class="ar">استلام المواد</span>
+      <span class="en">Material Capture</span>
+    </a>
+    <a href="/dispatch">
+      <span class="ar">إرساليات الأسفلت</span>
+      <span class="en">Asphalt Dispatch</span>
+    </a>
+  </nav>
+</body>
+</html>

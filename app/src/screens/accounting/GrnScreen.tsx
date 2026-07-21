@@ -1,16 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useOutletContext } from "react-router-dom"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
-import { Skeleton } from "@/components/ui/skeleton"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { qty as fmtQty } from "@/lib/format"
-import { cn } from "@/lib/utils"
 import type { Profile } from "@/lib/session"
 import { L } from "./labels"
 import {
@@ -18,10 +16,13 @@ import {
   type BundleRow, type Channel, type GrnNote,
 } from "./data"
 import { bundleSheet, noteSheet, openPrint } from "./grnPrint"
+import { ChannelTabs, LoadError, Loading, seq } from "./ui"
 
 /* ── Screen 6: GRN generator ──────────────────────────────────────────
    Printable per note or per bundle (filters: day / site / PO), with
-   registered GRN-C-#### numbers — a reprint is the same document. ── */
+   registered GRN-C-#### numbers — a reprint is the same document.
+   GRNs are minted for PUBLISHED bundles only: a registered number on a
+   deletable draft would orphan the registry (grn_docs FK). ── */
 
 export async function printBundleGrn(pin: string, bundleId: number) {
   const [no, b] = await Promise.all([grnDocNo(pin, { bundleId }), bundleDetail(bundleId)])
@@ -44,26 +45,38 @@ export default function GrnScreen() {
   const [po, setPo] = useState("all")
   const [picked, setPicked] = useState<Set<number>>(new Set())
   const [busy, setBusy] = useState(false)
+  const [reload, setReload] = useState(0)
 
-  const load = useCallback(async (ch: Channel) => {
-    setError(false); setNotes(null); setBundles(null)
-    setPicked(new Set()); setBundleId(""); setDay(""); setSite("all"); setPo("all")
-    try {
-      const [n, b] = await Promise.all([grnNotes(ch), bundlesList(ch)])
-      setNotes(n); setBundles(b)
-    } catch { setError(true) }
-  }, [])
-  useEffect(() => { void load(channel) }, [channel, load])
+  // Channel change resets everything and refetches the bundle picker;
+  // the DAY filter refetches notes SERVER-side (the newest-300 window
+  // would otherwise hide older days entirely).
+  const bSeq = useRef(0)
+  useEffect(() => {
+    setDay(""); setSite("all"); setPo("all"); setPicked(new Set()); setBundleId("")
+    setError(false); setBundles(null)
+    const live = seq(bSeq)
+    bundlesList(channel)
+      .then((b) => { if (live()) setBundles(b.filter((x) => x.status === "published")) })
+      .catch(() => { if (live()) setError(true) })
+  }, [channel, reload])
+
+  const nSeq = useRef(0)
+  useEffect(() => {
+    setNotes(null); setPicked(new Set())
+    const live = seq(nSeq)
+    grnNotes(channel, day || undefined)
+      .then((n) => { if (live()) setNotes(n) })
+      .catch(() => { if (live()) setError(true) })
+  }, [channel, day, reload])
 
   const sites = useMemo(() => [...new Set((notes ?? []).map((n) => n.site).filter(Boolean))].sort(), [notes])
   const pos = useMemo(() => [...new Set((notes ?? []).map((n) => n.po).filter(Boolean))].sort(), [notes])
   const filtered = useMemo(() => (notes ?? []).filter((n) =>
-    (!day || n.date === day) &&
     (site === "all" || n.site === site) &&
-    (po === "all" || n.po === po)), [notes, day, site, po])
+    (po === "all" || n.po === po)), [notes, site, po])
   const shown = filtered.slice(0, CAP)
 
-  useEffect(() => { setPicked(new Set()) }, [day, site, po])
+  useEffect(() => { setPicked(new Set()) }, [site, po])
 
   async function printNotes() {
     const refs = [...picked]
@@ -94,37 +107,17 @@ export default function GrnScreen() {
   return (
     <div className="flex flex-col gap-3">
       <h2 className="text-base font-semibold">{L.grn.heading}</h2>
-      <div className="flex gap-1 border-b pb-2">
-        {(["asphalt", "materials"] as Channel[]).map((ch) => (
-          <button key={ch} type="button" onClick={() => setChannel(ch)}
-            className={cn(
-              "rounded-md px-3 py-1 text-sm",
-              channel === ch ? "bg-secondary font-semibold" : "text-muted-foreground hover:bg-secondary/60",
-            )}>
-            {L.tabs[ch]}
-          </button>
-        ))}
-      </div>
+      <ChannelTabs channel={channel} onChange={setChannel} />
 
-      {error && (
-        <div className="rounded-lg border border-danger/40 bg-danger-surface p-4 text-sm">
-          {L.app.loadError}
-          <Button variant="outline" size="sm" className="ms-3" onClick={() => void load(channel)}>
-            {L.app.retry}
-          </Button>
-        </div>
-      )}
-      {!error && (notes === null || bundles === null) && (
-        <div className="flex flex-col gap-2">
-          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-9 w-full rounded-md" />)}
-        </div>
-      )}
+      {error && <LoadError onRetry={() => setReload((n) => n + 1)} />}
+      {!error && (notes === null || bundles === null) && <Loading />}
 
       {!error && notes !== null && bundles !== null && (
         <>
-          {/* per bundle */}
+          {/* per bundle — published only */}
           <div className="rounded-lg border bg-card p-3">
-            <div className="mb-2 text-sm font-semibold">{L.grn.perBundle}</div>
+            <div className="mb-1 text-sm font-semibold">{L.grn.perBundle}</div>
+            <p className="mb-2 text-xs text-muted-foreground">{L.grn.publishedOnly}</p>
             {bundles.length === 0 ? (
               <p className="text-xs text-muted-foreground">{L.grn.noBundles}</p>
             ) : (
@@ -134,12 +127,12 @@ export default function GrnScreen() {
                   <SelectContent>
                     {bundles.map((b) => (
                       <SelectItem key={b.id} value={String(b.id)}>
-                        {b.bundleNo} · {b.po} · {L.bundles.lifecycle[b.status]}
+                        {b.bundleNo} · {b.po}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <Button size="sm" disabled={!bundleId || busy} onClick={() => void printBundle()}>
+                <Button size="sm" variant="outline" disabled={!bundleId || busy} onClick={() => void printBundle()}>
                   {busy ? L.grn.printing : L.grn.print}
                 </Button>
               </div>

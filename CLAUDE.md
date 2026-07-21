@@ -2,12 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **ACCOUNTING REBUILD IN PROGRESS (2026-07, brief: `BRIEF-accounting-rebuild-final.md` — SUPERSEDES `BRIEF-accounting-pivot.md`).**
-> The app is a pre-SpectroNova accounting workspace. The pivot's DB layer
-> (migrations 0024–0029) stands; its legacy-shell accounting UI is being
-> REBUILT as an **Accounting section inside the React `app/`** (returning
-> to the Vercel build for that section only — other office sections stay
-> unreachable). Rules for all accounting screens:
+> **ACCOUNTING REBUILD COMPLETE (2026-07, brief: `BRIEF-accounting-rebuild-final.md` — SUPERSEDES `BRIEF-accounting-pivot.md`).**
+> The app is a pre-SpectroNova accounting workspace. The DB layer is
+> migrations 0024–0030; the accounting UI is the **Accounting section in
+> the React `app/`** (`app/src/screens/accounting/`): audit queue · PO
+> register/line balances (+ lines editor) · bundling · bundles list ·
+> bundle detail (transcription layout, Excel, adjusting bundles) · GRN
+> generator (registered GRN-C-#### numbers) · SN data page at
+> `/app/sn?token=…`. Shared accounting primitives live in
+> `accounting/ui.tsx`; `accounting/labels.ts` is THE central strings
+> object. **The accounting shell requires the email (Supabase Auth)
+> login — PIN sessions read as anon and cannot see draft bundles.**
+> Other office sections and field portals stay unmounted in
+> `app/src/main.tsx` (code preserved). Rules for all accounting screens:
 > - **`copri-frontend-SKILL.md` is the authority on look and feel**; the
 >   rebuild brief is the authority on layout, data, and behavior.
 > - **UI language: English only.** No language toggle, no RTL. Every UI

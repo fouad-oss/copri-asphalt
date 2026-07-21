@@ -1,21 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useOutletContext } from "react-router-dom"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Skeleton } from "@/components/ui/skeleton"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { qty as fmtQty } from "@/lib/format"
-import { cn } from "@/lib/utils"
 import type { Profile } from "@/lib/session"
 import { L } from "./labels"
 import {
   createBundle, lastUsedLines, poLineOptions, readyNotes,
   type Channel, type PoLineOption, type ReadyNote,
 } from "./data"
+import { ChannelTabs, EmptyCard, LoadError, Loading, seq } from "./ui"
 
 /* ── Screen 3: Bundling ───────────────────────────────────────────────
    Matched notes with checkboxes, live selected-count and qty total, PO
@@ -35,13 +34,16 @@ export default function Bundling() {
   const [suggested, setSuggested] = useState(false)
   const [busy, setBusy] = useState(false)
 
+  const seqRef = useRef(0)
   const load = useCallback(async (ch: Channel) => {
+    const live = seq(seqRef)
     setError(false); setNotes(null); setLines(null)
     setPicked(new Set()); setLineId(""); setSuggested(false)
     try {
       const [n, l, lu] = await Promise.all([readyNotes(ch), poLineOptions(ch), lastUsedLines()])
+      if (!live()) return
       setNotes(n); setLines(l); setLastUsed(lu)
-    } catch { setError(true) }
+    } catch { if (live()) setError(true) }
   }, [])
   useEffect(() => { void load(channel) }, [channel, load])
 
@@ -50,22 +52,26 @@ export default function Bundling() {
     [notes, picked],
   )
 
+  // Selection changes re-evaluate the last-used-line suggestion. A line
+  // the accountant chose by hand is never touched; a SUGGESTED line is
+  // re-derived (or cleared) so it always matches the picked item.
+  function applySelection(next: Set<number>) {
+    setPicked(next)
+    if (!lines || !notes) return
+    const sel = notes.filter((n) => next.has(n.ref))
+    const items = [...new Set(sel.map((n) => n.itemId).filter((x): x is number => x != null))]
+    const hit = sel.length && items.length === 1
+      ? lastUsed.find((u) => u.itemId === items[0] && lines.some((l) => l.lineId === u.lineId))
+      : undefined
+    if (suggested || !lineId) {
+      if (hit) { setLineId(String(hit.lineId)); setSuggested(true) }
+      else if (suggested) { setLineId(""); setSuggested(false) }
+    }
+  }
   function toggle(ref: number, on: boolean) {
-    setPicked((p) => {
-      const next = new Set(p)
-      if (on) next.add(ref); else next.delete(ref)
-      // suggestion: every picked note shares one item → pre-set the most
-      // recently used line for that item that this channel offers
-      if (!lineId && lines && notes) {
-        const sel = (notes ?? []).filter((n) => next.has(n.ref))
-        const items = [...new Set(sel.map((n) => n.itemId).filter((x): x is number => x != null))]
-        if (sel.length && items.length === 1) {
-          const hit = lastUsed.find((u) => u.itemId === items[0] && lines.some((l) => l.lineId === u.lineId))
-          if (hit) { setLineId(String(hit.lineId)); setSuggested(true) }
-        }
-      }
-      return next
-    })
+    const next = new Set(picked)
+    if (on) next.add(ref); else next.delete(ref)
+    applySelection(next)
   }
 
   async function create() {
@@ -87,38 +93,14 @@ export default function Bundling() {
   return (
     <div className="flex flex-col gap-3">
       <h2 className="text-base font-semibold">{L.bundling.heading}</h2>
-      <div className="flex gap-1 border-b pb-2">
-        {(["asphalt", "materials"] as Channel[]).map((ch) => (
-          <button key={ch} type="button" onClick={() => setChannel(ch)}
-            className={cn(
-              "rounded-md px-3 py-1 text-sm",
-              channel === ch ? "bg-secondary font-semibold" : "text-muted-foreground hover:bg-secondary/60",
-            )}>
-            {L.tabs[ch]}
-          </button>
-        ))}
-      </div>
+      <ChannelTabs channel={channel} onChange={setChannel} />
       <p className="text-xs text-muted-foreground">{L.bundling.hint}</p>
 
-      {error && (
-        <div className="rounded-lg border border-danger/40 bg-danger-surface p-4 text-sm">
-          {L.app.loadError}
-          <Button variant="outline" size="sm" className="ms-3" onClick={() => void load(channel)}>
-            {L.app.retry}
-          </Button>
-        </div>
-      )}
-      {!error && (notes === null || lines === null) && (
-        <div className="flex flex-col gap-2">
-          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-9 w-full rounded-md" />)}
-        </div>
-      )}
+      {error && <LoadError onRetry={() => void load(channel)} />}
+      {!error && (notes === null || lines === null) && <Loading />}
 
       {!error && notes !== null && lines !== null && (notes.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          <div className="font-medium text-foreground">{L.bundling.empty}</div>
-          <div className="mt-1">{L.bundling.emptyHint}</div>
-        </div>
+        <EmptyCard title={L.bundling.empty} hint={L.bundling.emptyHint} />
       ) : (
         <>
           <Table>
@@ -126,7 +108,7 @@ export default function Bundling() {
               <TableRow>
                 <TableHead className="w-8">
                   <Checkbox checked={allPicked}
-                    onCheckedChange={(v) => setPicked(v ? new Set(notes.map((n) => n.ref)) : new Set())} />
+                    onCheckedChange={(v) => applySelection(v ? new Set(notes.map((n) => n.ref)) : new Set())} />
                 </TableHead>
                 <TableHead>{L.bundling.colNote}</TableHead>
                 <TableHead>{L.bundling.colDate}</TableHead>

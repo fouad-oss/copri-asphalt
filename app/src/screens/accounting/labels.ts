@@ -23,6 +23,7 @@ export const L = {
     retry: "Retry",
     loadError: "Couldn't load data — check the connection.",
     noAccess: "This area is for the accountant. Ask the office to enable your account.",
+    emailRequired: "Accounting needs the email sign-in — the interim PIN can't read draft bundles. Sign out and log in with your email account.",
   },
   nav: {
     audit: "Audit queue",
@@ -118,6 +119,7 @@ export const L = {
       `Publish ${no} (${amount})? Published bundles are immutable — corrections need an adjusting bundle.`,
     confirmDelete: (no: string) => `Delete draft ${no}?`,
     actionFailed: "Action failed",
+    showingCap: (n: number) => `Showing the newest ${n} bundles.`,
   },
   detail: {
     notFound: "Bundle not found.",
@@ -161,7 +163,8 @@ export const L = {
     title: "Goods Received Note",
     perBundle: "GRN for a bundle",
     perNote: "GRN for individual notes",
-    bundlePick: "Pick a bundle",
+    bundlePick: "Pick a published bundle",
+    publishedOnly: "GRNs are issued for published bundles only.",
     print: "Print",
     printing: "Preparing…",
     printCount: (n: number) => `Print GRN (${n})`,

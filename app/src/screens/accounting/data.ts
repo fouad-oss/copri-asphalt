@@ -126,6 +126,7 @@ export type BundleRow = {
   status: "draft" | "verified" | "published"
   adjusts: number | null
   po: string
+  commitmentId: number | null
   lineNo: number | null
   lineItem: string
   notes: number
@@ -200,7 +201,7 @@ export async function lastUsedLines(): Promise<{ itemId: number; lineId: number 
 export async function bundlesList(channel: Channel): Promise<BundleRow[]> {
   const { data, error } = await supabase.from("bundles")
     .select("id,bundle_no,status,adjusts_bundle_id,imported_flag,sn_reference,created_at," +
-      "bundle_lines(qty,amount),commitment_lines(line_no,item,commitments(number,sn_po))")
+      "bundle_lines(qty,amount),commitment_lines(line_no,item,commitments(id,number,sn_po))")
     .eq("source", channel)
     .order("created_at", { ascending: false })
     .limit(200)
@@ -212,6 +213,7 @@ export async function bundlesList(channel: Channel): Promise<BundleRow[]> {
       id: r.id, bundleNo: r.bundle_no, status: r.status,
       adjusts: r.adjusts_bundle_id,
       po: cl?.commitments?.sn_po || cl?.commitments?.number || "—",
+      commitmentId: cl?.commitments?.id ?? null,
       lineNo: cl?.line_no ?? null, lineItem: cl?.item ?? "",
       notes: bl.length,
       qty: bl.reduce((s: number, x: any) => s + Number(x.qty || 0), 0),
@@ -257,6 +259,7 @@ export type BundleDetailData = {
   snReference: string
   publishedAt: string | null
   commitmentLineId: number
+  commitmentId: number | null
   rows: TranscriptionRow[]
 }
 
@@ -303,7 +306,7 @@ export async function snImportConfirm(token: string, bundleId: number, snReferen
 export async function bundleDetail(id: number): Promise<BundleDetailData | null> {
   const [{ data: b, error: be }, { data: rows, error: re }] = await Promise.all([
     supabase.from("bundles")
-      .select("id,bundle_no,status,source,adjusts_bundle_id,imported_flag,sn_reference,published_at,commitment_line_id")
+      .select("id,bundle_no,status,source,adjusts_bundle_id,imported_flag,sn_reference,published_at,commitment_line_id,commitment_lines(commitment_id)")
       .eq("id", id).maybeSingle(),
     supabase.from("bundle_transcription")
       .select("line_id,supplier,po_number,po_line,item_code,description,qty,uom,unit_price,amount,delivery_date,supplier_dn,site")
@@ -317,6 +320,7 @@ export async function bundleDetail(id: number): Promise<BundleDetailData | null>
     adjusts: b.adjusts_bundle_id, imported: !!b.imported_flag,
     snReference: b.sn_reference ?? "", publishedAt: b.published_at,
     commitmentLineId: b.commitment_line_id,
+    commitmentId: (b as any).commitment_lines?.commitment_id ?? null,
     rows: (rows ?? []) as TranscriptionRow[],
   }
 }
@@ -393,22 +397,56 @@ export type GrnNoteDetail = {
 export const kwDay = (iso: string | null | undefined) =>
   iso ? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kuwait" }).format(new Date(iso)) : ""
 
-/** DN → PO map through bundle membership (anon sees published only). */
+/** DN → PO map through bundle membership (anon sees published only).
+ *  Newest bundles first so the 2000-row cap drops the oldest, not an
+ *  arbitrary subset. */
 export async function grnPoByDn(channel: Channel): Promise<Record<string, string>> {
   const { data, error } = await supabase.from("bundle_transcription")
-    .select("supplier_dn,po_number").eq("source", channel).limit(2000)
+    .select("supplier_dn,po_number").eq("source", channel)
+    .order("bundle_id", { ascending: false }).limit(2000)
   if (error) throw error
   const out: Record<string, string> = {}
   ;(data ?? []).forEach((r: any) => { if (!(r.supplier_dn in out)) out[r.supplier_dn] = r.po_number })
   return out
 }
 
-/** Received notes for per-note GRNs (asphalt: matched = receipted). */
-export async function grnNotes(channel: Channel): Promise<GrnNote[]> {
-  const [rows, poByDn] = await Promise.all([
-    auditRows(channel, channel === "asphalt" ? "matched" : null),
-    grnPoByDn(channel),
-  ])
+/** Received notes for per-note GRNs (asphalt: matched = receipted).
+ *  A day filter is applied SERVER-side — the newest-300 window would
+ *  otherwise hide older days entirely. */
+export async function grnNotes(channel: Channel, day?: string): Promise<GrnNote[]> {
+  const poByDnP = grnPoByDn(channel)
+  let rows: AuditRow[]
+  if (channel === "asphalt") {
+    let q = supabase.from("note_recon")
+      .select("note_ref,note_no,site,bill_qty,recon_status,delivery_date,item_text")
+      .eq("note_source", "dispatch").eq("recon_status", "matched")
+      .in("company", await copriNames())
+      .order("note_ref", { ascending: false }).limit(300)
+    if (day) q = q.eq("delivery_date", day)
+    const { data, error } = await q
+    if (error) throw error
+    rows = (data ?? []).map((r: any) => ({
+      id: r.note_ref, noteNo: r.note_no, site: r.site ?? "", vendor: "",
+      item: r.item_text ?? "", qty: r.bill_qty, status: r.recon_status, ts: r.delivery_date,
+    }))
+  } else {
+    let q = supabase.from("material_receipts")
+      .select("id,receipt_id,site,material,quantity,recon_status,ts")
+      .order("id", { ascending: false }).limit(300)
+    if (day) {
+      // Kuwait calendar day → UTC range (fixed +03, no DST)
+      const start = new Date(`${day}T00:00:00+03:00`)
+      q = q.gte("ts", start.toISOString())
+        .lt("ts", new Date(start.getTime() + 86400000).toISOString())
+    }
+    const { data, error } = await q
+    if (error) throw error
+    rows = (data ?? []).map((r: any) => ({
+      id: r.id, noteNo: r.receipt_id, site: r.site ?? "", vendor: "",
+      item: r.material ?? "", qty: r.quantity, status: r.recon_status, ts: r.ts,
+    }))
+  }
+  const poByDn = await poByDnP
   return rows.map((r) => ({
     ref: r.id, noteNo: r.noteNo,
     date: channel === "asphalt" ? (r.ts ?? "") : kwDay(r.ts),

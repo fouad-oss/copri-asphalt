@@ -15,6 +15,7 @@ import type { Profile } from "@/lib/session"
 import { kwd, L } from "./labels"
 import { LifecycleBadge } from "./BundlesList"
 import { printBundleGrn } from "./GrnScreen"
+import { downloadBlob, LoadError } from "./ui"
 import {
   bundleDetail, bundleNoteRefs, createBundle, importConfirm, poLineOptions,
   buildSnCsv, type BundleDetailData, type PoLineOption,
@@ -26,11 +27,7 @@ import {
    footer; adjusting bundles start here (published bundles only). ── */
 
 function downloadExcel(b: BundleDetailData) {
-  const a = document.createElement("a")
-  a.href = URL.createObjectURL(buildSnCsv(b.rows))
-  a.download = `${b.bundleNo}.csv`
-  a.click()
-  URL.revokeObjectURL(a.href)
+  downloadBlob(buildSnCsv(b.rows), `${b.bundleNo}.csv`)
 }
 
 function ImportFooter({ user, b, onSaved }: { user: Profile; b: BundleDetailData; onSaved: () => void }) {
@@ -165,12 +162,7 @@ export default function BundleDetail() {
     }
   }, [b])
 
-  if (error) return (
-    <div className="rounded-lg border border-danger/40 bg-danger-surface p-4 text-sm">
-      {L.app.loadError}
-      <Button variant="outline" size="sm" className="ms-3" onClick={() => void load()}>{L.app.retry}</Button>
-    </div>
-  )
+  if (error) return <LoadError onRetry={() => void load()} />
   if (b === undefined) return <Skeleton className="h-64 w-full rounded-lg" />
   if (b === null) return (
     <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
@@ -187,7 +179,12 @@ export default function BundleDetail() {
 
   const fields: [string, React.ReactNode][] = [
     [L.detail.fieldSupplier, f?.supplier ?? "—"],
-    [L.detail.fieldPo, <RefCode key="po">{f?.po_number ?? "—"}</RefCode>],
+    [L.detail.fieldPo, b.commitmentId != null ? (
+      <Link key="po" to={`/accounting/po-register?po=${b.commitmentId}`}
+        className="underline-offset-2 hover:underline">
+        <RefCode>{f?.po_number ?? "—"}</RefCode>
+      </Link>
+    ) : <RefCode key="po">{f?.po_number ?? "—"}</RefCode>],
     [L.detail.fieldPoLine, f ? `${f.po_line} — ${f.description}` : "—"],
     [L.detail.fieldDate, <span key="d" className="tabular-nums">{dateSpan}</span>],
   ]
@@ -203,7 +200,9 @@ export default function BundleDetail() {
           </Link>
         )}
         <div className="flex-1" />
-        <Button variant="outline" size="sm" disabled={grnBusy}
+        {/* registered GRN numbers are for published bundles only */}
+        <Button variant="outline" size="sm" disabled={grnBusy || b.status !== "published"}
+          title={b.status !== "published" ? L.grn.publishedOnly : undefined}
           onClick={() => {
             setGrnBusy(true)
             printBundleGrn(user.pin ?? "", b.id)

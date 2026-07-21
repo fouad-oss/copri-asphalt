@@ -1,7 +1,5 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ageDays } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -10,6 +8,7 @@ import {
   ASPHALT_STATUSES, MATERIAL_STATUSES, auditCounts, auditOldest, auditRows,
   type AuditRow, type Channel, type NoteStatus,
 } from "./data"
+import { ChannelTabs, EmptyCard, LoadError, Loading, seq } from "./ui"
 
 /* ── Screen 1: Audit queue (landing) ──────────────────────────────────
    Tab pills · three status tiles (counts, act as filters) · dense
@@ -42,12 +41,15 @@ export default function AuditQueue() {
 
   const statuses = channel === "asphalt" ? ASPHALT_STATUSES : MATERIAL_STATUSES
 
+  const seqRef = useRef(0)
   const load = useCallback(async (ch: Channel, st: NoteStatus | null) => {
+    const live = seq(seqRef)
     setError(false); setRows(null); setCounts(null)
     try {
       const [c, r, o] = await Promise.all([auditCounts(ch), auditRows(ch, st), auditOldest(ch)])
+      if (!live()) return
       setCounts(c); setRows(r); setOldest(o)
-    } catch { setError(true) }
+    } catch { if (live()) setError(true) }
   }, [])
 
   useEffect(() => { void load(channel, filter) }, [channel, filter, load])
@@ -71,18 +73,7 @@ export default function AuditQueue() {
         )}
       </div>
 
-      {/* channel pills */}
-      <div className="flex gap-1 border-b pb-2">
-        {(["asphalt", "materials"] as Channel[]).map((ch) => (
-          <button key={ch} type="button" onClick={() => pickChannel(ch)}
-            className={cn(
-              "rounded-md px-3 py-1 text-sm",
-              channel === ch ? "bg-secondary font-semibold" : "text-muted-foreground hover:bg-secondary/60",
-            )}>
-            {L.tabs[ch]}
-          </button>
-        ))}
-      </div>
+      <ChannelTabs channel={channel} onChange={pickChannel} />
 
       {/* status tiles — counts, act as filters */}
       <div className="grid grid-cols-3 gap-2">
@@ -104,27 +95,10 @@ export default function AuditQueue() {
 
       <p className="text-xs text-muted-foreground">{L.audit.hint}</p>
 
-      {error && (
-        <div className="rounded-lg border border-danger/40 bg-danger-surface p-4 text-sm">
-          {L.app.loadError}
-          <Button variant="outline" size="sm" className="ms-3"
-            onClick={() => void load(channel, filter)}>
-            {L.app.retry}
-          </Button>
-        </div>
-      )}
-
-      {!error && rows === null && (
-        <div className="flex flex-col gap-2">
-          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-9 w-full rounded-md" />)}
-        </div>
-      )}
-
+      {error && <LoadError onRetry={() => void load(channel, filter)} />}
+      {!error && rows === null && <Loading rows={6} />}
       {!error && rows !== null && rows.length === 0 && (
-        <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          <div className="font-medium text-foreground">{L.audit.empty}</div>
-          <div className="mt-1">{L.audit.emptyHint}</div>
-        </div>
+        <EmptyCard title={L.audit.empty} hint={L.audit.emptyHint} />
       )}
 
       {!error && rows !== null && rows.length > 0 && (

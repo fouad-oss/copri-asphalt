@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { useOutletContext } from "react-router-dom"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useOutletContext, useSearchParams } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Skeleton } from "@/components/ui/skeleton"
 import { Bar, RefCode } from "@/components/patterns"
 import { qty } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { Profile } from "@/lib/session"
 import { kwd, L } from "./labels"
 import { addPoLines, poLines, poList, type Po, type PoLine } from "./data"
+import { EmptyCard, LoadError, Loading, seq } from "./ui"
 
 /* ── Screen 2: PO register / line balances ────────────────────────────
    PO selector → per-LINE cards (line no. + description + laying method
@@ -85,11 +85,13 @@ function LinesEditor({ user, poId, onSaved }: { user: Profile; poId: number; onS
     if (!filled.length || filled.some((r) => !r.item.trim())) { setErr(L.register.itemRequired); return }
     setBusy(true)
     try {
+      // trim-based emptiness checks: an entered "0" is a real value
+      // (zero-rate free-issue lines), never a null/lump-sum
       await addPoLines(user.pin ?? "", poId, filled.map((r) => ({
         item: r.item.trim(),
-        qty: r.qty ? Number(r.qty) : null,
+        qty: r.qty.trim() !== "" ? Number(r.qty) : null,
         unit: r.unit.trim(),
-        rate: r.rate ? Number(r.rate) : null,
+        rate: r.rate.trim() !== "" ? Number(r.rate) : null,
         remarks: r.remarks.trim(),
       })))
       onSaved()
@@ -130,6 +132,7 @@ function LinesEditor({ user, poId, onSaved }: { user: Profile; poId: number; onS
 
 export default function PoRegister() {
   const user = useOutletContext<Profile>()
+  const [params] = useSearchParams()
   const [pos, setPos] = useState<Po[] | null>(null)
   const [error, setError] = useState(false)
   const [search, setSearch] = useState("")
@@ -144,10 +147,26 @@ export default function PoRegister() {
   }, [])
   useEffect(() => { void loadPos() }, [loadPos])
 
+  const lSeq = useRef(0)
   const loadLines = useCallback(async (po: Po) => {
+    const live = seq(lSeq)
     setLinesError(false); setLines(null); setEditing(false)
-    try { setLines(await poLines(po.id)) } catch { setLinesError(true) }
+    try {
+      const l = await poLines(po.id)
+      if (live()) setLines(l)
+    } catch { if (live()) setLinesError(true) }
   }, [])
+
+  // deep link: /accounting/po-register?po=<commitment id> (reference
+  // codes elsewhere link here — skill: every code links to its detail)
+  useEffect(() => {
+    const id = Number(params.get("po"))
+    if (pos && id && selected?.id !== id) {
+      const hit = pos.find((p) => p.id === id)
+      if (hit) { setSelected(hit); void loadLines(hit) }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pos, params])
 
   const shown = useMemo(() => {
     if (!pos) return []
@@ -163,27 +182,15 @@ export default function PoRegister() {
     <div className="flex flex-col gap-3">
       <h2 className="text-base font-semibold">{L.register.heading}</h2>
 
-      {error && (
-        <div className="rounded-lg border border-danger/40 bg-danger-surface p-4 text-sm">
-          {L.app.loadError}
-          <Button variant="outline" size="sm" className="ms-3" onClick={() => void loadPos()}>{L.app.retry}</Button>
-        </div>
-      )}
-      {!error && pos === null && (
-        <div className="flex flex-col gap-2">
-          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-9 w-full rounded-md" />)}
-        </div>
-      )}
+      {error && <LoadError onRetry={() => void loadPos()} />}
+      {!error && pos === null && <Loading />}
 
       {!error && pos !== null && (
         <>
           <Input placeholder={L.register.search} value={search}
             onChange={(e) => { setSearch(e.target.value) }} />
           {pos.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-              <div className="font-medium text-foreground">{L.register.noPos}</div>
-              <div className="mt-1">{L.register.noPosHint}</div>
-            </div>
+            <EmptyCard title={L.register.noPos} hint={L.register.noPosHint} />
           ) : (
             <div className="flex flex-col gap-1">
               {shown.slice(0, CAP).map((p) => (
@@ -225,14 +232,8 @@ export default function PoRegister() {
                   {L.register.addLines}
                 </Button>
               </div>
-              {linesError && (
-                <div className="rounded-lg border border-danger/40 bg-danger-surface p-4 text-sm">
-                  {L.app.loadError}
-                  <Button variant="outline" size="sm" className="ms-3"
-                    onClick={() => void loadLines(selected)}>{L.app.retry}</Button>
-                </div>
-              )}
-              {!linesError && lines === null && <Skeleton className="h-24 w-full rounded-lg" />}
+              {linesError && <LoadError onRetry={() => void loadLines(selected)} />}
+              {!linesError && lines === null && <Loading rows={2} className="h-16" />}
               {!linesError && lines !== null && lines.length === 0 && !editing && (
                 <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
                   {L.register.noLines}

@@ -1,7 +1,8 @@
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { Navigate, NavLink, Outlet, useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { getSession, logout } from "@/lib/session"
+import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
 import { L } from "./labels"
 import logoInk from "@/assets/brand/copri-logo-ink.png"
@@ -20,6 +21,10 @@ const NAV: { to: string; label: string }[] = [
 export default function AccountingShell() {
   const nav = useNavigate()
   const user = getSession()
+  // Accounting REQUIRES the email (Supabase Auth) login: PIN sessions
+  // read as `anon`, and 0030's RLS hides draft/verified bundles from
+  // anon — the lifecycle would silently break.
+  const [jwtOk, setJwtOk] = useState<boolean | null>(null)
 
   // The rebuild ships English-only screens: pin the document direction
   // regardless of any previously saved language preference.
@@ -27,8 +32,25 @@ export default function AccountingShell() {
     document.documentElement.lang = "en"
     document.documentElement.dir = "ltr"
   }, [])
+  useEffect(() => {
+    void supabase.auth.getSession().then(({ data }) => setJwtOk(!!data.session))
+  }, [])
 
   if (!user) return <Navigate to="/login" replace />
+  if (jwtOk === null) return null   // auth session still resolving
+  if (jwtOk === false) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-background p-4">
+        <div className="max-w-sm rounded-lg border bg-card p-6 text-center text-sm text-muted-foreground">
+          {L.app.emailRequired}
+          <Button variant="ghost" size="sm" className="mt-4 w-full"
+            onClick={async () => { await logout(); nav("/login") }}>
+            {L.app.logout}
+          </Button>
+        </div>
+      </div>
+    )
+  }
   if (!user.accountant && !user.admin) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-background p-4">

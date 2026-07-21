@@ -15,12 +15,17 @@ import { L } from "./labels"
 import {
   buildSnCsv, kwDay, snCells, SN_COLUMNS, snImportConfirm, snPageData, type SnPageRow,
 } from "./data"
+import { downloadBlob } from "./ui"
 import logoInk from "@/assets/brand/copri-logo-ink.png"
 
 /* ── Screen 7: SN data page — external, read-only, TOKEN access ───────
    Published bundles only (RLS-backed via the token RPC). The frozen
    12-column contract renders LITERALLY; the import confirmation is SN
    staff's ONLY write. The token rides the URL — no storage. ── */
+
+// Qty / Unit Price / Amount columns right-align (skill: values
+// right-aligned in registers)
+const NUMERIC_COLS = new Set([5, 7, 8])
 
 function Shell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -84,8 +89,9 @@ function BundleCard({ token, rows, onSaved }: { token: string; rows: SnPageRow[]
         <table className="w-full border-collapse whitespace-nowrap text-xs">
           <thead>
             <tr>
-              {SN_COLUMNS.map((h) => (
-                <th key={h} className="border bg-secondary/60 px-2 py-1 text-left font-semibold">{h}</th>
+              {SN_COLUMNS.map((h, i) => (
+                <th key={h} className={cn("border bg-secondary/60 px-2 py-1 font-semibold",
+                  NUMERIC_COLS.has(i) ? "text-end" : "text-start")}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -93,13 +99,14 @@ function BundleCard({ token, rows, onSaved }: { token: string; rows: SnPageRow[]
             {rows.map((r) => (
               <tr key={r.line_id}>
                 {snCells(r).map((v, i) => (
-                  <td key={i} className="border px-2 py-1 text-left tabular-nums">{v}</td>
+                  <td key={i} className={cn("border px-2 py-1 tabular-nums",
+                    NUMERIC_COLS.has(i) ? "text-end" : "text-start")}>{v}</td>
                 ))}
               </tr>
             ))}
             <tr>
-              <td colSpan={8} className="border px-2 py-1 font-semibold">{L.sn.totalKwd}</td>
-              <td className="border px-2 py-1 text-left font-semibold tabular-nums">{amount.toFixed(3)}</td>
+              <td colSpan={8} className="border px-2 py-1 text-start font-semibold">{L.sn.totalKwd}</td>
+              <td className="border px-2 py-1 text-end font-semibold tabular-nums">{amount.toFixed(3)}</td>
               <td colSpan={3} className="border" />
             </tr>
           </tbody>
@@ -159,11 +166,7 @@ export default function SnDataPage() {
   }, [rows])
 
   function downloadCsv() {
-    const a = document.createElement("a")
-    a.href = URL.createObjectURL(buildSnCsv(filtered))
-    a.download = `copri-sn-bundles-${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(a.href)
+    downloadBlob(buildSnCsv(filtered), `copri-sn-bundles-${new Date().toISOString().slice(0, 10)}.csv`)
   }
 
   if (!token || state === "badToken") return (
@@ -179,7 +182,9 @@ export default function SnDataPage() {
     <Shell>
       <div className="rounded-lg border border-danger/40 bg-danger-surface p-4 text-sm">
         {L.sn.loadFailed}
-        <Button variant="outline" size="sm" className="ms-3" onClick={() => void load(token)}>🔄</Button>
+        <Button variant="outline" size="sm" className="ms-3" onClick={() => void load(token)}>
+          {L.app.retry}
+        </Button>
       </div>
     </Shell>
   )

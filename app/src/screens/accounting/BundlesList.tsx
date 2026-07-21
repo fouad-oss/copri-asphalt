@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Link, useOutletContext } from "react-router-dom"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { RefCode } from "@/components/patterns"
 import { qty } from "@/lib/format"
@@ -11,15 +10,18 @@ import { cn } from "@/lib/utils"
 import type { Profile } from "@/lib/session"
 import { kwd, L } from "./labels"
 import { bundlesList, deleteBundle, setBundleStatus, type BundleRow, type Channel } from "./data"
+import { ChannelTabs, EmptyCard, LoadError, Loading, seq } from "./ui"
 
 /* ── Screen 4: Bundles list ───────────────────────────────────────────
    Bundle | PO / line | Qty · amount | Status | SN reference. Lifecycle
    badges: Draft (neutral) / Verified (accent) / Published (success);
    published without an SN reference shows "pending import". ── */
 
+// Brief: Draft (neutral) / Verified (ACCENT — the brand primary, not
+// info blue) / Published (success).
 const LIFECYCLE_TONE: Record<BundleRow["status"], string> = {
   draft: "bg-secondary text-muted-foreground",
-  verified: "bg-info/10 text-info",
+  verified: "bg-primary/10 text-primary",
   published: "bg-success/10 text-success",
 }
 
@@ -38,15 +40,23 @@ export default function BundlesList() {
   const [error, setError] = useState(false)
   const [busyId, setBusyId] = useState<number | null>(null)
 
-  const load = useCallback(async (ch: Channel) => {
-    setError(false); setRows(null)
-    try { setRows(await bundlesList(ch)) } catch { setError(true) }
+  const seqRef = useRef(0)
+  const load = useCallback(async (ch: Channel, silent = false) => {
+    const live = seq(seqRef)
+    setError(false)
+    if (!silent) setRows(null)
+    try {
+      const r = await bundlesList(ch)
+      if (live()) setRows(r)
+    } catch { if (live()) setError(true) }
   }, [])
   useEffect(() => { void load(channel) }, [channel, load])
 
   async function act(b: BundleRow, fn: () => Promise<unknown>) {
     setBusyId(b.id)
-    try { await fn(); await load(channel) }
+    // silent reload: keep the table on screen instead of collapsing to
+    // skeletons for a one-row status change
+    try { await fn(); await load(channel, true) }
     catch (e: any) { toast.error(`${L.bundles.actionFailed}${e?.message ? ` — ${e.message}` : ""}`) }
     setBusyId(null)
   }
@@ -87,36 +97,12 @@ export default function BundlesList() {
   return (
     <div className="flex flex-col gap-3">
       <h2 className="text-base font-semibold">{L.bundles.heading}</h2>
-      <div className="flex gap-1 border-b pb-2">
-        {(["asphalt", "materials"] as Channel[]).map((ch) => (
-          <button key={ch} type="button" onClick={() => setChannel(ch)}
-            className={cn(
-              "rounded-md px-3 py-1 text-sm",
-              channel === ch ? "bg-secondary font-semibold" : "text-muted-foreground hover:bg-secondary/60",
-            )}>
-            {L.tabs[ch]}
-          </button>
-        ))}
-      </div>
+      <ChannelTabs channel={channel} onChange={setChannel} />
 
-      {error && (
-        <div className="rounded-lg border border-danger/40 bg-danger-surface p-4 text-sm">
-          {L.app.loadError}
-          <Button variant="outline" size="sm" className="ms-3" onClick={() => void load(channel)}>
-            {L.app.retry}
-          </Button>
-        </div>
-      )}
-      {!error && rows === null && (
-        <div className="flex flex-col gap-2">
-          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-9 w-full rounded-md" />)}
-        </div>
-      )}
+      {error && <LoadError onRetry={() => void load(channel)} />}
+      {!error && rows === null && <Loading rows={4} />}
       {!error && rows !== null && rows.length === 0 && (
-        <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          <div className="font-medium text-foreground">{L.bundles.empty}</div>
-          <div className="mt-1">{L.bundles.emptyHint}</div>
-        </div>
+        <EmptyCard title={L.bundles.empty} hint={L.bundles.emptyHint} />
       )}
       {!error && rows !== null && rows.length > 0 && (
         <Table>
@@ -142,7 +128,12 @@ export default function BundlesList() {
                   )}
                 </TableCell>
                 <TableCell>
-                  <RefCode>{b.po}</RefCode>
+                  {b.commitmentId != null ? (
+                    <Link to={`/accounting/po-register?po=${b.commitmentId}`}
+                      className="underline-offset-2 hover:underline">
+                      <RefCode>{b.po}</RefCode>
+                    </Link>
+                  ) : <RefCode>{b.po}</RefCode>}
                   {b.lineNo != null && <span className="ms-1 text-xs text-muted-foreground">/ {b.lineNo}</span>}
                   {b.lineItem && <span className="ms-2 text-xs text-muted-foreground">{b.lineItem}</span>}
                 </TableCell>
@@ -160,6 +151,9 @@ export default function BundlesList() {
             ))}
           </TableBody>
         </Table>
+      )}
+      {!error && rows !== null && rows.length >= 200 && (
+        <p className="text-xs text-muted-foreground">{L.bundles.showingCap(rows.length)}</p>
       )}
     </div>
   )

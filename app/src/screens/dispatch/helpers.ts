@@ -66,6 +66,7 @@ export type DispatchData = {
   remarks: string
   loadNumber?: number | string
   noteNumber?: string
+  isMisc?: boolean
 }
 
 // Human-readable location string, aware of the three location types.
@@ -125,6 +126,7 @@ export function dispatchRowToUI(r: any): DispatchRow {
     block: r.block || "", street: r.street || "", locationType: locCodeFromLabel(r.loc_type),
     clerkName: r.clerk, notifyEngineer: r.notify_engineer || "", remarks: r.remarks || "",
     loadNumber: r.load_number || "", tsISO: r.ts || "", status: r.status || "",
+    isMisc: !!r.is_misc,
   }
 }
 
@@ -145,12 +147,36 @@ export async function dbCheckReceipt(note: string): Promise<{ alreadyReceived: b
   return { alreadyReceived: true, engineer: data[0].engineer || "", decision: data[0].decision || "", tsISO: data[0].ts }
 }
 
-// Auto load count — next load number at this exact location within the
-// current shift (resets at noon Kuwait). Location match is client-side with
-// whitespace-normalised comparison (one shift × one site is a few dozen rows).
+// Site identity for the daily load counter — MUST mirror dispatch_submit's
+// site_key (0032): متفرقات → 'MISC'; km-range → project|site (km values are
+// per-load data, not a site); else project|site|block|street (a named street
+// carries the name in block, street '').
+export function loadSiteKey(
+  projectName: string, site: string, block: string, street: string,
+  locationType: string, isMisc: boolean,
+) {
+  if (isMisc) return "MISC"
+  if (locationType === "km_range") return `${normSp(projectName)}|${normSp(site)}`
+  return `${normSp(projectName)}|${normSp(site)}|${normSp(block)}|${normSp(street)}`
+}
+
+// Auto load count — the next load number for this site's DAILY counter
+// (Kuwait date, resets at midnight; 0032). Reads the same counter row the
+// dispatch RPC bumps, so the preview matches what the server will assign.
+// Pre-0032 (table missing) → the old since-noon row count. Returns the next
+// number, or null.
 export async function fetchNextLoad(
   projectName: string, site: string, block: string, street: string, siteOnly: boolean,
+  locationType: string, isMisc: boolean,
 ): Promise<number | null> {
+  const key = loadSiteKey(projectName, site, block, street, locationType, isMisc)
+  try {
+    const { data, error } = await supabase.from("dispatch_load_counters").select("last_no")
+      .eq("day", kwDayISO(0)).eq("site_key", key).limit(1)
+    if (error) throw error
+    return (data && data.length ? Number(data[0].last_no) || 0 : 0) + 1
+  } catch { /* 0032 not pasted yet — legacy count below */ }
+  if (isMisc) return null   // متفرقات counting needs the 0032 counters table
   try {
     const { data, error } = await supabase.from("dispatch_loads").select("block,street")
       .eq("project", normSp(projectName)).eq("site", normSp(site))
@@ -177,8 +203,8 @@ export async function fetchPlannedPrograms(projectName: string): Promise<any[]> 
 /* ── Writes (SECURITY DEFINER RPCs — atomic, serial allocated server-side) ── */
 // clientRef makes retries idempotent: a resend after a dropped response
 // returns the note that already landed (no double row, no burned serial).
-export async function dbSubmitDispatch(data: DispatchData, clientRef: string): Promise<{ success: boolean; note?: string | number; error?: string }> {
-  return rpc("dispatch_submit", {
+export async function dbSubmitDispatch(data: DispatchData, clientRef: string): Promise<{ success: boolean; note?: string | number; load_number?: number; error?: string }> {
+  const args = {
     p_client_ref: clientRef || "",
     p_project: data.project || "", p_contract: data.contract || "", p_work_order: data.workOrder || "",
     p_plant: data.plant || "", p_truck: String(data.truckNumber || ""),
@@ -190,7 +216,20 @@ export async function dbSubmitDispatch(data: DispatchData, clientRef: string): P
     p_company: data.company || "", p_naqel: data.naqel || "", p_driver_phone: data.driverPhone || "",
     p_load_number: data.loadNumber === "" || data.loadNumber == null ? null : Number(data.loadNumber),
     p_notify_engineer: data.notifyEngineer || "",
-  })
+  }
+  try {
+    // 0032 RPC: the server assigns the daily per-site load number and
+    // returns it as load_number (p_load_number is ignored when present).
+    return await rpc("dispatch_submit", { ...args, p_is_misc: !!data.isMisc })
+  } catch (e: any) {
+    // Function signature without p_is_misc (0032 not pasted yet) → PostgREST
+    // PGRST202. Normal dispatch falls back to the pre-0032 call so the clerk
+    // flow never breaks on deploy order; متفرقات NEEDS the migration.
+    const code = String(e?.code ?? "") + " " + String(e?.message ?? "")
+    if (!/PGRST202|\b404\b/.test(code)) throw e
+    if (data.isMisc) throw new Error("misc_unavailable")
+    return rpc("dispatch_submit", args)
+  }
 }
 
 // Receipt: one atomic RPC inserts the receipt AND reflects the decision on
@@ -230,7 +269,7 @@ export function whatsappMessage(data: DispatchData, receiptLink: string) {
     `الخلطة: ${data.mixType}\n` +
     `الوزن: ${data.weight} طن\n` +
     `الحرارة: ${data.tempDispatch}°م\n` +
-    `الموقع: ${data.site}${loc ? " — " + loc : ""}\n\n` +
+    `الموقع: ${data.isMisc ? "متفرقات" : `${data.site}${loc ? " — " + loc : ""}`}\n\n` +
     `🔗 رابط الاستلام:\n${receiptLink}`
   )
 }

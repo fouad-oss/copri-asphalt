@@ -185,12 +185,14 @@ function ReceiptBody({ note, engineerName }: { note: string; engineerName: strin
     [t("receipt.mix"), dispatch.mixType || "—"],
     [t("receipt.weightSent"), `${dispatch.weight} ${t("receipt.tons")}`],
     [t("receipt.tempSent"), `${dispatch.tempDispatch}${t("receipt.degC")}`],
-    [t("receipt.site"), dispatch.site || "—"],
-    ...(dispatch.locationType === "km_range"
-      ? [[t("receipt.kmFrom"), dispatch.block || "—"], [t("receipt.kmTo"), dispatch.street || "—"]] as [string, string][]
-      : dispatch.locationType === "named"
-        ? [[t("receipt.namedName"), dispatch.block || "—"]] as [string, string][]
-        : [[t("receipt.block"), dispatch.block || "—"], [t("receipt.street"), dispatch.street || "—"]] as [string, string][]),
+    [t("receipt.site"), dispatch.isMisc ? t("receipt.misc") : (dispatch.site || "—")],
+    ...(dispatch.isMisc
+      ? [] as [string, string][]   // متفرقات — no address rows
+      : dispatch.locationType === "km_range"
+        ? [[t("receipt.kmFrom"), dispatch.block || "—"], [t("receipt.kmTo"), dispatch.street || "—"]] as [string, string][]
+        : dispatch.locationType === "named"
+          ? [[t("receipt.namedName"), dispatch.block || "—"]] as [string, string][]
+          : [[t("receipt.block"), dispatch.block || "—"], [t("receipt.street"), dispatch.street || "—"]] as [string, string][]),
     [t("receipt.departed"), fmtKW(dispatch.tsISO)],
   ] : []
 

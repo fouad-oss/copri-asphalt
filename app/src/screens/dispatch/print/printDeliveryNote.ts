@@ -69,6 +69,14 @@ export function printDeliveryNote(
       set("street-label", "الشارع"); set("street", data.street)
     }
 
+    // متفرقات: the address area shows متفرقات where the site normally goes
+    // (data injection only — layout, copies and labels stay untouched).
+    if (data.isMisc) {
+      set("site", "متفرقات")
+      set("block-label", ""); set("block", "")
+      set("street-label", ""); set("street", "")
+    }
+
     set("clerk-name", data.clerkName)
     set("remarks", data.remarks || "")
 

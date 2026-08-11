@@ -836,6 +836,8 @@ const CONFIG = {
           locationType: "km_range",
           engineers: [
             { name: "أحمد عبد الرحمن", pin: "7058", phone: "96550385607" },
+            { name: "أندرو ماهر",      pin: "6291", phone: "96566767748" },
+            { name: "علي صابر",        pin: "3874", phone: "96566445278" },
           ],
         },
       },
@@ -1241,7 +1243,7 @@ function dispatchRowToUI(r) {
     mixType: r.mix, weight: r.weight, tempDispatch: r.temp_dispatch, site: r.site,
     block: r.block || "", street: r.street || "", locationType: locCodeFromLabel(r.loc_type),
     clerkName: r.clerk, loadNumber: r.load_number || "", timestamp: fmtKW(r.ts),
-    status: r.status || "",
+    status: r.status || "", isMisc: !!r.is_misc,
   };
 }
 function millingRowToUI(r) {
@@ -1323,7 +1325,7 @@ async function dbEngineerData(engName) {
 // note that already landed instead of consuming a new serial.
 // Returns { success, note } — note is the DB-assigned delivery-note number.
 async function dbSubmitDispatch(data, clientRef) {
-  return sbRpc("dispatch_submit", {
+  const args = {
     p_client_ref: clientRef || "",
     p_project: data.project || "", p_contract: data.contract || "", p_work_order: data.workOrder || "",
     p_plant: data.plant || "", p_truck: String(data.truckNumber || ""),
@@ -1335,7 +1337,19 @@ async function dbSubmitDispatch(data, clientRef) {
     p_company: data.company || "", p_naqel: data.naqel || "", p_driver_phone: data.driverPhone || "",
     p_load_number: data.loadNumber === "" || data.loadNumber == null ? null : Number(data.loadNumber),
     p_notify_engineer: data.notifyEngineer || "",
-  });
+  };
+  try {
+    // 0032 RPC: the server assigns the daily per-site load number and
+    // returns it as load_number (p_load_number is ignored when present).
+    return await sbRpc("dispatch_submit", { ...args, p_is_misc: !!data.isMisc });
+  } catch (e) {
+    // Function signature without p_is_misc (0032 not pasted yet) → PostgREST
+    // 404/PGRST202. Normal dispatch falls back to the pre-0032 call so the
+    // clerk flow never breaks on deploy order; متفرقات NEEDS the migration.
+    if (!/PGRST202|\b404\b/.test(String(e && e.message))) throw e;
+    if (data.isMisc) throw new Error("misc_unavailable");
+    return sbRpc("dispatch_submit", args);
+  }
 }
 // Receipt: one atomic RPC inserts the receipt AND reflects the decision on
 // the dispatch row (no drift possible between the two).
@@ -1447,15 +1461,29 @@ function normSp(s) { return String(s || "").trim().replace(/\s+/g, " "); }
 function localFromFull(full) { const d = cleanPhone(full); return d.indexOf("965") === 0 ? d.slice(3) : d; }
 function phoneToFull(local)   { const d = cleanPhone(local); if (!d) return ""; return d.indexOf("965") === 0 ? d : "965" + d; }
 
-// Auto load count — asks the backend for the next load number at this exact
-// location (project + site + block + street; a named street is carried in
-// block) within the current shift (resets at noon Kuwait). Each dispatch
-// advances it — no site confirmation needed. Returns the next number, or null.
-async function fetchNextLoad(projectName, site, block, street, siteOnly) {
+// Site identity for the daily load counter — MUST mirror dispatch_submit's
+// site_key (0032): متفرقات → 'MISC'; km-range → project|site (km values are
+// per-load data, not a site); else project|site|block|street (a named street
+// carries the name in block, street '').
+function loadSiteKey(projectName, site, block, street, locationType, isMisc) {
+  if (isMisc) return "MISC";
+  if (locationType === "km_range") return normSp(projectName) + "|" + normSp(site);
+  return normSp(projectName) + "|" + normSp(site) + "|" + normSp(block) + "|" + normSp(street);
+}
+// Auto load count — the next load number for this site's DAILY counter
+// (Kuwait date, resets at midnight; 0032). Reads the same counter row the
+// dispatch RPC bumps, so the preview matches what the server will assign.
+// Pre-0032 (table missing) → the old since-noon row count. Returns the next
+// number, or null.
+async function fetchNextLoad(projectName, site, block, street, siteOnly, locationType, isMisc) {
+  const key = loadSiteKey(projectName, site, block, street, locationType, isMisc);
   try {
-    // This shift's rows at the site (small set), then match the exact location
-    // client-side with whitespace-normalised comparison — same as the old
-    // backend norm(). One shift × one site is at most a few dozen rows.
+    const rows = await sbGet(
+      `dispatch_load_counters?select=last_no&day=eq.${plantKwISO(0)}&site_key=${sbEq(key)}&limit=1`);
+    return (rows.length ? Number(rows[0].last_no) || 0 : 0) + 1;
+  } catch (e) { /* 0032 not pasted yet — legacy count below */ }
+  if (isMisc) return null;   // متفرقات counting needs the 0032 counters table
+  try {
     const rows = await sbGet(
       `dispatch_loads?select=block,street` +
       `&project=${sbEq(normSp(projectName))}&site=${sbEq(normSp(site))}` +
@@ -1502,7 +1530,7 @@ function whatsappMessage(data, receiptLink) {
     `الخلطة: ${data.mixType}\n` +
     `الوزن: ${data.weight} طن\n` +
     `الحرارة: ${data.tempDispatch}°م\n` +
-    `الموقع: ${data.site}${loc ? " — " + loc : ""}\n\n` +
+    `الموقع: ${data.isMisc ? "متفرقات" : `${data.site}${loc ? " — " + loc : ""}`}\n\n` +
     `🔗 رابط الاستلام:\n${receiptLink}`
   );
 }
@@ -1681,6 +1709,14 @@ function printDeliveryNote(data, receiptLink, opts) {
     } else {
       set("block-label", "القطعة"); set("block", data.block);
       set("street-label", "الشارع"); set("street", data.street);
+    }
+
+    // متفرقات: the address area shows متفرقات where the site normally goes
+    // (data injection only — layout, copies and labels stay untouched).
+    if (data.isMisc) {
+      set("site", "متفرقات");
+      set("block-label", ""); set("block", "");
+      set("street-label", ""); set("street", "");
     }
 
     set("clerk-name", data.clerkName);
@@ -1899,6 +1935,32 @@ function renderDispatch(ctx) {
   main.appendChild(banner);
   document.getElementById("changeProjectBtn").addEventListener("click", renderCompanySelect);
 
+  // ── متفرقات toggle (0032) — miscellaneous asphalt works: no site/address,
+  // flagged is_misc for accounting, numbered in the shared daily misc
+  // counter. A deliberate per-load choice: every fresh form render starts
+  // OFF (the success screen's "شحنة جديدة" re-renders the form).
+  let isMisc = false;
+  const miscHide = [];            // address-related elements hidden when ON
+  let refreshMiscUI = () => {};   // bound after the address fields exist
+  const miscCard = el("div", "card"); miscCard.style.marginBottom = ".5rem";
+  const miscRow = el("div");
+  miscRow.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:.75rem;";
+  const miscLbl = el("div");
+  miscLbl.innerHTML = `<div style="font-weight:700">متفرقات</div>` +
+    `<div class="field-hint">أعمال أسفلت متفرقة — بدون موقع/قطعة/شارع، وتُرقَّم في عدّاد متفرقات اليومي</div>`;
+  const miscBtn = el("button", "history-tab"); miscBtn.type = "button";
+  miscBtn.textContent = "غير مفعّل";
+  miscBtn.style.width = "auto"; miscBtn.style.flexShrink = "0";
+  miscBtn.addEventListener("click", () => {
+    isMisc = !isMisc;
+    miscBtn.textContent = isMisc ? "مفعّل ✓" : "غير مفعّل";
+    miscBtn.classList.toggle("active", isMisc);
+    refreshMiscUI();
+  });
+  miscRow.appendChild(miscLbl); miscRow.appendChild(miscBtn);
+  miscCard.appendChild(miscRow);
+  main.appendChild(miscCard);
+
   // If "other" project — show free text fields for project name and contract
   let otherProjectInput = null, otherContractInput = null;
   if (project.isOther) {
@@ -2020,6 +2082,7 @@ function renderDispatch(ctx) {
   // their sites join the dropdown options. Filled async; hidden when none.
   const progPick = el("div"); progPick.style.display = "none";
   card.appendChild(progPick);
+  miscHide.push(progPick);   // chips fill the address — pointless in متفرقات
 
   // Site: required dropdown for Copri; optional free text (no suggestions) otherwise
   let siteInput;
@@ -2027,12 +2090,12 @@ function renderDispatch(ctx) {
     const { group: g7, input: sIn } = fieldGroup(
       "الموقع المستلم", select(project.sites || [], "اختر الموقع"), true
     );
-    siteInput = sIn; card.appendChild(g7);
+    siteInput = sIn; card.appendChild(g7); miscHide.push(g7);
   } else {
     const { group: g7, input: sIn } = fieldGroup(
       "الموقع المستلم", input("text", "اختياري"), false
     );
-    siteInput = sIn; card.appendChild(g7);
+    siteInput = sIn; card.appendChild(g7); miscHide.push(g7);
   }
   // A program site missing from the reference list still becomes pickable.
   function ensureSiteOption(name) {
@@ -2056,6 +2119,7 @@ function renderDispatch(ctx) {
     const { group: gTo,   input: kmTo }   = fieldGroup("إلى الكيلومتر", input("text", "مثال: 14.0", "decimal"), true);
     row4.appendChild(gFrom); row4.appendChild(gTo);
     card.appendChild(row4);
+    miscHide.push(row4);
     locContainer = row4;
     getLocation = () => ({ block: kmFrom.value.trim(), street: kmTo.value.trim(), locationType: "km_range" });
   } else {
@@ -2071,6 +2135,7 @@ function renderDispatch(ctx) {
       const tNamed  = el("button", "history-tab");        tNamed.type  = "button"; tNamed.textContent  = "اسم الشارع";
       toggle.appendChild(tBlocks); toggle.appendChild(tNamed);
       card.appendChild(lbl); card.appendChild(toggle);
+      miscHide.push(lbl, toggle);
       tBlocks.addEventListener("click", () => {
         if (locMode === "blocks") return;
         locMode = "blocks"; tBlocks.classList.add("active"); tNamed.classList.remove("active"); buildLoc(); refreshLoadNumber(); refreshWorkOrder();
@@ -2106,6 +2171,7 @@ function renderDispatch(ctx) {
     // Named-street options depend on the chosen site — rebuild on site change.
     siteInput.addEventListener("change", () => { if (locMode === "named") { buildLoc(); refreshWorkOrder(); } });
     card.appendChild(locWrap);
+    miscHide.push(locWrap);
   }
 
   // ── Auto load number for this exact location (live preview) ────────
@@ -2124,16 +2190,17 @@ function renderDispatch(ctx) {
   async function refreshLoadNumber() {
     const loc = getLocation();
     const siteOnly = !isCopri || loc.locationType === "named";
-    const ready = siteOnly ? !!siteInput.value : (!!siteInput.value && !!loc.block);
-    if (!ready) { liveLoad = null; loadBox.textContent = "رقم الحمولة لهذا الموقع: —"; return; }
+    const label = isMisc ? "رقم حمولة متفرقات اليوم" : "رقم الحمولة لهذا الموقع";
+    const ready = isMisc || (siteOnly ? !!siteInput.value : (!!siteInput.value && !!loc.block));
+    if (!ready) { liveLoad = null; loadBox.textContent = `${label}: —`; return; }
     const seq = ++loadReqSeq;
-    loadBox.textContent = "رقم الحمولة لهذا الموقع: جارٍ الحساب…";
-    const n = await fetchNextLoad(projectName, siteInput.value, loc.block, loc.street, siteOnly);
+    loadBox.textContent = `${label}: جارٍ الحساب…`;
+    const n = await fetchNextLoad(projectName, siteInput.value, loc.block, loc.street, siteOnly, loc.locationType, isMisc);
     if (seq !== loadReqSeq) return;   // a newer request superseded this one
     liveLoad = n;
     loadBox.textContent = n
-      ? `رقم الحمولة لهذا الموقع: ${n}  ·  منذ ظهر اليوم`
-      : "رقم الحمولة لهذا الموقع: —";
+      ? `${label}: ${n}  ·  يُصفَّر يومياً`
+      : `${label}: —`;
   }
   // Locked auto-fill work order — derived read-only from site + location for the
   // asphalt discipline; the clerk cannot edit it. Shows a "no order yet" note
@@ -2160,6 +2227,11 @@ function renderDispatch(ctx) {
     locContainer.addEventListener("change", refreshWorkOrder);
     locContainer.addEventListener("input",  refreshWorkOrder);
   }
+  if (isCopri) miscHide.push(woBox);   // no WO on متفرقات loads
+  refreshMiscUI = () => {
+    miscHide.forEach((n) => { n.style.display = isMisc ? "none" : ""; });
+    refreshLoadNumber();
+  };
   refreshWorkOrder();
 
   // ── Planned-program quick-pick: fetch + render chips (best-effort) ──
@@ -2222,7 +2294,7 @@ function renderDispatch(ctx) {
       });
       box.appendChild(rowC);
       progPick.appendChild(box);
-      progPick.style.display = "";
+      progPick.style.display = isMisc ? "none" : "";
     } catch (e) { /* quick-pick is a convenience — the form works without it */ }
   })();
 
@@ -2282,7 +2354,7 @@ function renderDispatch(ctx) {
       company:      companyName,
       project:      project.isOther ? (otherProjectInput ? otherProjectInput.value.trim() : projectName) : projectName,
       contract:     project.isOther ? (otherContractInput ? otherContractInput.value.trim() : "") : project.contract,
-      workOrder:    liveWO,
+      workOrder:    isMisc ? "" : liveWO,
       plant:        plantInput.value,
       truckNumber:  driver.truck,
       naqel:        naqelInput.value,
@@ -2291,18 +2363,24 @@ function renderDispatch(ctx) {
       mixType:      mixInput.value,
       weight:       weightInput.value,
       tempDispatch: tempInput.value,
-      site:         normSp(siteInput.value),
-      block:        normSp(loc.block),
-      street:       normSp(loc.street),
+      site:         isMisc ? "" : normSp(siteInput.value),
+      block:        isMisc ? "" : normSp(loc.block),
+      street:       isMisc ? "" : normSp(loc.street),
       locationType: loc.locationType,
       clerkName:    clerkInput.value,
       notifyEngineer: notifyInput ? notifyInput.value : "",
       remarks:      remarksInput.value.trim(),
+      isMisc:       isMisc,
     };
     // street is not required in km_range "from only"? both required; in named mode only block (the name) is required.
-    const required = ["plant","truckNumber","naqel","driverName","mixType","weight","tempDispatch","block","clerkName"];
-    if (data.locationType !== "named") required.push("street");
-    if (isCopri) required.push("site", "notifyEngineer");
+    // متفرقات: no address fields at all — everything else stays required.
+    const required = ["plant","truckNumber","naqel","driverName","mixType","weight","tempDispatch","clerkName"];
+    if (!isMisc) {
+      required.push("block");
+      if (data.locationType !== "named") required.push("street");
+      if (isCopri) required.push("site");
+    }
+    if (isCopri) required.push("notifyEngineer");
     if (project.isOther && otherProjectInput && !otherProjectInput.value.trim()) {
       errDiv.textContent = "يرجى إدخال اسم المشروع"; errDiv.style.display = "block"; return;
     }
@@ -2322,24 +2400,28 @@ function renderDispatch(ctx) {
     errDiv.style.display = "none";
     btn.disabled = true; btn.textContent = "جارٍ التحقق...";
 
-    // Authoritative load number for this exact location, fetched right before
-    // writing so it reflects the latest count (resets at noon Kuwait).
+    // Preview load number, fetched right before writing. Since 0032 the RPC
+    // assigns the real number server-side and returns it — this value is
+    // only the fallback shown if the response lacks load_number (pre-paste).
     const loadSiteOnly = !isCopri || data.locationType === "named";
-    const authLoad = await fetchNextLoad(data.project, data.site, data.block, data.street, loadSiteOnly);
+    const authLoad = await fetchNextLoad(data.project, data.site, data.block, data.street, loadSiteOnly, data.locationType, isMisc);
     data.loadNumber = (authLoad != null) ? authLoad : (liveLoad != null ? liveLoad : "");
 
     btn.textContent = "جارٍ الإرسال...";
     try {
-      // The RPC allocates the serial note number and inserts atomically;
-      // the assigned number comes back in the response.
+      // The RPC allocates the serial note number AND the daily per-site load
+      // number and inserts atomically; both come back in the response.
       const w = await dbSubmitDispatch(data, submitRef);
       if (!w.success || !w.note) throw new Error(w.error || "dispatch_submit failed");
       data.noteNumber = String(w.note);
+      if (w.load_number != null) data.loadNumber = w.load_number;
       const receiptLink = `${window.location.origin}/?note=${encodeURIComponent(data.noteNumber)}`;
       renderDispatchSuccess(ctx, data, receiptLink);
-    } catch {
+    } catch (e) {
       btn.disabled = false; btn.innerHTML = submitLabel;
-      errDiv.textContent = "حدث خطأ، يرجى المحاولة مجدداً";
+      errDiv.textContent = (e && e.message === "misc_unavailable")
+        ? "خاصية متفرقات تتطلب تحديث قاعدة البيانات (0032) — أبلغ المكتب الرئيسي"
+        : "حدث خطأ، يرجى المحاولة مجدداً";
       errDiv.style.display = "block";
     }
   });
@@ -2356,10 +2438,14 @@ function renderDispatchSuccess(ctx, data, receiptLink) {
   const p1 = el("p"); p1.innerHTML = `<strong>${data.company}</strong> — ${data.project}`; s.appendChild(p1);
   const p2b = el("p"); p2b.innerHTML = `أمر العمل: <strong>${data.workOrder}</strong> — رقم السند: <strong>${data.noteNumber}</strong>`; s.appendChild(p2b);
   const loc = locDisplay(data);
-  const p2c = el("p"); p2c.textContent = `${data.plant} — ${data.site}${loc ? " / " + loc : ""}`; s.appendChild(p2c);
+  const p2c = el("p");
+  p2c.textContent = data.isMisc ? `${data.plant} — متفرقات` : `${data.plant} — ${data.site}${loc ? " / " + loc : ""}`;
+  s.appendChild(p2c);
   if (data.loadNumber) {
     const pLoad = el("p", "success-note");
-    pLoad.textContent = `🔢 رقم الحمولة لهذا الموقع: ${data.loadNumber}`;
+    pLoad.textContent = data.isMisc
+      ? `🔢 رقم حمولة متفرقات اليوم: ${data.loadNumber}`
+      : `🔢 رقم الحمولة لهذا الموقع: ${data.loadNumber}`;
     s.appendChild(pLoad);
   }
 
@@ -2510,9 +2596,11 @@ async function renderReceipt(noteNumber, preAuthName) {
       ["نوع الخلطة",             dispatch.mixType],
       ["الوزن المرسل",           `${dispatch.weight} طن`],
       ["الحرارة عند الإرسال",    `${dispatch.tempDispatch}°م`],
-      ["الموقع",                 dispatch.site],
+      ["الموقع",                 dispatch.isMisc ? "متفرقات" : dispatch.site],
     ];
-    if (dispatch.locationType === "km_range") {
+    if (dispatch.isMisc) {
+      // متفرقات — no address rows
+    } else if (dispatch.locationType === "km_range") {
       rows.push(["من الكيلومتر", dispatch.block || "—"]);
       rows.push(["إلى الكيلومتر", dispatch.street || "—"]);
     } else if (dispatch.locationType === "named") {

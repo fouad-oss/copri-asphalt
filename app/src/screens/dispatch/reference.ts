@@ -71,6 +71,8 @@ const BAKED: DispatchConfig = {
           namedStreets: {},
           engineers: [
             { name: "أحمد عبد الرحمن", pin: "7058", phone: "96550385607" },
+            { name: "أندرو ماهر", pin: "6291", phone: "96566767748" },
+            { name: "علي صابر", pin: "3874", phone: "96566445278" },
           ],
         },
       },

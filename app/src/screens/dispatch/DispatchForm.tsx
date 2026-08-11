@@ -50,6 +50,12 @@ export default function DispatchForm({ ctx, clerkName, onChangeProject, onSucces
   const [weight, setWeight] = useState("")
   const [temp, setTemp] = useState("")
 
+  // متفرقات (0032): miscellaneous asphalt works — no site/address, flagged
+  // is_misc for accounting, numbered in the shared daily misc counter.
+  // Deliberate per-load choice: the form remounts per dispatch (formEpoch),
+  // so this always starts OFF.
+  const [isMisc, setIsMisc] = useState(false)
+
   // Site + location
   const [site, setSite] = useState("")
   const [extraSites, setExtraSites] = useState<string[]>([])   // program sites missing from the reference list
@@ -123,24 +129,24 @@ export default function DispatchForm({ ctx, clerkName, onChangeProject, onSucces
     return () => { alive = false }
   }, [projectName])
 
-  // ── Auto load number for this exact location (live preview, debounced).
-  // Count by site only when block/street can't be relied on as a key:
-  // non-Copri projects, or named-street entries (free-typed spelling varies).
+  // ── Auto load number — daily per-site counter preview (0032), debounced.
+  // Reads the same counter row the RPC bumps; متفرقات previews the shared
+  // daily misc counter.
   const loadSeq = useRef(0)
   useEffect(() => {
     const siteOnly = !isCopri || loc.locationType === "named"
-    const ready = siteOnly ? !!site : (!!site && !!loc.block)
+    const ready = isMisc || (siteOnly ? !!site : (!!site && !!loc.block))
     if (!ready) { setLiveLoad(null); setLoadPending(false); return }
     const seq = ++loadSeq.current
     setLoadPending(true)
     const timer = setTimeout(async () => {
-      const n = await fetchNextLoad(projectName, site, loc.block, loc.street, siteOnly)
+      const n = await fetchNextLoad(projectName, site, loc.block, loc.street, siteOnly, loc.locationType, isMisc)
       if (seq !== loadSeq.current) return   // a newer request superseded this one
       setLiveLoad(n)
       setLoadPending(false)
     }, 400)
     return () => clearTimeout(timer)
-  }, [isCopri, projectName, site, loc])
+  }, [isCopri, projectName, site, loc, isMisc])
 
   function pickDriver(name: string) {
     setDriverPick(name)
@@ -188,7 +194,7 @@ export default function DispatchForm({ ctx, clerkName, onChangeProject, onSucces
       company: companyName,
       project: projectName,
       contract: project.contract || "",
-      workOrder: liveWO,
+      workOrder: isMisc ? "" : liveWO,
       plant,
       truckNumber: truck.trim(),
       naqel,
@@ -197,18 +203,24 @@ export default function DispatchForm({ ctx, clerkName, onChangeProject, onSucces
       mixType: mix,
       weight,
       tempDispatch: temp,
-      site: normSp(site),
-      block: normSp(loc.block),
-      street: normSp(loc.street),
+      site: isMisc ? "" : normSp(site),
+      block: isMisc ? "" : normSp(loc.block),
+      street: isMisc ? "" : normSp(loc.street),
       locationType: loc.locationType,
       clerkName,
       notifyEngineer: isCopri ? notifyEngineer : "",
       remarks: remarks.trim(),
+      isMisc,
     }
+    // متفرقات: no address fields at all — everything else stays required.
     const required: (keyof DispatchData)[] =
-      ["plant", "truckNumber", "naqel", "driverName", "mixType", "weight", "tempDispatch", "block", "clerkName"]
-    if (data.locationType !== "named") required.push("street")
-    if (isCopri) required.push("site", "notifyEngineer")
+      ["plant", "truckNumber", "naqel", "driverName", "mixType", "weight", "tempDispatch", "clerkName"]
+    if (!isMisc) {
+      required.push("block")
+      if (data.locationType !== "named") required.push("street")
+      if (isCopri) required.push("site")
+    }
+    if (isCopri) required.push("notifyEngineer")
     if (required.some((k) => !data[k])) { setErr(t("form.errRequired")); return }
 
     // Weight sanity — a real asphalt load is a few tens of tons. Reject an
@@ -221,22 +233,25 @@ export default function DispatchForm({ ctx, clerkName, onChangeProject, onSucces
     setErr("")
     setBusy("checking")
 
-    // Authoritative load number, fetched right before writing so it reflects
-    // the latest count (resets at noon Kuwait).
+    // Preview load number, fetched right before writing. Since 0032 the RPC
+    // assigns the real number server-side and returns it — this value is
+    // only the fallback shown if the response lacks load_number (pre-paste).
     const siteOnly = !isCopri || data.locationType === "named"
-    const authLoad = await fetchNextLoad(data.project, data.site, data.block, data.street, siteOnly)
+    const authLoad = await fetchNextLoad(data.project, data.site, data.block, data.street, siteOnly, data.locationType, !!isMisc)
     data.loadNumber = authLoad != null ? authLoad : (liveLoad != null ? liveLoad : "")
 
     setBusy("sending")
     try {
-      // The RPC allocates the serial note number and inserts atomically.
+      // The RPC allocates the serial note number AND the daily per-site
+      // load number and inserts atomically; both come back in the response.
       const w = await dbSubmitDispatch(data, submitRef)
       if (!w.success || !w.note) throw new Error(w.error || "dispatch_submit failed")
       data.noteNumber = String(w.note)
+      if (w.load_number != null) data.loadNumber = w.load_number
       onSuccess(data, isCopri ? receiptLinkFor(data.noteNumber) : null)
-    } catch {
+    } catch (e: any) {
       setBusy("")
-      setErr(t("form.errSubmit"))
+      setErr(e?.message === "misc_unavailable" ? t("form.errMiscUnavailable") : t("form.errSubmit"))
     }
   }
 
@@ -258,6 +273,21 @@ export default function DispatchForm({ ctx, clerkName, onChangeProject, onSucces
           </div>
         </div>
         <Button variant="outline" size="sm" onClick={onChangeProject}>{t("project.change")}</Button>
+      </div>
+
+      {/* متفرقات toggle (0032) — top of the page, resets OFF per form mount */}
+      <div className="flex items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3">
+        <div>
+          <div className="font-bold">{t("form.misc")}</div>
+          <div className="text-sm text-muted-foreground">{t("form.miscHint")}</div>
+        </div>
+        <button type="button" onClick={() => setIsMisc((v) => !v)}
+          className={cn(
+            "shrink-0 rounded-md border px-4 py-2 text-sm font-semibold",
+            isMisc ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground",
+          )}>
+          {isMisc ? t("form.miscOn") : t("form.miscOff")}
+        </button>
       </div>
 
       <Card><CardContent className="flex flex-col gap-4 px-4 py-4">
@@ -313,8 +343,9 @@ export default function DispatchForm({ ctx, clerkName, onChangeProject, onSucces
           </FieldGroup>
         </div>
 
-        {/* Planned-program quick-pick chips (hidden when none) */}
-        {programs.length > 0 && (
+        {/* Planned-program quick-pick chips (hidden when none; chips fill
+            the address — pointless in متفرقات) */}
+        {!isMisc && programs.length > 0 && (
           <InfoBox>
             <div className="mb-2 font-semibold">{t("form.programs")}</div>
             <div className="flex flex-wrap gap-1.5">
@@ -330,8 +361,9 @@ export default function DispatchForm({ ctx, clerkName, onChangeProject, onSucces
           </InfoBox>
         )}
 
-        {/* Site: required pick for Copri; optional free text for plant-only companies */}
-        {isCopri ? (
+        {/* Site: required pick for Copri; optional free text for plant-only
+            companies. Hidden entirely in متفرقات (no address). */}
+        {!isMisc && (isCopri ? (
           <FieldGroup label={t("form.site")} required>
             <PickSelect value={site} onChange={changeSite} options={siteOptions} placeholder={t("form.pickSite")} />
           </FieldGroup>
@@ -340,10 +372,10 @@ export default function DispatchForm({ ctx, clerkName, onChangeProject, onSucces
             <Input className="h-12" placeholder={t("form.optional")} value={site}
               onChange={(e) => setSite(e.target.value)} />
           </FieldGroup>
-        )}
+        ))}
 
         {/* Location — km range | block+street with optional named-street toggle */}
-        {kmRange ? (
+        {isMisc ? null : kmRange ? (
           <div className="grid grid-cols-2 gap-2">
             <FieldGroup label={t("form.kmFrom")} required>
               <Input className="h-12" dir="ltr" inputMode="decimal" placeholder={t("form.kmFromPh")}
@@ -395,15 +427,16 @@ export default function DispatchForm({ ctx, clerkName, onChangeProject, onSucces
           </>
         )}
 
-        {/* Live per-location load counter (resets at noon Kuwait) */}
+        {/* Live daily load counter — per site, or the shared misc counter */}
         <InfoBox className="font-semibold">
-          {t("form.loadNo")}: {loadPending ? t("form.loadCalc") : liveLoad != null
+          {t(isMisc ? "form.loadNoMisc" : "form.loadNo")}: {loadPending ? t("form.loadCalc") : liveLoad != null
             ? <>{liveLoad} <span className="font-normal text-muted-foreground">· {t("form.loadSince")}</span></>
             : "—"}
         </InfoBox>
 
-        {/* LOCKED auto work-order info box — derived, never editable */}
-        {isCopri && (
+        {/* LOCKED auto work-order info box — derived, never editable; no WO
+            on متفرقات loads */}
+        {isCopri && !isMisc && (
           <InfoBox className="font-semibold">{t("form.wo")}: {woText}</InfoBox>
         )}
 

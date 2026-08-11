@@ -49,9 +49,13 @@ export default function DispatchSuccess({ isCopri, data, receiptLink, onNew, onC
         {" — "}
         {t("success.note")}: <strong><RefCode>{data.noteNumber}</RefCode></strong>
       </p>
-      <p className="text-muted-foreground">{data.plant} — {data.site}{loc ? " / " + loc : ""}</p>
+      <p className="text-muted-foreground">
+        {data.plant} — {data.isMisc ? t("success.miscLoc") : <>{data.site}{loc ? " / " + loc : ""}</>}
+      </p>
       {data.loadNumber ? (
-        <p className="text-sm text-muted-foreground">{t("success.loadLine", { n: data.loadNumber })}</p>
+        <p className="text-sm text-muted-foreground">
+          {t(data.isMisc ? "success.loadLineMisc" : "success.loadLine", { n: data.loadNumber })}
+        </p>
       ) : null}
 
       {/* WhatsApp handoff to the engineer — the dominant action (Copri only) */}

@@ -129,6 +129,10 @@ export function dispatchToWorklog(
   const offMap = new Map<string, { rows: number; tons: number }>()
   let seq = 0
   for (const r of rows) {
+    // متفرقات loads (0032, is_misc) carry no address at all — excluded from
+    // the worklog entirely, not off-map residue. Address-emptiness is the
+    // criterion so this works without fetching the new column.
+    if (!r.site && !r.block && !r.street) continue
     const stage = stageFromMix(r.mix)
     const date = kuwaitDay(r.ts)
     const named = r.loc_type === 'اسم الشارع'

@@ -29,6 +29,9 @@ import SnDataPage from "@/screens/accounting/SnDataPage"
 const DispatchPortal = lazy(() => import("@/screens/dispatch/DispatchPortal"))
 const CapturePortal = lazy(() => import("@/screens/capture/CapturePortal"))
 const BoardsPortal = lazy(() => import("@/screens/boards/BoardsPortal"))
+// Quantities module (QUANTITIES_MODULE_BRIEF.md) — its own Supabase-Auth
+// gate inside the portal (email login, no PIN, no pipeline_users link).
+const QuantitiesPortal = lazy(() => import("@/screens/quantities/QuantitiesPortal"))
 
 function Lazy({ children }: { children: React.ReactNode }) {
   return (
@@ -51,6 +54,7 @@ const router = createBrowserRouter([
   { path: "/dispatch/*", element: <Lazy><DispatchPortal /></Lazy> },
   { path: "/capture/*", element: <Lazy><CapturePortal /></Lazy> },
   { path: "/boards/*", element: <Lazy><BoardsPortal /></Lazy> },
+  { path: "/quantities/*", element: <Lazy><QuantitiesPortal /></Lazy> },
   {
     path: "/accounting",
     element: <Guard><AccountingShell /></Guard>,

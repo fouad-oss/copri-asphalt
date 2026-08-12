@@ -1,0 +1,156 @@
+{
+  "confirmed": false,
+  "_help": [
+    "Review everything below, correct vendorId/active/notes, then set confirmed: true and re-run.",
+    "subs: observed company name → vendors.id (null = create/resolve first; script refuses SQL for",
+    "active companies with null vendorId). active:false = exclude that company's quantities entirely.",
+    "aliases: unnumbered kashef folders → kashef numbers (900-range keeps them clearly out of the WO series)."
+  ],
+  "copriSelfVendorName": "كوبري — تنفيذ ذاتي",
+  "subs": {
+    "CCC": {
+      "vendorId": null,
+      "active": true,
+      "note": "REAL quantities on ~12 asphalt WOs — identify the company and map (1035 CCC rows 555-557? something else?)"
+    },
+    "الجارحي": {
+      "vendorId": 494,
+      "active": true,
+      "note": "AL JARHI UNITED CONTRACTING CO."
+    },
+    "الجود": {
+      "vendorId": 495,
+      "active": true,
+      "note": "AL-JOUD AL-MUTAMAIYZA GEN.TRAD.&CONT.CO."
+    },
+    "الكندية": {
+      "vendorId": 500,
+      "active": true,
+      "note": "The Regional Canadian Co. General Contracting For Buildings — CONFIRM"
+    },
+    "المثنى": {
+      "vendorId": 490,
+      "active": true,
+      "note": "AL MOTHANNA PLUS CO.GEN.TRAD.&CONT."
+    },
+    "المد الاخضر": {
+      "vendorId": 54,
+      "active": true,
+      "note": "AL-KHAT AL-AKHDAR GEN.TRADING & CONT.CO. — CONFIRM المد=الخط"
+    },
+    "الوفرة": {
+      "vendorId": 536,
+      "active": true,
+      "note": "WAFRA NATIONAL BUILDING CONSTRUCTION COMPANY — CONFIRM"
+    },
+    "اليمامة": {
+      "vendorId": 538,
+      "active": true,
+      "note": "AL YAMAMA AL KHALEEJIA GEN.TRAD.&CONT.CO."
+    },
+    "بحر الابداع": {
+      "vendorId": null,
+      "active": true,
+      "note": "7 duplicate rows (423/424/428/429/482/489/498) — pick canonical"
+    },
+    "بوبيان": {
+      "vendorId": null,
+      "active": true,
+      "note": "525 vs 530 United Boubyan duplicates — pick canonical"
+    },
+    "دالكو": {
+      "vendorId": null,
+      "active": true,
+      "note": "493 DALCO CO. vs 487 DALCO LIMITED — pick canonical"
+    },
+    "عبيد": {
+      "vendorId": null,
+      "active": true,
+      "note": "candidate 371 OBAID RAMADAN ALASWAD — CONFIRM"
+    },
+    "فتيح": {
+      "vendorId": null,
+      "active": true,
+      "note": "no vendor row found — create in Table Editor, put id here"
+    },
+    "كوبري": {
+      "vendorId": null,
+      "active": true,
+      "note": "self-performed — leave null; script uses copriSelfVendorName row"
+    },
+    "وايت بروجكت": {
+      "vendorId": null,
+      "active": true,
+      "note": "468 vs 488 WHITE PROJECT duplicates — pick canonical"
+    }
+  },
+  "aliases": {
+    "سلوى ق12 مدني": {
+      "matchTokens": [
+        "مدني سلوي ق 12",
+        "مدني سلوى ق12",
+        "مدني سلوي ق12"
+      ],
+      "kashefNo": 901,
+      "area": "سلوى",
+      "locType": "block",
+      "blockNo": "12",
+      "workType": "أعمال مدنية"
+    },
+    "سلوى ق12 اسفلت": {
+      "matchTokens": [
+        "اسفلت سلوي ق12",
+        "اسفلت سلوى ق12",
+        "اسفلت سلوي ق 12"
+      ],
+      "kashefNo": 902,
+      "area": "سلوى",
+      "locType": "block",
+      "blockNo": "12",
+      "workType": "أسفلت"
+    },
+    "سلوى ق12 صحي": {
+      "matchTokens": [
+        "صحي سلوي ق 12",
+        "صحي سلوى ق12",
+        "0-صحي"
+      ],
+      "kashefNo": 903,
+      "area": "سلوى",
+      "locType": "block",
+      "blockNo": "12",
+      "workType": "صحي"
+    },
+    "سلوى ق12 أمطار": {
+      "matchTokens": [
+        "سلوي ق 12 اممطار",
+        "سلوي ق 12 امطار"
+      ],
+      "kashefNo": 904,
+      "area": "سلوى",
+      "locType": "block",
+      "blockNo": "12",
+      "workType": "أمطار"
+    },
+    "الجاليات": {
+      "matchTokens": [
+        "الجاليات"
+      ],
+      "kashefNo": 905,
+      "area": "الجاليات",
+      "locType": "misc",
+      "blockNo": "",
+      "workType": ""
+    },
+    "متفرقات جديد": {
+      "matchTokens": [
+        "متفرقات جديد"
+      ],
+      "kashefNo": 906,
+      "area": "متفرقات",
+      "locType": "misc",
+      "blockNo": "",
+      "workType": "متفرقات"
+    }
+  }
+}

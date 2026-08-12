@@ -2,8 +2,40 @@
   "installCommand": "npm --prefix app ci",
   "buildCommand": "bash scripts/vercel-build.sh",
   "outputDirectory": "dist",
+  "redirects": [
+    { "source": "/dispatch", "destination": "/app/dispatch", "permanent": false },
+    {
+      "source": "/",
+      "has": [{ "type": "query", "key": "matRole", "value": "receiver" }],
+      "destination": "/app/capture",
+      "permanent": false
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "query", "key": "note", "value": "(?<note>.+)" }],
+      "destination": "/app/dispatch/note/:note",
+      "permanent": false
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "query", "key": "role", "value": "engineer" }],
+      "destination": "/app/dispatch/engineer",
+      "permanent": false
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "query", "key": "dash", "value": "project" }],
+      "destination": "/app/boards/home",
+      "permanent": false
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "query", "key": "dash", "value": "acct" }],
+      "destination": "/app/boards/home",
+      "permanent": false
+    }
+  ],
   "rewrites": [
-    { "source": "/dispatch", "destination": "/index.html" },
     { "source": "/app/:path*", "destination": "/app/index.html" }
   ]
 }

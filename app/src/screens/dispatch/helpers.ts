@@ -147,6 +147,55 @@ export async function dbCheckReceipt(note: string): Promise<{ alreadyReceived: b
   return { alreadyReceived: true, engineer: data[0].engineer || "", decision: data[0].decision || "", tsISO: data[0].ts }
 }
 
+// Kuwait calendar day (yyyy-mm-dd) of a timestamptz — the engineer home's
+// today-filter compares this against kwDayISO(0).
+export function kwDayOf(iso: string) {
+  try { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kuwait" }).format(new Date(iso)) }
+  catch { return "" }
+}
+
+/* ── Engineer home data (legacy dbEngineerData port) ──
+   Receipts signed by this engineer + loads dispatched TO them still in
+   transit, newest first; each receipt is joined to its dispatch row by note
+   so the card can show the load's own data. Today-filtering stays client-
+   side (Kuwait wall-clock), like every legacy list. */
+export type ReceiptRow = {
+  note: string; engineer: string; decision: string; weightArrival: string
+  tempArrival: string; remarks: string; tsISO: string
+}
+export type EngineerData = {
+  received: { receipt: ReceiptRow; dispatch: DispatchRow | null }[]
+  pending: DispatchRow[]
+}
+export async function dbEngineerData(name: string): Promise<EngineerData> {
+  const [rRes, pRes] = await Promise.all([
+    supabase.from("receipts").select("*")
+      .eq("engineer", name).order("ts", { ascending: false }).limit(200),
+    supabase.from("dispatch_loads").select("*")
+      .eq("notify_engineer", name).or("status.eq.في الطريق,status.eq.")
+      .order("ts", { ascending: false }).limit(200),
+  ])
+  if (rRes.error) throw rRes.error
+  if (pRes.error) throw pRes.error
+  const receipts: ReceiptRow[] = (rRes.data || []).map((r: any) => ({
+    note: String(r.note), engineer: r.engineer || "", decision: r.decision || "",
+    weightArrival: r.weight_arrival == null ? "" : String(r.weight_arrival),
+    tempArrival: r.temp_arrival == null ? "" : String(r.temp_arrival),
+    remarks: r.remarks || "", tsISO: r.ts || "",
+  }))
+  const pending = (pRes.data || []).map(dispatchRowToUI)
+
+  const byNote: Record<string, DispatchRow> = {}
+  const notes = receipts.map((r) => r.note).filter(Boolean)
+  if (notes.length) {
+    try {
+      const { data } = await supabase.from("dispatch_loads").select("*").in("note", notes)
+      ;(data || []).forEach((d: any) => { byNote[String(d.note)] = dispatchRowToUI(d) })
+    } catch { /* join is best-effort — cards degrade to receipt-only data */ }
+  }
+  return { received: receipts.map((r) => ({ receipt: r, dispatch: byNote[r.note] || null })), pending }
+}
+
 // Site identity for the daily load counter — MUST mirror dispatch_submit's
 // site_key (0032): متفرقات → 'MISC'; km-range → project|site (km values are
 // per-load data, not a site); else project|site|block|street (a named street

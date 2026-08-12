@@ -5,6 +5,8 @@
    relative here.
 
      /dispatch             clerk flow (PIN → company/project → form → print)
+     /dispatch/engineer    engineer home (legacy ?role=engineer — today's
+                           receipts + in-transit loads)
      /dispatch/note/:id    engineer receipt confirmation (one-time link)
      /dispatch/print-test  printer calibration — no PIN, no DB write */
 
@@ -12,6 +14,7 @@ import "./i18n"
 import { Route, Routes } from "react-router-dom"
 import { RefContext, useDispatchRefProvider } from "./reference"
 import ClerkFlow from "./ClerkFlow"
+import EngineerHome from "./EngineerHome"
 import ReceiptNote from "./ReceiptNote"
 import PrintTest from "./PrintTest"
 
@@ -23,6 +26,7 @@ export default function DispatchPortal() {
       <RefContext.Provider value={refValue}>
         <Routes>
           <Route index element={<ClerkFlow />} />
+          <Route path="engineer" element={<EngineerHome />} />
           <Route path="note/:id" element={<ReceiptNote />} />
           <Route path="print-test" element={<PrintTest />} />
         </Routes>

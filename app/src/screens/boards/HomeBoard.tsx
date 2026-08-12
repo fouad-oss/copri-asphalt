@@ -28,8 +28,8 @@ export default function HomeBoard() {
       <CardContent className="flex flex-col gap-2 px-4">
         <h2 className="text-base font-semibold">{t("title")}</h2>
         <p className="text-sm text-muted-foreground">{t("home.pick")}</p>
-        <Tile to="/boards/exec" name={t("home.exec")} desc={t("home.execDesc")} />
-        <Tile to="/boards/plant" name={t("home.plant")} desc={t("home.plantDesc")} />
+        {/* Phase 1 (legacy retirement): only the receival boards are routed —
+            the exec/plant tiles return when those boards migrate. */}
         {projects.map((pn) => (
           <Tile key={pn} to={`/boards/project/${encodeURIComponent(pn)}`} name={pn} desc={t("home.projectDesc")} />
         ))}

@@ -1804,7 +1804,7 @@ function renderRootLanding() {
 
   const btn = el("button", "btn-primary");
   btn.innerHTML = "🚛 بوابة إدخال الشحنات — كتبة المصنع";
-  btn.addEventListener("click", () => { window.location.href = "/dispatch"; });
+  btn.addEventListener("click", () => { window.location.href = "/app/dispatch"; });
   card.appendChild(btn);
 
   main.appendChild(card);
@@ -1823,7 +1823,7 @@ function renderShelved() {
   card.appendChild(info);
   const btn = el("button", "btn-primary");
   btn.innerHTML = "🚛 بوابة إدخال الشحنات — كتبة المصنع";
-  btn.addEventListener("click", () => { window.location.href = "/dispatch"; });
+  btn.addEventListener("click", () => { window.location.href = "/app/dispatch"; });
   card.appendChild(btn);
   main.appendChild(card);
 }
@@ -8829,11 +8829,19 @@ const matRole       = _mparams.get("matRole");
 const note = getNoteFromURL();
 
 // ── SHELVED ROUTES (accounting pivot 2026-07, tag `full-build-2026-07`).
-// Milling portals, the WO-reference portal and the exec/project/acct
-// boards are parked: module code is untouched below, only these dispatch
-// branches were re-pointed at renderShelved(). The plant-manager and
-// finance portals stay live (Fouad, step-1 review). To un-shelve a
-// portal, restore its branch from the tag.
+// Milling portals, the WO-reference portal and the exec board are parked:
+// module code is untouched below, only these dispatch branches were
+// re-pointed at renderShelved(). The plant-manager and finance portals
+// stay live (Fouad, step-1 review). To un-shelve a portal, restore its
+// branch from the tag.
+// ── RETIRED ROUTES (legacy retirement phase 1, 2026-08-12): the clerk
+// dispatch (/dispatch), engineer receival (?role=engineer, ?note=), the
+// materials capture (?matRole=receiver) and the project/acct receival
+// boards now live in the React app under /app/. vercel.json hard-redirects
+// their URLs at the edge; the location.replace() calls below are the
+// belt-and-braces guard for STALE CACHED copies of this page — no legacy
+// code path may create delivery notes after cutover (one writer, one
+// sequence). Module code below is untouched (code-preserved policy).
 if (millingReport || millingRole) {
   renderShelved();                                        // milling module — shelved
 } else if (_mparams.get("plantRole") === "manager") {
@@ -8852,33 +8860,30 @@ if (millingReport || millingRole) {
   renderShelved();  // SN data page moved to the React app: /app/sn?token=…
 } else if (_mparams.has("dash")) {
   // Kept: board picker (Fouad's desk selection; PIN gate waits for the auth
-  // phase) + plant board. Other boards are shelved with the pivot.
+  // phase) + plant board. Exec stays shelved; the project/acct receival
+  // boards RETIRED to the React boards portal (phase 1).
   const dv = _mparams.get("dash");
-  if (["exec", "project", "acct"].includes(dv)) renderShelved();
+  if (dv === "project" || dv === "acct") location.replace("/app/boards/home");
+  else if (dv === "exec") renderShelved();
   else renderDashboard(dv === "plant" ? "plant" : null, null);
 } else if (_mparams.has("rf")) {
   const pipeSession = getPipeSession();
   if (pipeSession) renderPipeHome(pipeSession);
   else renderPipePINScreen(u => renderPipeHome(u));
 } else if (matRole === "receiver") {
-  const matSession = getMatSession();
-  if (matSession) renderMaterialReceiverHome(matSession.name);
-  else renderMaterialPINScreen(name => renderMaterialReceiverHome(name));
+  location.replace("/app/capture");                       // RETIRED → React capture portal
 } else if (note) {
-  const session = getEngineerSession();
-  if (session) renderReceipt(note, session.name);
-  else renderPINScreen(name => renderReceipt(note, name));
+  // RETIRED → React receipt page. Old printed QR links (/?note=N) keep
+  // working — the note number rides the path.
+  location.replace("/app/dispatch/note/" + encodeURIComponent(note));
 } else {
   const isEngineerRole = _mparams.get("role") === "engineer";
   if (isEngineerRole) {
-    const session = getEngineerSession();
-    if (session) renderEngineerHome(session.name);
-    else renderPINScreen(name => renderEngineerHome(name));
-  } else if (window.location.pathname.startsWith("/dispatch") || window.location.protocol === "file:") {
-    // Dispatch moved off the root (2026-07-13) — the plain URL is reserved for a future page.
-    const clerkSession = getClerkSession();
-    if (clerkSession) renderCompanySelect();
-    else renderClerkPINScreen(renderCompanySelect);
+    location.replace("/app/dispatch/engineer");           // RETIRED → React engineer home
+  } else if (window.location.pathname.startsWith("/dispatch")) {
+    // RETIRED → React clerk dispatch. The serial has ONE writer now —
+    // dispatch_submit called from /app/dispatch only.
+    location.replace("/app/dispatch");
   } else {
     renderRootLanding();
   }

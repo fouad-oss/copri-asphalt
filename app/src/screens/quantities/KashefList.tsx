@@ -94,6 +94,7 @@ export function KashefList() {
                     {t("list.kashefNo")} <RefCode>{k.woNo || String(k.kashefNo)}</RefCode>
                   </span>
                   <Badge variant="outline">{t(`loc.${k.locType}`)}</Badge>
+                  {k.closed && <Badge variant="secondary">{t("status.closed")}</Badge>}
                   <span className="text-sm text-muted-foreground">{locationLabel(k, t)}</span>
                   {k.workType && <span className="text-xs text-muted-foreground">· {k.workType}</span>}
                   {k.durationDays != null && (

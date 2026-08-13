@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Spinner } from "@/components/ui/spinner"
 import logoInk from "@/assets/brand/copri-logo-ink.png"
+import { Dashboard } from "./Dashboard"
 import { KashefList } from "./KashefList"
 import { KashefDetail } from "./KashefDetail"
 import { KashefNew } from "./KashefNew"
@@ -79,7 +80,8 @@ function LoginCard() {
 function Shell({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation("quantities")
   const tabs = [
-    { to: "/quantities", end: true, label: t("nav.kashefs") },
+    { to: "/quantities", end: true, label: t("nav.home") },
+    { to: "/quantities/list", end: false, label: t("nav.kashefs") },
     { to: "/quantities/tadqiq", end: false, label: t("nav.tadqiq") },
     { to: "/quantities/new", end: false, label: t("nav.newKashef") },
   ]
@@ -139,7 +141,8 @@ export default function QuantitiesPortal() {
   return (
     <Shell>
       <Routes>
-        <Route index element={<KashefList />} />
+        <Route index element={<Dashboard />} />
+        <Route path="list" element={<KashefList />} />
         <Route path="kashef/:id" element={<KashefDetail />} />
         <Route path="new" element={<KashefNew />} />
         <Route path="tadqiq" element={<TadqiqScreen />} />

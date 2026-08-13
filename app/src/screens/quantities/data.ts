@@ -37,6 +37,8 @@ export interface KashefOverview {
   executedValue: number
   tadqiqCount: number
   durationDays: number | null
+  closed: boolean
+  contractValue: number | null
 }
 
 export interface LineStatus {
@@ -180,7 +182,65 @@ function mapOverview(r: any): KashefOverview {
     allocatedValue: Number(r.allocated_value), executedValue: Number(r.executed_value),
     tadqiqCount: r.tadqiq_count,
     durationDays: r.duration_days ?? null,
+    closed: !!r.closed,
+    contractValue: r.contract_value != null ? Number(r.contract_value) : null,
   }
+}
+
+// ── Dashboard reads (0039 views) ─────────────────────────────────────
+
+export interface SubTotal {
+  vendorId: number
+  vendorName: string
+  allocatedValue: number   // pre-pct KD
+  executedValue: number    // pre-pct KD
+  lastTadqiqDate: string | null  // latest non-opening tadqiq
+  tadqiqCount: number
+  allocatedWos: number
+}
+
+export async function subTotals(): Promise<SubTotal[]> {
+  const { data, error } = await supabase.from("qm_sub_totals").select("*")
+  if (error) throw error
+  return (data ?? []).map((r: any) => ({
+    vendorId: r.vendor_id, vendorName: r.vendor_name,
+    allocatedValue: Number(r.allocated_value), executedValue: Number(r.executed_value),
+    lastTadqiqDate: r.last_tadqiq_date ?? null, tadqiqCount: r.tadqiq_count,
+    allocatedWos: r.allocated_wos,
+  }))
+}
+
+export interface MonthlyExec {
+  month: string        // first of month, ISO
+  opening: boolean
+  execValue: number    // pre-pct KD
+  tadqiqCount: number
+}
+
+export async function monthlyExec(): Promise<MonthlyExec[]> {
+  const { data, error } = await supabase
+    .from("qm_monthly_exec").select("*").order("month")
+  if (error) throw error
+  return (data ?? []).map((r: any) => ({
+    month: r.month, opening: !!r.opening,
+    execValue: Number(r.exec_value), tadqiqCount: r.tadqiq_count,
+  }))
+}
+
+export interface WoFlags {
+  kashefId: number
+  overAllocLines: number
+  execOverAllocLines: number
+  outOfWoLines: number
+}
+
+export async function woFlags(): Promise<WoFlags[]> {
+  const { data, error } = await supabase.from("qm_wo_flags").select("*")
+  if (error) throw error
+  return (data ?? []).map((r: any) => ({
+    kashefId: r.kashef_id, overAllocLines: r.over_alloc_lines,
+    execOverAllocLines: r.exec_over_alloc_lines, outOfWoLines: r.out_of_wo_lines,
+  }))
 }
 
 export async function lineStatus(kashefId: number): Promise<LineStatus[]> {
@@ -291,6 +351,10 @@ export function kashefCreate(k: KashefCreateInput) {
 
 export function kashefUpdate(id: number, fields: Record<string, string>) {
   return call("qm_kashef_update", { p_kashef_id: id, p_fields: fields })
+}
+
+export function kashefSetClosed(id: number, closed: boolean) {
+  return kashefUpdate(id, { closed: String(closed) })
 }
 
 export function kashefApprove(id: number, woNo: string, woDate: string | null) {

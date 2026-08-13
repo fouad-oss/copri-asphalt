@@ -23,7 +23,7 @@ import { kd, qty as fq, fmtKWDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import {
   allocSet, bopItems, changelog, contractInfo, itemRef, kashefDelete,
-  kashefLineSet, kashefOne, kashefUpdate, lineStatus, subcontractors, subLineStatus,
+  kashefLineSet, kashefOne, kashefSetClosed, kashefUpdate, lineStatus, subcontractors, subLineStatus,
   tadqiqList, type BopItem, type ChangelogRow, type ContractInfo, type KashefOverview,
   type LineStatus, type SubLineStatus, type Subcontractor, type TadqiqRow,
 } from "./data"
@@ -402,7 +402,7 @@ export function KashefDetail() {
   if (data === null) {
     return (
       <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-        {t("detail.notFound")} · <Link className="underline" to="/quantities">{t("detail.back")}</Link>
+        {t("detail.notFound")} · <Link className="underline" to="/quantities/list">{t("detail.back")}</Link>
       </div>
     )
   }
@@ -436,11 +436,21 @@ export function KashefDetail() {
     }
   }
 
+  async function toggleClosed() {
+    try {
+      await kashefSetClosed(k.id, !k.closed)
+      toast.success(t("detail.saved"))
+      refresh()
+    } catch (e: any) {
+      toast.error(e?.message || t("app.loadError"))
+    }
+  }
+
   async function removeKashef() {
     if (!window.confirm(t("detail.deleteConfirm"))) return
     try {
       await kashefDelete(k.id)
-      nav("/quantities")
+      nav("/quantities/list")
     } catch (e: any) {
       toast.error(e?.message || t("app.loadError"))
     }
@@ -474,6 +484,7 @@ export function KashefDetail() {
             {t("list.kashefNo")} <RefCode>{k.woNo || String(k.kashefNo)}</RefCode>
           </h1>
           <Badge variant="outline">{t(`loc.${k.locType}`)}</Badge>
+          {k.closed && <Badge variant="secondary">{t("status.closed")}</Badge>}
           <div className="ms-auto flex flex-wrap items-center gap-2">
             <EditDialog k={k} onDone={refresh} />
             {printableSubs.length > 0 ? (
@@ -517,9 +528,14 @@ export function KashefDetail() {
             <span className="text-muted-foreground">{t("detail.afterPct")} (<bdi dir="ltr">+{k.pct.toFixed(2)}%</bdi>): </span>
             <span className="font-mono font-semibold tabular-nums" dir="ltr">{kd(k.totalAfterPct)}</span>
           </div>
-          <Button size="sm" variant="ghost" className="ms-auto text-danger hover:text-danger" onClick={() => void removeKashef()}>
-            <Trash2 className="size-3.5" /> {t("detail.delete")}
-          </Button>
+          <span className="ms-auto flex items-center gap-1">
+            <Button size="sm" variant="outline" onClick={() => void toggleClosed()}>
+              {k.closed ? t("detail.reopen") : t("detail.markClosed")}
+            </Button>
+            <Button size="sm" variant="ghost" className="text-danger hover:text-danger" onClick={() => void removeKashef()}>
+              <Trash2 className="size-3.5" /> {t("detail.delete")}
+            </Button>
+          </span>
         </div>
       </div>
 

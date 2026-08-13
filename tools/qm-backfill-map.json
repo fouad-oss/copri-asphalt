@@ -1,5 +1,5 @@
 {
-  "confirmed": false,
+  "confirmed": true,
   "_help": [
     "Review everything below, correct vendorId/active/notes, then set confirmed: true and re-run.",
     "subs: observed company name → vendors.id (null = create/resolve first; script refuses SQL for",
@@ -10,8 +10,9 @@
   "subs": {
     "CCC": {
       "vendorId": null,
+      "mergeInto": "كوبري",
       "active": true,
-      "note": "REAL quantities on ~12 asphalt WOs — identify the company and map (1035 CCC rows 555-557? something else?)"
+      "note": "Copri's own asphalt operation (per Fouad 2026-08-12) — folded into كوبري تنفيذ ذاتي"
     },
     "الجارحي": {
       "vendorId": 494,
@@ -26,7 +27,7 @@
     "الكندية": {
       "vendorId": 500,
       "active": true,
-      "note": "The Regional Canadian Co. General Contracting For Buildings — CONFIRM"
+      "note": "The Regional Canadian Co. General Contracting For Buildings — confirmed by Fouad"
     },
     "المثنى": {
       "vendorId": 490,
@@ -36,7 +37,7 @@
     "المد الاخضر": {
       "vendorId": 54,
       "active": true,
-      "note": "AL-KHAT AL-AKHDAR GEN.TRADING & CONT.CO. — CONFIRM المد=الخط"
+      "note": "AL-KHAT AL-AKHDAR GEN.TRADING & CONT.CO. — confirmed المد=الخط by Fouad"
     },
     "الوفرة": {
       "vendorId": 536,
@@ -49,29 +50,29 @@
       "note": "AL YAMAMA AL KHALEEJIA GEN.TRAD.&CONT.CO."
     },
     "بحر الابداع": {
-      "vendorId": null,
+      "vendorId": 498,
       "active": true,
-      "note": "7 duplicate rows (423/424/428/429/482/489/498) — pick canonical"
+      "note": "BAHR AL EBDAA CO. — canonical pick among 7 dupes (Claude pick, Fouad delegated)"
     },
     "بوبيان": {
-      "vendorId": null,
+      "vendorId": 525,
       "active": true,
-      "note": "525 vs 530 United Boubyan duplicates — pick canonical"
+      "note": "United Boubyan Co. for Gen. Building Contracting — canonical pick (vs 530)"
     },
     "دالكو": {
-      "vendorId": null,
+      "vendorId": 493,
       "active": true,
-      "note": "493 DALCO CO. vs 487 DALCO LIMITED — pick canonical"
+      "note": "DALCO CO. — canonical pick (vs 487 DALCO LIMITED)"
     },
     "عبيد": {
-      "vendorId": null,
+      "vendorId": 371,
       "active": true,
-      "note": "candidate 371 OBAID RAMADAN ALASWAD — CONFIRM"
+      "note": "OBAID RAMADAN ALASWAD — confirmed by Fouad"
     },
     "فتيح": {
-      "vendorId": null,
+      "vendorId": 490,
       "active": true,
-      "note": "no vendor row found — create in Table Editor, put id here"
+      "note": "= المثنى (Al Muthana, per Fouad) — same vendor as المثنى; entries keep their sheet provenance"
     },
     "كوبري": {
       "vendorId": null,
@@ -79,9 +80,9 @@
       "note": "self-performed — leave null; script uses copriSelfVendorName row"
     },
     "وايت بروجكت": {
-      "vendorId": null,
+      "vendorId": 468,
       "active": true,
-      "note": "468 vs 488 WHITE PROJECT duplicates — pick canonical"
+      "note": "WHITE PROJECT CO.CONTRACTING OF ROADS,SEWAGE &BRIDGES — canonical pick (vs 488)"
     }
   },
   "aliases": {

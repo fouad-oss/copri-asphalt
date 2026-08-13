@@ -406,7 +406,9 @@ def parse_location(reg):
     desc = reg["desc"]
     area = reg["area"] if reg["area"] not in ("متفرقات", "اخرى", "أخرى") else ""
     work = {"مدني": "أعمال مدنية", "اسفلت": "أسفلت", "صحي": "صحي", "متفرقات": "متفرقات"}.get(reg["type"], reg["type"])
-    m = re.search(r"قطعة\s*\(?\s*(\d+\w*)\s*\)?|ق\s*(\d+)", desc)
+    # letter-boundary guard: bare 'ق N' must not match the ق inside نطاق etc.
+    # قطع[ةه] tolerates the ta-marbuta/ha spelling variants in the register.
+    m = re.search(r"قطع[ةه]\s*\(?\s*(\d+\w*)\s*\)?|(?<![ء-ي])ق\s*(\d+)", desc)
     if m:
         return (area or desc.split("قطعة")[0].strip(), "block", m.group(1) or m.group(2), "", work)
     m = re.search(r"(شارع\s+\S.*?)(?:\(|$)", desc)
@@ -458,7 +460,8 @@ VENDOR_PROPOSALS = {
     "دالكو": {"vendorId": None, "note": "493 DALCO CO. vs 487 DALCO LIMITED — pick canonical"},
     "الجود": {"vendorId": 495, "note": "AL-JOUD AL-MUTAMAIYZA GEN.TRAD.&CONT.CO."},
     "دانة الرتاج": {"vendorId": None, "note": "not searched — fill if it shows up with quantities"},
-    "CCC": {"vendorId": None, "note": "REAL quantities on ~12 asphalt WOs — identify the company and map (1035 CCC rows 555-557? something else?)"},
+    "CCC": {"vendorId": None, "mergeInto": "كوبري",
+            "note": "Copri's own asphalt operation (per Fouad 2026-08-12) — folded into كوبري تنفيذ ذاتي"},
     "كوبري": {"vendorId": None, "note": "self-performed — leave null; script uses copriSelfVendorName row"},
 }
 
@@ -567,10 +570,22 @@ def main():
         # per-company executed
         comps = pay.get(wk, {})
         by_sub = {}
+        merges = {}   # target company → {line: qty} merged from mergeInto companies
         for comp, c in comps.items():
             if comp.startswith("_"):
                 continue
             sub_cfg = cfg["subs"].get(comp, {})
+            target = sub_cfg.get("mergeInto")
+            if target:
+                # e.g. CCC = Copri's own asphalt operation → part of كوبري.
+                # Under residual mode the target's residual absorbs it anyway;
+                # the merge matters only when residual doesn't run.
+                src = c["cum"] if c["cum"] else c["plainSum"]
+                tgt = merges.setdefault(target, {})
+                for key, q in (src or {}).items():
+                    if key in bop and q > 0.0005:
+                        tgt[key] = tgt.get(key, 0) + q
+                continue
             if sub_cfg.get("active") is False:
                 if c["cum"] or c["plainSum"]:
                     tot = sum((c["cum"] or c["plainSum"]).values())
@@ -591,6 +606,14 @@ def main():
             if entries:
                 by_sub[comp] = {"lines": entries, "date": date,
                                 "source": "قديم+جديد" if c["cum"] else f"Σ {c['plainMonths']} monthly sheets"}
+
+        # apply merges (CCC → كوبري): matters when the residual doesn't run
+        for target, lines_m in merges.items():
+            if not lines_m:
+                continue
+            t = by_sub.setdefault(target, {"lines": {}, "date": None, "source": "incl. merged"})
+            for key, q in lines_m.items():
+                t["lines"][key] = round(t["lines"].get(key, 0) + q, 3)
 
         # كوبري residual mode: the ministry مجموع per line is ground truth
         # (the QA reconciles it with the ministry to the fils). كوبري's own
@@ -636,17 +659,30 @@ def main():
     # كوبري keeps its sheet sums; every tadqiq line will be out_of_kashef)
     def pay_subs(wk):
         out = {}
+        merges = {}
         for comp, c in pay.get(wk, {}).items():
             if comp.startswith("_"):
                 continue
-            if cfg["subs"].get(comp, {}).get("active", True) is False:
-                continue
+            sub_cfg = cfg["subs"].get(comp, {})
             src = c["cum"] if c["cum"] else c["plainSum"]
             entries = {k: round(q, 3) for k, q in (src or {}).items() if k in bop and q > 0.0005}
-            if entries:
-                out[comp] = {"lines": entries,
-                             "date": c["cumDate"].isoformat() if c["cumDate"] else c.get("lastPlainDate"),
-                             "source": ("قديم+جديد" if c["cum"] else f"Σ {c['plainMonths']} monthly sheets") + " — NO كشف حساب"}
+            if not entries:
+                continue
+            target = sub_cfg.get("mergeInto")
+            if target:
+                tgt = merges.setdefault(target, {})
+                for k, q in entries.items():
+                    tgt[k] = round(tgt.get(k, 0) + q, 3)
+                continue
+            if sub_cfg.get("active", True) is False:
+                continue
+            out[comp] = {"lines": entries,
+                         "date": c["cumDate"].isoformat() if c["cumDate"] else c.get("lastPlainDate"),
+                         "source": ("قديم+جديد" if c["cum"] else f"Σ {c['plainMonths']} monthly sheets") + " — NO كشف حساب"}
+        for target, lines_m in merges.items():
+            t = out.setdefault(target, {"lines": {}, "date": None, "source": "incl. merged — NO كشف حساب"})
+            for k, q in lines_m.items():
+                t["lines"][k] = round(t["lines"].get(k, 0) + q, 3)
         return out
 
     # register WOs with no hesab → header-only (+ any per-sub payment data)
@@ -754,7 +790,7 @@ def emit_sql(dataset, cfg):
     S.append("  if v_contract is null then raise exception 'run 0033 first'; end if;")
     S.append(f"  select id into v_copri from vendors where name = '{esc(cfg['copriSelfVendorName'])}';")
     S.append("  if v_copri is null then")
-    S.append(f"    insert into vendors (name) values ('{esc(cfg['copriSelfVendorName'])}') returning id into v_copri;")
+    S.append(f"    insert into vendors (name, kind, internal, notes) values ('{esc(cfg['copriSelfVendorName'])}', 'internal', true, 'quantities module — COPRI self-performed works (backfill)') returning id into v_copri;")
     S.append("  end if;")
     S.append("  update vendors set qm_subcontractor = true where id = v_copri and not qm_subcontractor;")
     vids = sorted({s["vendorId"] for c, s in cfg["subs"].items()

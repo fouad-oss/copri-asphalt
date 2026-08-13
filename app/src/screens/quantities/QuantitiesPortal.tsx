@@ -21,6 +21,9 @@ import { Spinner } from "@/components/ui/spinner"
 import logoInk from "@/assets/brand/copri-logo-ink.png"
 import { Dashboard } from "./Dashboard"
 import { KashefList } from "./KashefList"
+import { PayCerts } from "./PayCerts"
+import { PayCertNew } from "./PayCertNew"
+import { PayCertDetail } from "./PayCertDetail"
 import { KashefDetail } from "./KashefDetail"
 import { KashefNew } from "./KashefNew"
 import { TadqiqScreen } from "./TadqiqScreen"
@@ -82,6 +85,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   const tabs = [
     { to: "/quantities", end: true, label: t("nav.home") },
     { to: "/quantities/list", end: false, label: t("nav.kashefs") },
+    { to: "/quantities/paycerts", end: false, label: t("nav.paycerts") },
     { to: "/quantities/tadqiq", end: false, label: t("nav.tadqiq") },
     { to: "/quantities/new", end: false, label: t("nav.newKashef") },
   ]
@@ -144,6 +148,9 @@ export default function QuantitiesPortal() {
         <Route index element={<Dashboard />} />
         <Route path="list" element={<KashefList />} />
         <Route path="kashef/:id" element={<KashefDetail />} />
+        <Route path="paycerts" element={<PayCerts />} />
+        <Route path="paycerts/new" element={<PayCertNew />} />
+        <Route path="paycerts/:id" element={<PayCertDetail />} />
         <Route path="new" element={<KashefNew />} />
         <Route path="tadqiq" element={<TadqiqScreen />} />
         <Route path="*" element={<Navigate to="/quantities" replace />} />

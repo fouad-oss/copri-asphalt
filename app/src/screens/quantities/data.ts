@@ -309,6 +309,100 @@ export async function changelog(kashefId: number): Promise<ChangelogRow[]> {
   }))
 }
 
+// ── Payment certificates (0040) ──────────────────────────────────────
+
+export interface PayCertOverview {
+  id: number
+  pct: number
+  certNo: number
+  periodEnd: string | null
+  source: "mpw" | "site"
+  status: "draft" | "submitted" | "certified"
+  note: string
+  createdAt: string
+  lineCount: number
+  woCount: number
+  subtotal: number        // pre-pct
+  totalAfterPct: number
+}
+
+function mapPayCert(r: any): PayCertOverview {
+  return {
+    id: r.id, pct: Number(r.pct), certNo: r.cert_no, periodEnd: r.period_end ?? null,
+    source: r.source, status: r.status, note: r.note, createdAt: r.created_at,
+    lineCount: r.line_count, woCount: r.wo_count,
+    subtotal: Number(r.subtotal), totalAfterPct: Number(r.total_after_pct),
+  }
+}
+
+export async function paycertList(): Promise<PayCertOverview[]> {
+  const { data, error } = await supabase
+    .from("qm_paycert_overview").select("*").order("cert_no", { ascending: false })
+  if (error) throw error
+  return (data ?? []).map(mapPayCert)
+}
+
+export async function paycertOne(id: number): Promise<PayCertOverview | null> {
+  const { data, error } = await supabase
+    .from("qm_paycert_overview").select("*").eq("id", id).maybeSingle()
+  if (error) throw error
+  return data ? mapPayCert(data) : null
+}
+
+export interface PayCertLine {
+  id: number
+  certId: number
+  kashefId: number | null
+  kashefNo: number | null
+  woNo: string
+  area: string
+  bopItemId: number
+  bab: number
+  band: number
+  suffix: string | null
+  description: string
+  unit: string
+  rate: number
+  qty: number
+  amount: number
+}
+
+export async function paycertLines(certId: number): Promise<PayCertLine[]> {
+  const { data, error } = await supabase
+    .from("qm_paycert_lines_v").select("*").eq("cert_id", certId)
+    .order("kashef_no").order("bab").order("band")
+  if (error) throw error
+  return (data ?? []).map((r: any) => ({
+    id: r.id, certId: r.cert_id, kashefId: r.kashef_id ?? null,
+    kashefNo: r.kashef_no ?? null, woNo: r.wo_no ?? "", area: r.area ?? "",
+    bopItemId: r.bop_item_id, bab: r.bab, band: r.band, suffix: r.suffix,
+    description: r.description, unit: r.unit, rate: Number(r.rate),
+    qty: Number(r.qty), amount: Number(r.amount ?? 0),
+  }))
+}
+
+export interface QtyByWoItem {
+  kashefId: number
+  bopItemId: number
+  qty: number
+}
+
+export async function certifiedTotals(): Promise<QtyByWoItem[]> {
+  const { data, error } = await supabase.from("qm_certified_totals").select("*")
+  if (error) throw error
+  return (data ?? []).map((r: any) => ({
+    kashefId: r.kashef_id, bopItemId: r.bop_item_id, qty: Number(r.qty_certified),
+  }))
+}
+
+export async function execTotals(): Promise<QtyByWoItem[]> {
+  const { data, error } = await supabase.from("qm_exec_totals").select("*")
+  if (error) throw error
+  return (data ?? []).map((r: any) => ({
+    kashefId: r.kashef_id, bopItemId: r.bop_item_id, qty: Number(r.qty_executed),
+  }))
+}
+
 // ── Writes (RPC envelope) ────────────────────────────────────────────
 
 async function call(fn: string, args: Record<string, unknown>) {
@@ -399,4 +493,39 @@ export function tadqiqDelete(id: number) {
 
 export function kashefDelete(id: number) {
   return call("qm_kashef_delete", { p_kashef_id: id })
+}
+
+export interface PayCertCreateInput {
+  certNo: number
+  periodEnd: string | null
+  source: "mpw" | "site"
+  note: string
+  lines: { kashefId: number | null; bopItemId: number; qty: number }[]
+}
+
+export function paycertCreate(c: PayCertCreateInput) {
+  return call("qm_paycert_create", {
+    p_contract_code: CONTRACT_CODE,
+    p_cert_no: c.certNo,
+    p_period_end: c.periodEnd,
+    p_source: c.source,
+    p_note: c.note,
+    p_lines: c.lines.map((l) => ({
+      kashef_id: l.kashefId, bop_item_id: l.bopItemId, qty: l.qty,
+    })),
+  })
+}
+
+export function paycertUpdate(id: number, fields: Record<string, string>) {
+  return call("qm_paycert_update", { p_cert_id: id, p_fields: fields })
+}
+
+export function paycertLineSet(certId: number, kashefId: number | null, bopItemId: number, qty: number | null) {
+  return call("qm_paycert_line_set", {
+    p_cert_id: certId, p_kashef_id: kashefId, p_bop_item_id: bopItemId, p_qty: qty,
+  })
+}
+
+export function paycertDelete(id: number) {
+  return call("qm_paycert_delete", { p_cert_id: id })
 }

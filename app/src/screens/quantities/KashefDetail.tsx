@@ -517,11 +517,9 @@ export function KashefDetail() {
             <span className="text-muted-foreground">{t("detail.afterPct")} (<bdi dir="ltr">+{k.pct.toFixed(2)}%</bdi>): </span>
             <span className="font-mono font-semibold tabular-nums" dir="ltr">{kd(k.totalAfterPct)}</span>
           </div>
-          {k.tadqiqCount === 0 && (
-            <Button size="sm" variant="ghost" className="ms-auto text-danger hover:text-danger" onClick={() => void removeKashef()}>
-              <Trash2 className="size-3.5" /> {t("detail.delete")}
-            </Button>
-          )}
+          <Button size="sm" variant="ghost" className="ms-auto text-danger hover:text-danger" onClick={() => void removeKashef()}>
+            <Trash2 className="size-3.5" /> {t("detail.delete")}
+          </Button>
         </div>
       </div>
 

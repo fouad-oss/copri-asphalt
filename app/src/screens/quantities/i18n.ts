@@ -60,7 +60,7 @@ const AR = {
     subtotal: "الإجمالي العام حسب جدول الأسعار",
     afterPct: "الإجمالي بعد نسبة العقد",
     delete: "حذف أمر العمل",
-    deleteConfirm: "حذف أمر العمل نهائياً؟ لا يمكن الحذف بعد تسجيل طلبات تدقيق.",
+    deleteConfirm: "حذف أمر العمل نهائياً مع كل بنوده وتوزيعاته وطلبات التدقيق المسجلة عليه؟ يبقى ملخص الحذف في سجل التغييرات.",
     col: {
       ref: "باب/بند",
       desc: "بيان الأعمال",
@@ -246,7 +246,7 @@ const EN = {
     subtotal: "Subtotal per BOP",
     afterPct: "Total after contract %",
     delete: "Delete work order",
-    deleteConfirm: "Delete this work order permanently? Deletion is blocked once tadqiq entries exist.",
+    deleteConfirm: "Permanently delete this work order with all its lines, allocations and recorded tadqiq requests? A deletion summary stays in the changelog.",
     col: {
       ref: "Bab/Band",
       desc: "Description",

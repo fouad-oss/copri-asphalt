@@ -2,7 +2,7 @@
 -- Historical backfill: work orders + lines + allocations + opening tadqiq entries.
 -- Direct-WO model per 0035 (paste 0035 FIRST — this file uses duration_days).
 -- Idempotent: each WO block is skipped when (contract, kashef_no) already exists.
-do $$
+do $qmbf$
 declare
   v_contract bigint;
   v_copri bigint;
@@ -21438,4 +21438,4 @@ begin
     if v_item is null then raise exception 'bop 22/280 missing'; end if;
     insert into qm_kashef_lines (kashef_id, bop_item_id, qty) values (v_k, v_item, 25);
   end if;
-end $$;
+end $qmbf$;

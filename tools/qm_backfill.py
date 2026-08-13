@@ -785,7 +785,9 @@ def emit_sql(dataset, cfg):
     S.append("-- Historical backfill: work orders + lines + allocations + opening tadqiq entries.")
     S.append("-- Direct-WO model per 0035 (paste 0035 FIRST — this file uses duration_days).")
     S.append("-- Idempotent: each WO block is skipped when (contract, kashef_no) already exists.")
-    S.append("do $$")
+    # named dollar-quote tag: the dashboard's statement splitter mis-splits
+    # anonymous $$ in very long pastes (seen on 0035, 2026-08-13)
+    S.append("do $qmbf$")
     S.append("declare")
     S.append("  v_contract bigint;")
     S.append("  v_copri bigint;")
@@ -871,7 +873,7 @@ def emit_sql(dataset, cfg):
                 f"'{len(sub['linesRaw'])} بند (رصيد افتتاحي)', 'backfill');"
             )
         S.append("  end if;")
-    S.append("end $$;")
+    S.append("end $qmbf$;")
     out = os.path.join(OUT_DIR, "0036_qm_backfill.sql")
     open(out, "w", encoding="utf-8").write("\n".join(S))
     print(f"SQL → {out}")

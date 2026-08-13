@@ -70,7 +70,7 @@ create or replace function qm_kashef_create(
   p_kashef_date date default null,
   p_status text default 'wo', p_wo_no text default '', p_wo_date date default null,
   p_duration_days int default null
-) returns json language plpgsql security definer set search_path = public as $$
+) returns json language plpgsql security definer set search_path = public as $qm$
 declare
   v_contract qm_contracts;
   v_id bigint;
@@ -130,11 +130,11 @@ begin
   return json_build_object('success', true, 'id', v_id, 'lines', v_count);
 exception when unique_violation then
   return json_build_object('success', false, 'error', 'kashef_no already exists');
-end $$;
+end $qm$;
 
 -- ── 4. qm_kashef_update: +duration_days, WO fields editable always ───
 create or replace function qm_kashef_update(p_kashef_id bigint, p_fields jsonb)
-returns json language plpgsql security definer set search_path = public as $$
+returns json language plpgsql security definer set search_path = public as $qm$
 declare
   v_k qm_kashefs;
   v_key text;
@@ -182,11 +182,11 @@ exception when unique_violation then
   return json_build_object('success', false, 'error', 'kashef_no already exists');
 when others then
   return json_build_object('success', false, 'error', SQLERRM);
-end $$;
+end $qm$;
 
 -- ── 5. qm_kashef_line_set: line removal cascades allocations ─────────
 create or replace function qm_kashef_line_set(p_kashef_id bigint, p_bop_item_id bigint, p_qty numeric)
-returns json language plpgsql security definer set search_path = public as $$
+returns json language plpgsql security definer set search_path = public as $qm$
 declare
   v_k qm_kashefs;
   v_line qm_kashef_lines;
@@ -231,7 +231,7 @@ begin
   select coalesce(sum(qty),0) into v_alloc from qm_allocations where kashef_line_id = v_line.id;
   return json_build_object('success', true, 'lineId', v_line.id,
     'warnOverAllocated', v_alloc > p_qty, 'allocated', v_alloc);
-end $$;
+end $qm$;
 
 -- ── 6. qm_tadqiq_create: +p_serial (old overload DROPPED) ────────────
 drop function if exists qm_tadqiq_create(bigint,bigint,date,text,text,jsonb,boolean);
@@ -240,7 +240,7 @@ create or replace function qm_tadqiq_create(
   p_kashef_id bigint, p_vendor_id bigint, p_date date,
   p_street_no text, p_note text, p_lines jsonb,
   p_opening boolean default false, p_serial text default ''
-) returns json language plpgsql security definer set search_path = public as $$
+) returns json language plpgsql security definer set search_path = public as $qm$
 declare
   v_k qm_kashefs;
   v_vendor_name text;
@@ -324,10 +324,10 @@ begin
                  case when coalesce(p_serial,'') <> '' then ' — ' || p_serial else '' end,
                  '', v_count || ' بند' || case when coalesce(p_opening,false) then ' (رصيد افتتاحي)' else '' end);
   return json_build_object('success', true, 'id', v_id, 'lines', v_count, 'warnings', v_warnings);
-end $$;
+end $qm$;
 
 -- ── 7. Grants for the new signatures ─────────────────────────────────
-do $$
+do $qm$
 declare f text;
 begin
   foreach f in array array[
@@ -339,4 +339,4 @@ begin
     execute format('revoke all on function %s from public, anon', f);
     execute format('grant execute on function %s to authenticated', f);
   end loop;
-end $$;
+end $qm$;

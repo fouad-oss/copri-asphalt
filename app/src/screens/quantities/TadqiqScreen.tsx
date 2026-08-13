@@ -25,7 +25,7 @@ import {
   tadqiqDelete, tadqiqList, type BopItem, type KashefOverview, type SubLineStatus,
   type Subcontractor, type TadqiqRow,
 } from "./data"
-import { locationLabel, StatusChip } from "./KashefList"
+import { locationLabel, WoBadge } from "./KashefList"
 
 interface DraftLine {
   bopItem: BopItem
@@ -43,6 +43,7 @@ export function TadqiqScreen() {
   const [kashefId, setKashefId] = useState("")
   const [vendorId, setVendorId] = useState("")
   const [date, setDate] = useState("")
+  const [serial, setSerial] = useState("")
   const [streetNo, setStreetNo] = useState("")
   const [note, setNote] = useState("")
   const [opening, setOpening] = useState(false)
@@ -136,6 +137,7 @@ export function TadqiqScreen() {
     try {
       const res = await tadqiqCreate({
         kashefId: kashef.id, vendorId: Number(vendorId), date,
+        serial: serial.trim(),
         streetNo: kashef.locType === "block" ? streetNo.trim() : "",
         note: note.trim(), opening,
         lines: lines.map((l) => ({ bopItemId: l.bopItem.id, qty: l.qty })),
@@ -145,7 +147,7 @@ export function TadqiqScreen() {
       if (Array.isArray(warnings) && warnings.length > 0) {
         toast.warning(`${t("tadqiq.warnings")}: ${warnings.length}`)
       }
-      setLines([]); setNote(""); setOpening(false); setQ(""); setItem("")
+      setLines([]); setNote(""); setOpening(false); setQ(""); setItem(""); setSerial("")
       void loadKashefData(kashef.id)
     } catch (e: any) {
       toast.error(e?.message || t("app.loadError"))
@@ -203,6 +205,11 @@ export function TadqiqScreen() {
             <div className="space-y-1">
               <Label>{t("tadqiq.date")}</Label>
               <Input dir="ltr" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>{t("tadqiq.serial")}</Label>
+              <Input dir="ltr" value={serial} placeholder={t("tadqiq.serialPh")}
+                     onChange={(e) => setSerial(e.target.value)} />
             </div>
             {kashef?.locType === "block" && (
               <div className="space-y-1">
@@ -342,7 +349,7 @@ export function TadqiqScreen() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               {t("tadqiq.history")}
-              <StatusChip status={kashef.status} woNo={kashef.woNo} />
+              <WoBadge k={kashef} />
               <span className="text-sm font-normal text-muted-foreground">{locationLabel(kashef, t)}</span>
             </CardTitle>
           </CardHeader>
@@ -360,6 +367,7 @@ export function TadqiqScreen() {
                   return (
                     <div key={h.id} className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-2 text-sm">
                       <span dir="ltr" className="font-mono text-xs">{h.date}</span>
+                      {h.serialNo && <RefCode className="text-xs">{h.serialNo}</RefCode>}
                       <span className="font-medium">{h.vendorName}</span>
                       {h.streetNo && <span className="text-xs text-muted-foreground">{h.streetNo}</span>}
                       <span className="text-xs text-muted-foreground">{h.lines.length} {t("tadqiq.linesCount")}</span>

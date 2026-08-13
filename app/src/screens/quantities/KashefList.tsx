@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { RefCode } from "@/components/patterns"
 import { kd } from "@/lib/format"
-import { cn } from "@/lib/utils"
 import { kashefList, type KashefOverview } from "./data"
 
 export function locationLabel(k: KashefOverview, t: (k: string) => string): string {
@@ -18,14 +17,12 @@ export function locationLabel(k: KashefOverview, t: (k: string) => string): stri
   return `${k.area} — ${t("loc.misc")}`
 }
 
-export function StatusChip({ status, woNo }: { status: "kashef" | "wo"; woNo: string }) {
+export function WoBadge({ k }: { k: KashefOverview }) {
   const { t } = useTranslation("quantities")
-  return status === "wo" ? (
+  return (
     <Badge className="bg-primary/10 text-primary hover:bg-primary/10">
-      {t("status.wo")} {woNo && <RefCode className="ms-1">{woNo}</RefCode>}
+      {t("status.wo")} <RefCode className="ms-1">{k.woNo || String(k.kashefNo)}</RefCode>
     </Badge>
-  ) : (
-    <Badge variant="secondary">{t("status.kashef")}</Badge>
   )
 }
 
@@ -34,7 +31,6 @@ export function KashefList() {
   const [rows, setRows] = useState<KashefOverview[] | undefined>(undefined)
   const [error, setError] = useState(false)
   const [q, setQ] = useState("")
-  const [filter, setFilter] = useState<"all" | "kashef" | "wo">("all")
 
   async function load() {
     setError(false)
@@ -51,12 +47,11 @@ export function KashefList() {
     if (!rows) return []
     const needle = q.trim()
     return rows.filter((k) => {
-      if (filter !== "all" && k.status !== filter) return false
       if (!needle) return true
       const hay = `${k.kashefNo} ${k.area} ${k.blockNo} ${k.streetName} ${k.workType} ${k.woNo}`
       return hay.includes(needle)
     })
-  }, [rows, q, filter])
+  }, [rows, q])
 
   if (error) {
     return (
@@ -74,15 +69,6 @@ export function KashefList() {
       <div className="flex flex-wrap items-center gap-2">
         <Input className="max-w-sm" placeholder={t("list.search")} value={q}
                onChange={(e) => setQ(e.target.value)} />
-        <div className="flex items-center gap-1">
-          {(["all", "kashef", "wo"] as const).map((f) => (
-            <button key={f} type="button" onClick={() => setFilter(f)}
-              className={cn("rounded-md px-2.5 py-1 text-xs",
-                filter === f ? "bg-secondary font-semibold" : "text-muted-foreground hover:bg-secondary/60")}>
-              {f === "all" ? t("list.all") : t(`status.${f}`)}
-            </button>
-          ))}
-        </div>
         <Button asChild size="sm" className="ms-auto">
           <Link to="/quantities/new">{t("nav.newKashef")}</Link>
         </Button>
@@ -105,12 +91,16 @@ export function KashefList() {
                 className="block rounded-lg border bg-card p-3 transition-colors hover:border-primary/40">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-semibold">
-                    {t("list.kashefNo")} <RefCode>{String(k.kashefNo)}</RefCode>
+                    {t("list.kashefNo")} <RefCode>{k.woNo || String(k.kashefNo)}</RefCode>
                   </span>
-                  <StatusChip status={k.status} woNo={k.woNo} />
                   <Badge variant="outline">{t(`loc.${k.locType}`)}</Badge>
                   <span className="text-sm text-muted-foreground">{locationLabel(k, t)}</span>
                   {k.workType && <span className="text-xs text-muted-foreground">· {k.workType}</span>}
+                  {k.durationDays != null && (
+                    <span className="text-xs text-muted-foreground">
+                      · {t("list.duration")}: <bdi dir="ltr">{k.durationDays}</bdi> {t("list.days")}
+                    </span>
+                  )}
                   <span className="ms-auto text-xs text-muted-foreground">
                     {k.lineCount} {t("list.lines")} · {k.tadqiqCount} {t("list.tadqiqCount")}
                   </span>

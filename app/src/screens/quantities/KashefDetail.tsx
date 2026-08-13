@@ -22,12 +22,12 @@ import { RefCode } from "@/components/patterns"
 import { kd, qty as fq, fmtKWDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import {
-  allocSet, bopItems, changelog, contractInfo, itemRef, kashefApprove, kashefDelete,
+  allocSet, bopItems, changelog, contractInfo, itemRef, kashefDelete,
   kashefLineSet, kashefOne, kashefUpdate, lineStatus, subcontractors, subLineStatus,
   tadqiqList, type BopItem, type ChangelogRow, type ContractInfo, type KashefOverview,
   type LineStatus, type SubLineStatus, type Subcontractor, type TadqiqRow,
 } from "./data"
-import { locationLabel, StatusChip } from "./KashefList"
+import { locationLabel } from "./KashefList"
 import { printSubWo } from "./subPrint"
 import { useNavigate } from "react-router-dom"
 
@@ -249,53 +249,6 @@ function AddLineRow({ kashefId, bop, existing, onSaved }: {
 
 // ── Dialogs ──────────────────────────────────────────────────────────
 
-function ApproveDialog({ k, onDone }: { k: KashefOverview; onDone: () => void }) {
-  const { t } = useTranslation("quantities")
-  const [open, setOpen] = useState(false)
-  const [woNo, setWoNo] = useState("")
-  const [woDate, setWoDate] = useState("")
-  const [busy, setBusy] = useState(false)
-
-  async function submit() {
-    if (!woNo.trim() || busy) return
-    setBusy(true)
-    try {
-      await kashefApprove(k.id, woNo.trim(), woDate || null)
-      toast.success(t("detail.approveDone"))
-      setOpen(false)
-      onDone()
-    } catch (e: any) {
-      toast.error(e?.message || t("app.loadError"))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild><Button size="sm">{t("detail.approve")}</Button></DialogTrigger>
-      <DialogContent>
-        <DialogHeader><DialogTitle>{t("detail.approveTitle")}</DialogTitle></DialogHeader>
-        <p className="text-sm text-muted-foreground">{t("detail.approveHint")}</p>
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <Label>{t("detail.woNoField")}</Label>
-            <Input dir="ltr" value={woNo} onChange={(e) => setWoNo(e.target.value)} />
-          </div>
-          <div className="space-y-1">
-            <Label>{t("detail.woDateField")}</Label>
-            <Input dir="ltr" type="date" value={woDate} onChange={(e) => setWoDate(e.target.value)} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>{t("common.cancel")}</Button>
-          <Button disabled={busy || !woNo.trim()} onClick={() => void submit()}>{t("common.confirm")}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 function EditDialog({ k, onDone }: { k: KashefOverview; onDone: () => void }) {
   const { t } = useTranslation("quantities")
   const [open, setOpen] = useState(false)
@@ -307,7 +260,8 @@ function EditDialog({ k, onDone }: { k: KashefOverview; onDone: () => void }) {
       kashef_no: String(k.kashefNo), area: k.area, loc_type: k.locType,
       block_no: k.blockNo, street_name: k.streetName, work_type: k.workType,
       kashef_date: k.kashefDate,
-      ...(k.status === "wo" ? { wo_no: k.woNo, wo_date: k.woDate ?? "" } : {}),
+      wo_no: k.woNo, wo_date: k.woDate ?? "",
+      duration_days: k.durationDays != null ? String(k.durationDays) : "",
     })
   }, [open, k])
 
@@ -373,18 +327,18 @@ function EditDialog({ k, onDone }: { k: KashefOverview; onDone: () => void }) {
             <Label>{t("new.workType")}</Label>
             <Input value={f.work_type ?? ""} onChange={set("work_type")} />
           </div>
-          {k.status === "wo" && (
-            <>
-              <div className="space-y-1">
-                <Label>{t("detail.woNoField")}</Label>
-                <Input dir="ltr" value={f.wo_no ?? ""} onChange={set("wo_no")} />
-              </div>
-              <div className="space-y-1">
-                <Label>{t("detail.woDateField")}</Label>
-                <Input dir="ltr" type="date" value={f.wo_date ?? ""} onChange={set("wo_date")} />
-              </div>
-            </>
-          )}
+          <div className="space-y-1">
+            <Label>{t("detail.woNoField")}</Label>
+            <Input dir="ltr" value={f.wo_no ?? ""} onChange={set("wo_no")} />
+          </div>
+          <div className="space-y-1">
+            <Label>{t("detail.woDateField")}</Label>
+            <Input dir="ltr" type="date" value={f.wo_date ?? ""} onChange={set("wo_date")} />
+          </div>
+          <div className="space-y-1">
+            <Label>{t("new.duration")}</Label>
+            <Input dir="ltr" inputMode="numeric" value={f.duration_days ?? ""} onChange={set("duration_days")} />
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>{t("common.cancel")}</Button>
@@ -478,7 +432,7 @@ export function KashefDetail() {
       toast.success(t("detail.saved"))
       refresh()
     } catch (e: any) {
-      toast.error(e?.message === "line has allocations" ? t("detail.lineHasAllocs") : e?.message || t("app.loadError"))
+      toast.error(e?.message || t("app.loadError"))
     }
   }
 
@@ -517,12 +471,10 @@ export function KashefDetail() {
       <div className="rounded-lg border bg-card p-4">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-lg font-semibold">
-            {t("list.kashefNo")} <RefCode>{String(k.kashefNo)}</RefCode>
+            {t("list.kashefNo")} <RefCode>{k.woNo || String(k.kashefNo)}</RefCode>
           </h1>
-          <StatusChip status={k.status} woNo={k.woNo} />
           <Badge variant="outline">{t(`loc.${k.locType}`)}</Badge>
           <div className="ms-auto flex flex-wrap items-center gap-2">
-            {k.status === "kashef" && <ApproveDialog k={k} onDone={refresh} />}
             <EditDialog k={k} onDone={refresh} />
             {printableSubs.length > 0 ? (
               <Select value={printVendor} onValueChange={doPrint}>
@@ -548,10 +500,13 @@ export function KashefDetail() {
           <div><span className="text-muted-foreground">{t("detail.contract")}: </span><bdi dir="ltr" className="font-mono">{contract.contractNo}</bdi></div>
           <div><span className="text-muted-foreground">{t("detail.location")}: </span>{locationLabel(k, t)}</div>
           <div><span className="text-muted-foreground">{t("detail.workType")}: </span>{k.workType || "—"}</div>
-          <div><span className="text-muted-foreground">{t("detail.kashefDate")}: </span><span dir="ltr">{k.kashefDate}</span></div>
-          {k.status === "wo" && k.woDate && (
+          {k.woDate && (
             <div><span className="text-muted-foreground">{t("detail.woDate")}: </span><span dir="ltr">{k.woDate}</span></div>
           )}
+          <div>
+            <span className="text-muted-foreground">{t("detail.duration")}: </span>
+            {k.durationDays != null ? <><bdi dir="ltr">{k.durationDays}</bdi> {t("detail.days")}</> : "—"}
+          </div>
         </div>
         <div className="mt-3 flex flex-wrap gap-6 border-t pt-3 text-sm">
           <div>

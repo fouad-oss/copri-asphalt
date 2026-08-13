@@ -38,22 +38,20 @@ interface DraftLine {
 }
 
 interface HeaderState {
-  kashefNo: string
+  woNo: string
   area: string
   locType: LocType
   blockNo: string
   streetName: string
   workType: string
-  kashefDate: string
-  asWo: boolean
-  woNo: string
   woDate: string
+  duration: string
 }
 
 function emptyHeader(): HeaderState {
   return {
-    kashefNo: "", area: "", locType: "block", blockNo: "", streetName: "",
-    workType: "", kashefDate: "", asWo: false, woNo: "", woDate: "",
+    woNo: "", area: "", locType: "block", blockNo: "", streetName: "",
+    workType: "", woDate: "", duration: "",
   }
 }
 
@@ -69,7 +67,7 @@ function HeaderFields({ h, setH, suggestedNo }: {
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
       <div className="space-y-1">
         <Label>{t("new.kashefNo")}</Label>
-        <Input dir="ltr" inputMode="numeric" value={h.kashefNo} onChange={set("kashefNo")}
+        <Input dir="ltr" inputMode="numeric" value={h.woNo} onChange={set("woNo")}
                placeholder={suggestedNo ? String(suggestedNo) : ""} />
       </div>
       <div className="space-y-1">
@@ -104,27 +102,12 @@ function HeaderFields({ h, setH, suggestedNo }: {
         <Input value={h.workType} onChange={set("workType")} placeholder="أمطار / أعمال مدنية…" />
       </div>
       <div className="space-y-1">
-        <Label>{t("new.kashefDate")}</Label>
-        <Input dir="ltr" type="date" value={h.kashefDate} onChange={set("kashefDate")} />
+        <Label>{t("new.woDate")}</Label>
+        <Input dir="ltr" type="date" value={h.woDate} onChange={set("woDate")} />
       </div>
-      <div className="col-span-2 rounded-md border border-dashed p-3 lg:col-span-3">
-        <label className="flex items-center gap-2 text-sm">
-          <Checkbox checked={h.asWo} onCheckedChange={(v) => setH((x) => ({ ...x, asWo: v === true }))} />
-          {t("new.createAsWo")}
-        </label>
-        <p className="mt-1 text-xs text-muted-foreground">{t("new.historicalHint")}</p>
-        {h.asWo && (
-          <div className="mt-2 grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>{t("detail.woNoField")}</Label>
-              <Input dir="ltr" value={h.woNo} onChange={set("woNo")} />
-            </div>
-            <div className="space-y-1">
-              <Label>{t("detail.woDateField")}</Label>
-              <Input dir="ltr" type="date" value={h.woDate} onChange={set("woDate")} />
-            </div>
-          </div>
-        )}
+      <div className="space-y-1">
+        <Label>{t("new.duration")}</Label>
+        <Input dir="ltr" inputMode="numeric" value={h.duration} onChange={set("duration")} />
       </div>
     </div>
   )
@@ -158,9 +141,10 @@ export function KashefNew() {
         const [b, c, list] = await Promise.all([bopItems(), contractInfo(), kashefList()])
         setBop(b)
         setPct(c.pct)
-        const next = list.reduce((m, k) => Math.max(m, k.kashefNo), 0) + 1
+        // suggest the next WO number below the 900-range placeholders
+        const next = list.reduce((m, k) => (k.kashefNo < 900 ? Math.max(m, k.kashefNo) : m), 0) + 1
         setSuggestedNo(next)
-        setH((x) => ({ ...x, kashefNo: x.kashefNo || String(next) }))
+        setH((x) => ({ ...x, woNo: x.woNo || String(next) }))
       } catch {
         toast.error(t("app.loadError"))
       }
@@ -223,23 +207,22 @@ export function KashefNew() {
   }
 
   async function save() {
-    const kashefNo = Number(h.kashefNo)
-    if (!isFinite(kashefNo) || kashefNo < 1) { toast.error(t("new.kashefNo")); return }
+    const woNo = Number(h.woNo)
+    if (!isFinite(woNo) || woNo < 1) { toast.error(t("new.kashefNo")); return }
     if (effectiveLines.length === 0) { toast.error(t("new.noLines")); return }
     if (busy) return
     setBusy(true)
     try {
+      const duration = Number(h.duration)
       const input: KashefCreateInput = {
-        kashefNo,
+        woNo,
         area: h.area.trim(),
         locType: h.locType,
         blockNo: h.blockNo.trim(),
         streetName: h.streetName.trim(),
         workType: h.workType.trim(),
-        kashefDate: h.kashefDate || null,
-        status: h.asWo ? "wo" : "kashef",
-        woNo: h.asWo ? h.woNo.trim() : "",
-        woDate: h.asWo ? h.woDate || null : null,
+        woDate: h.woDate || null,
+        durationDays: isFinite(duration) && duration > 0 ? duration : null,
         lines: effectiveLines.map((l) => ({ bopItemId: l.bopItem.id, qty: l.qty })),
       }
       const res = await kashefCreate(input)

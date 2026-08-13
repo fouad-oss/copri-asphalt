@@ -36,6 +36,7 @@ export interface KashefOverview {
   allocatedValue: number
   executedValue: number
   tadqiqCount: number
+  durationDays: number | null
 }
 
 export interface LineStatus {
@@ -80,6 +81,7 @@ export interface TadqiqRow {
   vendorId: number
   vendorName: string
   date: string
+  serialNo: string
   streetNo: string
   note: string
   opening: boolean
@@ -177,6 +179,7 @@ function mapOverview(r: any): KashefOverview {
     totalAfterPct: Number(r.total_after_pct),
     allocatedValue: Number(r.allocated_value), executedValue: Number(r.executed_value),
     tadqiqCount: r.tadqiq_count,
+    durationDays: r.duration_days ?? null,
   }
 }
 
@@ -216,14 +219,14 @@ export async function subcontractors(): Promise<Subcontractor[]> {
 export async function tadqiqList(kashefId: number): Promise<TadqiqRow[]> {
   const { data, error } = await supabase
     .from("qm_tadqiq")
-    .select("id,kashef_id,vendor_id,tadqiq_date,street_no,note,opening,vendors(name),qm_tadqiq_lines(bop_item_id,qty,out_of_kashef,over_allocation)")
+    .select("id,kashef_id,vendor_id,tadqiq_date,serial_no,street_no,note,opening,vendors(name),qm_tadqiq_lines(bop_item_id,qty,out_of_kashef,over_allocation)")
     .eq("kashef_id", kashefId)
     .order("tadqiq_date", { ascending: false }).order("id", { ascending: false })
   if (error) throw error
   return (data ?? []).map((r: any) => ({
     id: r.id, kashefId: r.kashef_id, vendorId: r.vendor_id,
     vendorName: r.vendors?.name ?? "", date: r.tadqiq_date,
-    streetNo: r.street_no, note: r.note, opening: r.opening,
+    serialNo: r.serial_no ?? "", streetNo: r.street_no, note: r.note, opening: r.opening,
     lines: (r.qm_tadqiq_lines ?? []).map((l: any) => ({
       bopItemId: l.bop_item_id, qty: Number(l.qty),
       outOfKashef: l.out_of_kashef, overAllocation: l.over_allocation,
@@ -254,34 +257,35 @@ async function call(fn: string, args: Record<string, unknown>) {
   return r
 }
 
+// Direct-WO model: the QA creates work orders only — status is always
+// 'wo' and the WO number doubles as the record number.
 export interface KashefCreateInput {
-  kashefNo: number
+  woNo: number
   area: string
   locType: LocType
   blockNo: string
   streetName: string
   workType: string
-  kashefDate: string | null
-  status: "kashef" | "wo"
-  woNo: string
   woDate: string | null
+  durationDays: number | null
   lines: { bopItemId: number; qty: number }[]
 }
 
 export function kashefCreate(k: KashefCreateInput) {
   return call("qm_kashef_create", {
     p_contract_code: CONTRACT_CODE,
-    p_kashef_no: k.kashefNo,
+    p_kashef_no: k.woNo,
     p_area: k.area,
     p_loc_type: k.locType,
     p_block_no: k.blockNo,
     p_street_name: k.streetName,
     p_work_type: k.workType,
     p_lines: k.lines.map((l) => ({ bop_item_id: l.bopItemId, qty: l.qty })),
-    p_kashef_date: k.kashefDate,
-    p_status: k.status,
-    p_wo_no: k.woNo,
+    p_kashef_date: k.woDate,
+    p_status: "wo",
+    p_wo_no: String(k.woNo),
     p_wo_date: k.woDate,
+    p_duration_days: k.durationDays,
   })
 }
 
@@ -305,6 +309,7 @@ export interface TadqiqCreateInput {
   kashefId: number
   vendorId: number
   date: string
+  serial: string
   streetNo: string
   note: string
   opening: boolean
@@ -320,6 +325,7 @@ export function tadqiqCreate(t: TadqiqCreateInput) {
     p_note: t.note,
     p_lines: t.lines.map((l) => ({ bop_item_id: l.bopItemId, qty: l.qty })),
     p_opening: t.opening,
+    p_serial: t.serial,
   })
 }
 

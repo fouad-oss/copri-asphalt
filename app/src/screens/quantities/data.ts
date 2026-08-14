@@ -456,6 +456,30 @@ export async function contractProgress(): Promise<ContractProgress | null> {
   }
 }
 
+// Executed vs certified per work order (0044). A closed WO with a
+// positive uncertified value is finished work still waiting to be billed.
+export interface WoCertification {
+  kashefId: number
+  kashefNo: number
+  closed: boolean
+  executedValue: number      // pre-pct
+  certifiedValue: number     // pre-pct
+  uncertifiedValue: number   // pre-pct
+  lastCertNo: number | null
+  lastPeriodEnd: string | null
+}
+
+export async function woCertification(): Promise<WoCertification[]> {
+  const { data, error } = await supabase.from("qm_wo_certification").select("*")
+  if (error) throw error
+  return (data ?? []).map((r: any) => ({
+    kashefId: r.kashef_id, kashefNo: r.kashef_no, closed: !!r.closed,
+    executedValue: Number(r.executed_value), certifiedValue: Number(r.certified_value),
+    uncertifiedValue: Number(r.uncertified_value),
+    lastCertNo: r.last_cert_no ?? null, lastPeriodEnd: r.last_period_end ?? null,
+  }))
+}
+
 export interface QtyByWoItem {
   kashefId: number
   bopItemId: number

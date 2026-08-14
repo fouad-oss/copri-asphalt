@@ -15,9 +15,9 @@ import { RefCode } from "@/components/patterns"
 import { kd, fmtKWDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import {
-  kashefList, subTotals, monthlyExec, woFlags, contractProgress,
+  kashefList, subTotals, monthlyExec, woFlags, contractProgress, woCertification,
   type KashefOverview, type SubTotal, type MonthlyExec, type WoFlags,
-  type ContractProgress,
+  type ContractProgress, type WoCertification,
 } from "./data"
 import { locationLabel } from "./KashefList"
 
@@ -31,6 +31,7 @@ interface Data {
   monthly: MonthlyExec[]
   flags: WoFlags[]
   progress: ContractProgress | null
+  certStanding: WoCertification[]
 }
 
 function dayDiff(fromIso: string, to: Date): number {
@@ -63,10 +64,14 @@ export function Dashboard() {
     setError(false)
     setData(undefined)
     try {
-      const [wos, subs, monthly, flags, progress] = await Promise.all([
-        kashefList(), subTotals(), monthlyExec(), woFlags(), contractProgress(),
+      // The last two come from later migrations; if they are not applied
+      // yet the rest of the dashboard should still render.
+      const [wos, subs, monthly, flags, progress, certStanding] = await Promise.all([
+        kashefList(), subTotals(), monthlyExec(), woFlags(),
+        contractProgress().catch(() => null),
+        woCertification().catch(() => [] as WoCertification[]),
       ])
-      setData({ wos, subs, monthly, flags, progress })
+      setData({ wos, subs, monthly, flags, progress, certStanding })
     } catch {
       setError(true)
     }
@@ -75,7 +80,7 @@ export function Dashboard() {
 
   const view = useMemo(() => {
     if (!data) return null
-    const { wos, subs, monthly, flags, progress } = data
+    const { wos, subs, monthly, flags, progress, certStanding } = data
     const pct = wos[0]?.pct ?? 9
     const mult = 1 + pct / 100
     const today = new Date()
@@ -108,6 +113,15 @@ export function Dashboard() {
       ...delayed.map((x) => x.k.id), ...nearing.map((x) => x.k.id), ...flagged.map((x) => x.k.id),
     ])
 
+    // Finished work still waiting to be billed: closed WOs whose executed
+    // value exceeds what the ministry has certified so far.
+    const woById = new Map(wos.map((k) => [k.id, k]))
+    const awaitingCert = certStanding
+      .filter((c) => c.closed && c.uncertifiedValue * mult > 0.5 && woById.has(c.kashefId))
+      .map((c) => ({ c, k: woById.get(c.kashefId)! }))
+      .sort((a, b) => b.c.uncertifiedValue - a.c.uncertifiedValue)
+    const awaitingTotal = awaitingCert.reduce((s, x) => s + x.c.uncertifiedValue * mult, 0)
+
     const subsOpen = subs.filter((s) => s.allocatedValue - s.executedValue > 0.0005)
     const subsActive = subs.filter(
       (s) => s.lastTadqiqDate && dayDiff(s.lastTadqiqDate, today) <= ACTIVE_DAYS)
@@ -138,7 +152,7 @@ export function Dashboard() {
       subsOpen, subsActive, subRows,
       byArea: breakdown((k) => k.area),
       byType: breakdown((k) => k.workType),
-      trend, trendMax, today, progress,
+      trend, trendMax, today, progress, awaitingCert, awaitingTotal,
     }
   }, [data])
 
@@ -266,6 +280,17 @@ export function Dashboard() {
           </div>
         </div>
 
+        <div className="rounded-lg border bg-card p-3">
+          <div className="text-xs text-muted-foreground">{t("dash.awaitingCert")}</div>
+          <div className="mt-1 font-mono text-lg font-semibold tabular-nums" dir="ltr">
+            {kd(view.awaitingTotal)}
+          </div>
+          <div className="mt-2 text-xs text-muted-foreground">
+            <bdi dir="ltr">{view.awaitingCert.length}</bdi> {t("dash.awaitingCertWos")}
+          </div>
+          <div className="mt-1 text-[11px] text-muted-foreground">{t("dash.awaitingCertHint")}</div>
+        </div>
+
         <div className={cn("rounded-lg border p-3",
           view.attention.size > 0 ? "border-warning/40 bg-warning-surface" : "bg-card")}>
           <div className="text-xs text-muted-foreground">{t("dash.needsAttention")}</div>
@@ -349,6 +374,45 @@ export function Dashboard() {
             </section>
           )}
         </div>
+      )}
+
+      {/* ── Finished, awaiting certification ── */}
+      {view.awaitingCert.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold">
+            {t("dash.awaitingCert")}{" "}
+            <span className="font-normal text-muted-foreground">· {t("dash.awaitingCertHint")}</span>
+          </h2>
+          <div className="grid gap-2 lg:grid-cols-2">
+            {view.awaitingCert.slice(0, 12).map(({ c, k }) => (
+              <Link key={c.kashefId} to={`/quantities/kashef/${c.kashefId}`}
+                className="flex flex-wrap items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm transition-colors hover:border-primary/40">
+                <RefCode>{k.woNo || String(k.kashefNo)}</RefCode>
+                <span className="truncate text-muted-foreground">{locationLabel(k, t)}</span>
+                <span className="ms-auto flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    {c.lastCertNo != null
+                      ? <>{t("dash.lastCert")} <bdi dir="ltr">{c.lastCertNo}</bdi></>
+                      : t("dash.neverCertified")}
+                  </span>
+                  <span className="font-mono text-sm font-semibold tabular-nums" dir="ltr">
+                    {kd(c.uncertifiedValue * view.mult)}
+                  </span>
+                </span>
+              </Link>
+            ))}
+          </div>
+          {view.awaitingCert.length > 12 && (
+            <div className="text-xs text-muted-foreground">
+              {t("dash.andMore", { n: view.awaitingCert.length - 12 })}
+            </div>
+          )}
+          <div>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/quantities/paycerts/new">{t("pc.newCert")}</Link>
+            </Button>
+          </div>
+        </section>
       )}
 
       {/* ── Breakdowns ── */}

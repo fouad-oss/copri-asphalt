@@ -15,8 +15,9 @@ import { RefCode } from "@/components/patterns"
 import { kd, fmtKWDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import {
-  kashefList, subTotals, monthlyExec, woFlags,
+  kashefList, subTotals, monthlyExec, woFlags, contractProgress,
   type KashefOverview, type SubTotal, type MonthlyExec, type WoFlags,
+  type ContractProgress,
 } from "./data"
 import { locationLabel } from "./KashefList"
 
@@ -29,6 +30,7 @@ interface Data {
   subs: SubTotal[]
   monthly: MonthlyExec[]
   flags: WoFlags[]
+  progress: ContractProgress | null
 }
 
 function dayDiff(fromIso: string, to: Date): number {
@@ -61,10 +63,10 @@ export function Dashboard() {
     setError(false)
     setData(undefined)
     try {
-      const [wos, subs, monthly, flags] = await Promise.all([
-        kashefList(), subTotals(), monthlyExec(), woFlags(),
+      const [wos, subs, monthly, flags, progress] = await Promise.all([
+        kashefList(), subTotals(), monthlyExec(), woFlags(), contractProgress(),
       ])
-      setData({ wos, subs, monthly, flags })
+      setData({ wos, subs, monthly, flags, progress })
     } catch {
       setError(true)
     }
@@ -73,12 +75,15 @@ export function Dashboard() {
 
   const view = useMemo(() => {
     if (!data) return null
-    const { wos, subs, monthly, flags } = data
+    const { wos, subs, monthly, flags, progress } = data
     const pct = wos[0]?.pct ?? 9
     const mult = 1 + pct / 100
     const today = new Date()
 
-    const projectAfter = (wos[0]?.contractValue ?? 0) * mult
+    // The ministry's tracking report measures نسبة الإنجاز المالي against
+    // contract + change orders; fall back to the contract row if 0042 is
+    // not pasted yet.
+    const projectAfter = progress?.totalValue || (wos[0]?.contractValue ?? 0) * mult
     const executedAfter = wos.reduce((s, k) => s + k.executedValue * mult, 0)
     const woValueAfter = wos.reduce((s, k) => s + k.totalAfterPct, 0)
     const openWos = wos.filter((k) => !k.closed)
@@ -133,7 +138,7 @@ export function Dashboard() {
       subsOpen, subsActive, subRows,
       byArea: breakdown((k) => k.area),
       byType: breakdown((k) => k.workType),
-      trend, trendMax, today,
+      trend, trendMax, today, progress,
     }
   }, [data])
 
@@ -172,8 +177,61 @@ export function Dashboard() {
     )
   }
 
+  const prog = view.progress
+  const timePct = prog?.timePct != null ? prog.timePct * 100 : null
+
   return (
     <div className="space-y-4">
+      {/* ── Contract strip — mirrors the ministry tracking report header ── */}
+      {prog && (
+        <div className="rounded-lg border bg-card p-3">
+          <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <div className="text-xs text-muted-foreground">{t("dash.contractValue")}</div>
+              <div className="font-mono text-sm font-semibold tabular-nums" dir="ltr">{kd(prog.totalValue)}</div>
+              {prog.changeOrdersValue > 0 && (
+                <div className="text-[11px] text-muted-foreground">
+                  {t("dash.changeOrders")}: <bdi dir="ltr" className="font-mono">{kd(prog.changeOrdersValue)}</bdi>
+                </div>
+              )}
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">{t("dash.finPct")}</div>
+              <div className="flex items-center gap-2">
+                <Bar value={view.executedAfter} max={prog.totalValue} />
+                <span className="font-mono text-sm font-semibold tabular-nums" dir="ltr">
+                  {progressPct.toFixed(2)}%
+                </span>
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">{t("dash.timePct")}</div>
+              <div className="flex items-center gap-2">
+                <Bar value={prog.elapsedDays} max={prog.durationDays ?? 0}
+                     warn={timePct != null && timePct > progressPct} />
+                <span className="font-mono text-sm font-semibold tabular-nums" dir="ltr">
+                  {timePct != null ? `${timePct.toFixed(2)}%` : "—"}
+                </span>
+              </div>
+              <div className="text-[11px] text-muted-foreground">
+                <bdi dir="ltr">{prog.elapsedDays.toLocaleString("en-US")}</bdi> /{" "}
+                <bdi dir="ltr">{(prog.durationDays ?? 0).toLocaleString("en-US")}</bdi> {t("dash.day")}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">{t("dash.woCounts")}</div>
+              <div className="text-sm">
+                <bdi dir="ltr" className="font-mono font-semibold">{prog.woCount}</bdi> {t("dash.issued")}
+                {" · "}
+                <bdi dir="ltr" className="font-mono">{prog.woClosed}</bdi> {t("dash.closedWos")}
+                {" · "}
+                <bdi dir="ltr" className="font-mono">{prog.woOpen}</bdi> {t("dash.openWos")}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Metric strip ── */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-lg border bg-card p-3">

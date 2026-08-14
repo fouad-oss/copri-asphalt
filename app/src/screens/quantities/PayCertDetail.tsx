@@ -18,16 +18,17 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { RefCode } from "@/components/patterns"
 import { kd, qty as fq, fmtKWDate } from "@/lib/format"
+import { cn } from "@/lib/utils"
 import {
-  contractInfo, itemRef, paycertDelete, paycertLines, paycertLineSet, paycertOne,
-  paycertUpdate, type ContractInfo, type PayCertLine, type PayCertOverview,
+  contractInfo, itemRef, paycertDelete, paycertLineDetail, paycertLineSet, paycertOne,
+  paycertUpdate, type ContractInfo, type PayCertLineDetail, type PayCertOverview,
 } from "./data"
 import { sourceBadge, statusBadge } from "./PayCerts"
 import { printCert } from "./certPrint"
 
 interface DetailData {
   c: PayCertOverview
-  lines: PayCertLine[]
+  lines: PayCertLineDetail[]
   contract: ContractInfo
 }
 
@@ -98,7 +99,7 @@ export function PayCertDetail() {
     try {
       const c = await paycertOne(id)
       if (!c) { setData(null); return }
-      const [lines, contract] = await Promise.all([paycertLines(id), contractInfo()])
+      const [lines, contract] = await Promise.all([paycertLineDetail(id), contractInfo()])
       setData({ c, lines, contract })
     } catch {
       setError(true)
@@ -109,7 +110,7 @@ export function PayCertDetail() {
 
   const groups = useMemo(() => {
     if (!data) return []
-    const m = new Map<string, { label: string; area: string; lines: PayCertLine[] }>()
+    const m = new Map<string, { label: string; area: string; lines: PayCertLineDetail[] }>()
     for (const l of data.lines) {
       const key = l.kashefId != null ? String(l.kashefNo) : "—"
       const g = m.get(key) ?? {
@@ -143,7 +144,7 @@ export function PayCertDetail() {
 
   const { c, contract } = data
 
-  async function saveQty(l: PayCertLine, value: string) {
+  async function saveQty(l: PayCertLineDetail, value: string) {
     const num = Number(value)
     if (!isFinite(num) || num < 0) return
     try {
@@ -177,18 +178,40 @@ export function PayCertDetail() {
   }
 
   function doPrint() {
+    const endOf = (l: PayCertLineDetail) => {
+      if (!l.woDate || l.durationDays == null) return null
+      const d = new Date(l.woDate + "T00:00:00")
+      d.setDate(d.getDate() + l.durationDays)
+      return d.toISOString().slice(0, 10)
+    }
+    const fy = (() => {
+      const ref = c.periodEnd ? new Date(c.periodEnd + "T00:00:00") : new Date()
+      const y = ref.getMonth() + 1 >= 4 ? ref.getFullYear() : ref.getFullYear() - 1
+      return `${y}/${y + 1}`
+    })()
     printCert({
       contractNo: contract.contractNo, contractName: contract.name,
       contractor: contract.contractor, pct: c.pct,
       certNo: c.certNo, periodEnd: c.periodEnd,
       date: new Date().toLocaleDateString("en-GB", { timeZone: "Asia/Kuwait" }),
-      wos: groups.map(([, g]) => ({
-        woNo: g.label || "—",
-        location: g.area,
-        lines: g.lines.map((l) => ({
-          ref: itemRef(l), desc: l.description, qty: l.qty, unit: l.unit, rate: l.rate,
-        })),
-      })),
+      fiscalYear: fy,
+      wos: groups.map(([, g]) => {
+        const f = g.lines[0]
+        return {
+          woNo: g.label || "—",
+          site: [g.area, f?.locType === "block" ? `قطعة ${f.blockNo}` : f?.streetName,
+                 f?.workType].filter(Boolean).join(" — "),
+          woDate: f?.woDate ?? null,
+          durationDays: f?.durationDays ?? null,
+          endDate: f ? endOf(f) : null,
+          dailyPenalty: f?.dailyPenalty ?? null,
+          woValue: g.lines.reduce((s, l) => s + (l.woQty ?? 0) * l.rate, 0) * (1 + c.pct / 100),
+          lines: g.lines.map((l) => ({
+            ref: itemRef(l), desc: l.description, qty: l.qty, unit: l.unit,
+            rate: l.rate, remaining: l.qtyRemaining,
+          })),
+        }
+      }),
     })
   }
 
@@ -261,6 +284,8 @@ export function PayCertDetail() {
                   <th className="px-3 py-1.5 text-center font-normal">{t("detail.col.unit")}</th>
                   <th className="px-3 py-1.5 text-center font-normal">{t("detail.col.rate")}</th>
                   <th className="px-3 py-1.5 text-end font-normal">{t("detail.col.total")}</th>
+                  <th className="px-3 py-1.5 text-center font-normal">{t("pc.cumulative")}</th>
+                  <th className="px-3 py-1.5 text-center font-normal">{t("pc.remaining")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -300,6 +325,13 @@ export function PayCertDetail() {
                             <TriangleAlert className="ms-1 inline size-3.5 text-warning" />
                           </span>
                         )}
+                      </td>
+                      <td className="px-3 py-1.5 text-center font-mono text-xs tabular-nums text-muted-foreground" dir="ltr">
+                        {fq(l.qtyCumulative)}
+                      </td>
+                      <td className={cn("px-3 py-1.5 text-center font-mono text-xs tabular-nums",
+                                        l.qtyRemaining < -0.0005 ? "font-semibold text-warning" : "text-muted-foreground")} dir="ltr">
+                        {l.woQty != null ? fq(l.qtyRemaining) : "—"}
                       </td>
                     </tr>
                   )

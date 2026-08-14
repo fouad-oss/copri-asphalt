@@ -381,6 +381,81 @@ export async function paycertLines(certId: number): Promise<PayCertLine[]> {
   }))
 }
 
+// Per-line detail in the ministry's own كشف تنفيذي جزئي shape: this
+// payment's qty, the previous cumulative, and اجمالي الكمية المتبقية.
+export interface PayCertLineDetail extends PayCertLine {
+  certNo: number
+  qtyPrevious: number
+  qtyCumulative: number
+  qtyRemaining: number
+  woQty: number | null
+  woDate: string | null
+  durationDays: number | null
+  dailyPenalty: number | null
+  locType: LocType | null
+  blockNo: string
+  streetName: string
+  workType: string
+}
+
+export async function paycertLineDetail(certId: number): Promise<PayCertLineDetail[]> {
+  const { data, error } = await supabase
+    .from("qm_paycert_line_detail").select("*").eq("cert_id", certId)
+    .order("kashef_no").order("bab").order("band")
+  if (error) throw error
+  return (data ?? []).map((r: any) => ({
+    id: r.id, certId: r.cert_id, certNo: r.cert_no,
+    kashefId: r.kashef_id ?? null, kashefNo: r.kashef_no ?? null,
+    woNo: r.wo_no ?? "", area: r.area ?? "",
+    bopItemId: r.bop_item_id, bab: r.bab, band: r.band, suffix: r.suffix,
+    description: r.description, unit: r.unit, rate: Number(r.rate),
+    qty: Number(r.qty_current), amount: Number(r.amount_current ?? 0),
+    qtyPrevious: Number(r.qty_previous ?? 0),
+    qtyCumulative: Number(r.qty_cumulative ?? 0),
+    qtyRemaining: Number(r.qty_remaining ?? 0),
+    woQty: r.wo_qty != null ? Number(r.wo_qty) : null,
+    woDate: r.wo_date ?? null,
+    durationDays: r.duration_days ?? null,
+    dailyPenalty: r.daily_penalty != null ? Number(r.daily_penalty) : null,
+    locType: r.loc_type ?? null, blockNo: r.block_no ?? "",
+    streetName: r.street_name ?? "", workType: r.work_type ?? "",
+  }))
+}
+
+export interface ContractProgress {
+  contractValue: number
+  changeOrdersValue: number
+  totalValue: number
+  startDate: string | null
+  durationDays: number | null
+  elapsedDays: number
+  timePct: number | null
+  executedAfterPct: number
+  financialPct: number | null
+  woCount: number
+  woClosed: number
+  woOpen: number
+}
+
+export async function contractProgress(): Promise<ContractProgress | null> {
+  const { data, error } = await supabase
+    .from("qm_contract_progress").select("*").eq("code", CONTRACT_CODE).maybeSingle()
+  if (error) throw error
+  if (!data) return null
+  return {
+    contractValue: Number(data.contract_value ?? 0),
+    changeOrdersValue: Number(data.change_orders_value ?? 0),
+    totalValue: Number(data.total_value ?? 0),
+    startDate: data.start_date ?? null,
+    durationDays: data.duration_days ?? null,
+    elapsedDays: Number(data.elapsed_days ?? 0),
+    timePct: data.time_pct != null ? Number(data.time_pct) : null,
+    executedAfterPct: Number(data.executed_after_pct ?? 0),
+    financialPct: data.financial_pct != null ? Number(data.financial_pct) : null,
+    woCount: data.wo_count ?? 0, woClosed: data.wo_closed ?? 0, woOpen: data.wo_open ?? 0,
+  }
+}
+
 export interface QtyByWoItem {
   kashefId: number
   bopItemId: number

@@ -29,6 +29,8 @@ import { PayCertDetail } from "./PayCertDetail"
 import { KashefDetail } from "./KashefDetail"
 import { KashefNew } from "./KashefNew"
 import { TadqiqScreen } from "./TadqiqScreen"
+import { Subs } from "./Subs"
+import { SubDetail } from "./SubDetail"
 import { NavLink } from "react-router-dom"
 import { cn } from "@/lib/utils"
 
@@ -92,6 +94,7 @@ function Shell({ children, onProjectChange }: {
     { to: "/quantities/list", end: false, label: t("nav.kashefs") },
     { to: "/quantities/paycerts", end: false, label: t("nav.paycerts") },
     { to: "/quantities/tadqiq", end: false, label: t("nav.tadqiq") },
+    { to: "/quantities/subs", end: false, label: t("nav.subs") },
     { to: "/quantities/new", end: false, label: t("nav.newKashef") },
   ]
   return (
@@ -162,6 +165,8 @@ export default function QuantitiesPortal() {
         <Route path="paycerts/:id" element={<PayCertDetail />} />
         <Route path="new" element={<KashefNew />} />
         <Route path="tadqiq" element={<TadqiqScreen />} />
+        <Route path="subs" element={<Subs />} />
+        <Route path="subs/:vendorId" element={<SubDetail />} />
         <Route path="*" element={<Navigate to="/quantities" replace />} />
       </Routes>
     </Shell>

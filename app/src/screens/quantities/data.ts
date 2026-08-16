@@ -319,16 +319,71 @@ export async function lineStatus(kashefId: number): Promise<LineStatus[]> {
   }))
 }
 
-export async function subLineStatus(kashefId: number): Promise<SubLineStatus[]> {
-  const { data, error } = await supabase
-    .from("qm_sub_line_status").select("*").eq("kashef_id", kashefId)
-  if (error) throw error
-  return (data ?? []).map((r: any) => ({
+function mapSubLine(r: any): SubLineStatus {
+  return {
     kashefLineId: r.kashef_line_id, bopItemId: r.bop_item_id,
     vendorId: r.vendor_id, vendorName: r.vendor_name,
     bab: r.bab, band: r.band, suffix: r.suffix, description: r.description,
     unit: r.unit, rate: Number(r.rate), kashefQty: Number(r.kashef_qty),
     allocated: Number(r.allocated), executed: Number(r.executed),
+  }
+}
+
+export async function subLineStatus(kashefId: number): Promise<SubLineStatus[]> {
+  const { data, error } = await supabase
+    .from("qm_sub_line_status").select("*").eq("kashef_id", kashefId)
+  if (error) throw error
+  return (data ?? []).map(mapSubLine)
+}
+
+/** One subcontractor's lines on one work order (subcontractor page drill-down). */
+export async function subLinesFor(
+  vendorId: number, kashefId: number,
+): Promise<SubLineStatus[]> {
+  const { data, error } = await supabase
+    .from("qm_sub_line_status").select("*")
+    .eq("vendor_id", vendorId).eq("kashef_id", kashefId)
+    .order("bab").order("band")
+  if (error) throw error
+  return (data ?? []).map(mapSubLine)
+}
+
+// Per subcontractor × work order. Needs 0055; scoped by contract because a
+// vendor can work on both projects (بحر الابداع is id 10 on each).
+export interface SubWoTotal {
+  vendorId: number
+  kashefId: number
+  kashefNo: number
+  woNo: string
+  area: string
+  locationText: string
+  locType: LocType
+  workType: string
+  closed: boolean
+  woDate: string | null
+  allocatedValue: number
+  executedValue: number
+  allocatedLines: number
+  tadqiqCount: number
+  lastTadqiqDate: string | null
+}
+
+export async function subWoTotals(vendorId: number): Promise<SubWoTotal[]> {
+  const { data, error } = await supabase
+    .from("qm_sub_wo_totals").select("*")
+    .eq("contract_id", await contractId()).eq("vendor_id", vendorId)
+    .order("kashef_no")
+  if (error) throw error
+  return (data ?? []).map((r: any) => ({
+    vendorId: r.vendor_id, kashefId: r.kashef_id, kashefNo: r.kashef_no,
+    woNo: r.wo_no ?? "", area: r.area ?? "", locationText: r.location_text ?? "",
+    locType: r.loc_type, workType: r.work_type ?? "", closed: !!r.closed,
+    woDate: r.wo_date ?? null,
+    allocatedValue: Number(r.allocated_value),
+    executedValue: Number(r.executed_value),
+    allocatedLines: r.allocated_lines ?? 0,
+    tadqiqCount: r.tadqiq_count ?? 0,
+    lastTadqiqDate: r.last_tadqiq_date ?? null,
   }))
 }
 

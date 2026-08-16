@@ -19,7 +19,9 @@
 --      had no contract column (qm_sub_totals, qm_monthly_exec,
 --      qm_wo_flags, qm_certified_totals, qm_exec_totals). Each now
 --      carries contract_id so the screens can scope to the selected
---      project. Existing columns keep their names and meaning.
+--      project. Existing columns keep their names, types AND POSITIONS —
+--      contract_id is APPENDED last, because `create or replace view`
+--      refuses to rename or reorder the columns of an existing view.
 --
 --   The BOP is per contract too: the Expressway price book gets seeded
 --   alongside its backfill, so its work orders pick items from its own
@@ -37,28 +39,28 @@ on conflict (code) do nothing;
 -- ── B. contract-scoped rebuilds of the five global views ─────────────
 create or replace view qm_sub_totals
 with (security_invoker = true) as
-select c.contract_id,
-       v.id                        as vendor_id,
+select v.id                        as vendor_id,
        v.name                      as vendor_name,
        coalesce(a.alloc_value, 0)  as allocated_value,
        coalesce(e.exec_value, 0)   as executed_value,
        e.last_tadqiq_date,
        coalesce(e.n, 0)            as tadqiq_count,
-       coalesce(a.wo_count, 0)     as allocated_wos
+       coalesce(a.wo_count, 0)     as allocated_wos,
+       c.contract_id                                    -- appended (see header)
 from (select id from qm_contracts) c(contract_id)
 cross join (select id, name from vendors where qm_subcontractor) v
 left join (
-  select k.contract_id, al.vendor_id,
+  select k.contract_id as cid, al.vendor_id,
          sum(al.qty * bi.rate) as alloc_value,
          count(distinct kl.kashef_id) as wo_count
   from qm_allocations al
   join qm_kashef_lines kl on kl.id = al.kashef_line_id
   join qm_kashefs k on k.id = kl.kashef_id
   join qm_bop_items bi on bi.id = kl.bop_item_id
-  group by 1, 2
-) a on a.contract_id = c.contract_id and a.vendor_id = v.id
+  group by k.contract_id, al.vendor_id
+) a on a.cid = c.contract_id and a.vendor_id = v.id
 left join (
-  select k.contract_id, t.vendor_id,
+  select k.contract_id as cid, t.vendor_id,
          sum(tl.qty * bi.rate) as exec_value,
          max(t.tadqiq_date) filter (where not t.opening) as last_tadqiq_date,
          count(distinct t.id) as n
@@ -66,29 +68,29 @@ left join (
   join qm_tadqiq_lines tl on tl.tadqiq_id = t.id
   join qm_bop_items bi on bi.id = tl.bop_item_id
   join qm_kashefs k on k.id = t.kashef_id
-  group by 1, 2
-) e on e.contract_id = c.contract_id and e.vendor_id = v.id;
+  group by k.contract_id, t.vendor_id
+) e on e.cid = c.contract_id and e.vendor_id = v.id;
 
 create or replace view qm_monthly_exec
 with (security_invoker = true) as
-select k.contract_id,
-       date_trunc('month', t.tadqiq_date)::date as month,
+select date_trunc('month', t.tadqiq_date)::date as month,
        t.opening,
        sum(tl.qty * bi.rate) as exec_value,
-       count(distinct t.id)  as tadqiq_count
+       count(distinct t.id)  as tadqiq_count,
+       k.contract_id                                    -- appended
 from qm_tadqiq t
 join qm_tadqiq_lines tl on tl.tadqiq_id = t.id
 join qm_bop_items bi on bi.id = tl.bop_item_id
 join qm_kashefs k on k.id = t.kashef_id
-group by 1, 2, 3;
+group by date_trunc('month', t.tadqiq_date), t.opening, k.contract_id;
 
 create or replace view qm_wo_flags
 with (security_invoker = true) as
-select k.contract_id,
-       k.id as kashef_id,
+select k.id as kashef_id,
        coalesce(la.over_alloc_lines, 0)      as over_alloc_lines,
        coalesce(la.exec_over_alloc_lines, 0) as exec_over_alloc_lines,
-       coalesce(oo.out_of_wo_lines, 0)       as out_of_wo_lines
+       coalesce(oo.out_of_wo_lines, 0)       as out_of_wo_lines,
+       k.contract_id                                    -- appended
 from qm_kashefs k
 left join (
   select kl.kashef_id,
@@ -111,22 +113,26 @@ left join (
   group by 1
 ) oo on oo.kashef_id = k.id;
 
+-- left join: certificate lines that carry no work order keep their row
+-- (contract_id null), exactly as before this migration.
 create or replace view qm_certified_totals
 with (security_invoker = true) as
-select k.contract_id, cl.kashef_id, cl.bop_item_id, sum(cl.qty) as qty_certified
+select cl.kashef_id, cl.bop_item_id, sum(cl.qty) as qty_certified,
+       k.contract_id                                    -- appended
 from qm_pay_cert_lines cl
-join qm_kashefs k on k.id = cl.kashef_id
-group by 1, 2, 3;
+left join qm_kashefs k on k.id = cl.kashef_id
+group by cl.kashef_id, cl.bop_item_id, k.contract_id;
 
 create or replace view qm_exec_totals
 with (security_invoker = true) as
-select k.contract_id, t.kashef_id, tl.bop_item_id,
+select t.kashef_id, tl.bop_item_id,
        sum(tl.qty) as qty_executed,
-       max(t.tadqiq_date) as last_date
+       max(t.tadqiq_date) as last_date,
+       k.contract_id                                    -- appended
 from qm_tadqiq t
 join qm_tadqiq_lines tl on tl.tadqiq_id = t.id
 join qm_kashefs k on k.id = t.kashef_id
-group by 1, 2, 3;
+group by t.kashef_id, tl.bop_item_id, k.contract_id;
 
 revoke all on qm_sub_totals, qm_monthly_exec, qm_wo_flags,
               qm_certified_totals, qm_exec_totals from anon;

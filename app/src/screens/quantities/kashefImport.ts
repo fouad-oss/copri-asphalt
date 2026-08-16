@@ -41,6 +41,10 @@ export interface ParsedKashef {
   locType: LocType
   blockNo: string
   streetName: string
+  locationText: string
+  kmFrom: number | null
+  kmTo: number | null
+  direction: string
   workType: string
   pct: number | null
   lines: ParsedLine[]
@@ -93,8 +97,42 @@ function resolveItem(rawId: string, bop: BopItem[], babSet: Set<number>): BopIte
   return null
 }
 
-function parseLocation(loc: string): Pick<ParsedKashef, "area" | "locType" | "blockNo" | "streetName" | "workType"> {
+type ParsedLocation = Pick<ParsedKashef,
+  "area" | "locType" | "blockNo" | "streetName" | "workType" |
+  "locationText" | "kmFrom" | "kmTo" | "direction">
+
+const NO_CHAINAGE = { locationText: "", kmFrom: null, kmTo: null, direction: "" }
+
+// «محطة 000+7» is stored logically as metres-then-km and RENDERS as 7+000,
+// i.e. km 7 + 000 m. So the FIRST captured group is the metres and the
+// second is the kilometres — not the other way round.
+const STATION_RE = /(?:محطة|كيلو)\s*(\d+)\s*\+\s*(\d+)/g
+const DIRECTION_RE = /(بالاتجاهين|(?:ب?اتجاه)\s+\S+)/
+
+function stationKm(metres: string, km: string): number {
+  return Number(km) + Number(metres) / 1000
+}
+
+function parseChainage(body: string, workType: string): ParsedLocation | null {
+  const hits = [...body.matchAll(STATION_RE)]
+  if (hits.length === 0) return null
+  const road = /(طريق\s+[^\d,()]*?)(?=\s*(?:من|عند|مع|بالاتجاهين|ب?اتجاه|$))/.exec(body)
+  const dir = DIRECTION_RE.exec(body)
+  return {
+    area: (road?.[1] ?? "").trim(),
+    locType: "chainage",
+    blockNo: "", streetName: "", workType,
+    locationText: body.trim(),
+    kmFrom: stationKm(hits[0][1], hits[0][2]),
+    // a single station is a point, not a range
+    kmTo: hits.length > 1 ? stationKm(hits[hits.length - 1][1], hits[hits.length - 1][2]) : null,
+    direction: (dir?.[1] ?? "").trim(),
+  }
+}
+
+function parseLocation(loc: string): ParsedLocation {
   // Examples: "سلوى  قطعة (12) - أمطار" · "مشرف — شارع 26" · "بيان — متفرقات"
+  //   highway: "طريق الفحيحيل من محطة 200+9 الى محطة 200+12 اتجاه الجنوب"
   let workType = ""
   let body = loc
   const dash = loc.split(/\s[-–—]\s/)
@@ -110,23 +148,30 @@ function parseLocation(loc: string): Pick<ParsedKashef, "area" | "locType" | "bl
   if (block) {
     return {
       area: body.slice(0, block.index).trim().replace(/[-–—]\s*$/, "").trim(),
-      locType: "block", blockNo: block[1], streetName: "", workType,
+      locType: "block", blockNo: block[1], streetName: "", workType, ...NO_CHAINAGE,
     }
   }
+  // a station reference beats the متفرقات/شارع heuristics below — highway
+  // WOs routinely mention both
+  const chainage = parseChainage(body, workType)
+  if (chainage) return chainage
   if (/متفرقات/.test(body)) {
     return {
       area: body.replace(/متفرقات/, "").replace(/[-–—]/g, " ").trim(),
-      locType: "misc", blockNo: "", streetName: "", workType,
+      locType: "misc", blockNo: "", streetName: "", workType, ...NO_CHAINAGE,
     }
   }
   const street = /(شارع\s*\S.*)$/.exec(body)
   if (street) {
     return {
       area: body.slice(0, street.index).replace(/[-–—]\s*$/, "").trim(),
-      locType: "street", blockNo: "", streetName: street[1].trim(), workType,
+      locType: "street", blockNo: "", streetName: street[1].trim(), workType, ...NO_CHAINAGE,
     }
   }
-  return { area: body.trim(), locType: "misc", blockNo: "", streetName: "", workType }
+  return {
+    area: body.trim(), locType: "misc", blockNo: "", streetName: "", workType,
+    ...NO_CHAINAGE,
+  }
 }
 
 // Heuristic: a sheet qualifies as a kashef sheet if it has the باب/بند

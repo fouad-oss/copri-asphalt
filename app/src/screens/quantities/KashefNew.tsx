@@ -43,6 +43,10 @@ interface HeaderState {
   locType: LocType
   blockNo: string
   streetName: string
+  locationText: string
+  kmFrom: string
+  kmTo: string
+  direction: string
   workType: string
   woDate: string
   duration: string
@@ -51,6 +55,7 @@ interface HeaderState {
 function emptyHeader(): HeaderState {
   return {
     woNo: "", area: "", locType: "block", blockNo: "", streetName: "",
+    locationText: "", kmFrom: "", kmTo: "", direction: "",
     workType: "", woDate: "", duration: "",
   }
 }
@@ -71,7 +76,8 @@ function HeaderFields({ h, setH, suggestedNo }: {
                placeholder={suggestedNo ? String(suggestedNo) : ""} />
       </div>
       <div className="space-y-1">
-        <Label>{t("new.area")}</Label>
+        {/* on a highway WO the same column carries the road, not an area */}
+        <Label>{h.locType === "chainage" ? t("new.road") : t("new.area")}</Label>
         <Input value={h.area} onChange={set("area")} />
       </div>
       <div className="space-y-1">
@@ -82,6 +88,7 @@ function HeaderFields({ h, setH, suggestedNo }: {
             <SelectItem value="block">{t("loc.block")}</SelectItem>
             <SelectItem value="street">{t("loc.street")}</SelectItem>
             <SelectItem value="misc">{t("loc.misc")}</SelectItem>
+            <SelectItem value="chainage">{t("loc.chainage")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -96,6 +103,30 @@ function HeaderFields({ h, setH, suggestedNo }: {
           <Label>{t("new.streetName")}</Label>
           <Input value={h.streetName} onChange={set("streetName")} />
         </div>
+      )}
+      {h.locType === "chainage" && (
+        <>
+          {/* the ministry's wording is the authoritative location — the km
+              pair and direction are an optional structured extract */}
+          <div className="space-y-1 col-span-2 lg:col-span-3">
+            <Label>{t("new.locationText")}</Label>
+            <Input value={h.locationText} onChange={set("locationText")}
+                   placeholder="طريق الفحيحيل من محطة 200+9 الى محطة 200+12" />
+          </div>
+          <div className="space-y-1">
+            <Label>{t("new.kmFrom")}</Label>
+            <Input dir="ltr" inputMode="decimal" value={h.kmFrom} onChange={set("kmFrom")} />
+          </div>
+          <div className="space-y-1">
+            <Label>{t("new.kmTo")}</Label>
+            <Input dir="ltr" inputMode="decimal" value={h.kmTo} onChange={set("kmTo")} />
+          </div>
+          <div className="space-y-1">
+            <Label>{t("new.direction")}</Label>
+            <Input value={h.direction} onChange={set("direction")}
+                   placeholder="بالاتجاهين / اتجاه الشمال…" />
+          </div>
+        </>
       )}
       <div className="space-y-1">
         <Label>{t("new.workType")}</Label>
@@ -199,6 +230,10 @@ export function KashefNew() {
         locType: p.locType,
         blockNo: p.blockNo,
         streetName: p.streetName,
+        locationText: p.locationText,
+        kmFrom: p.kmFrom == null ? "" : String(p.kmFrom),
+        kmTo: p.kmTo == null ? "" : String(p.kmTo),
+        direction: p.direction,
         workType: p.workType || x.workType,
       }))
     } catch {
@@ -214,12 +249,20 @@ export function KashefNew() {
     setBusy(true)
     try {
       const duration = Number(h.duration)
+      const kmNum = (s: string) => {
+        const n = Number(s.trim())
+        return s.trim() !== "" && isFinite(n) && n >= 0 ? n : null
+      }
       const input: KashefCreateInput = {
         woNo,
         area: h.area.trim(),
         locType: h.locType,
         blockNo: h.blockNo.trim(),
         streetName: h.streetName.trim(),
+        locationText: h.locationText.trim(),
+        kmFrom: kmNum(h.kmFrom),
+        kmTo: kmNum(h.kmTo),
+        direction: h.direction.trim(),
         workType: h.workType.trim(),
         woDate: h.woDate || null,
         durationDays: isFinite(duration) && duration > 0 ? duration : null,

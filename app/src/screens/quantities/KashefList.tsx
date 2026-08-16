@@ -19,6 +19,8 @@ import { kashefList, woCertification, type KashefOverview, type WoCertification 
 export function locationLabel(k: KashefOverview, t: (k: string) => string): string {
   if (k.locType === "block") return `${k.area} — ${t("loc.block")} (${k.blockNo})`
   if (k.locType === "street") return `${k.area} — ${k.streetName}`
+  // highway WOs: the ministry's own wording already names the road
+  if (k.locType === "chainage") return k.locationText || `${k.area} — ${t("loc.chainage")}`
   return `${k.area} — ${t("loc.misc")}`
 }
 
@@ -209,7 +211,7 @@ export function KashefList() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL}>{t("list.locType")}: {t("list.all")}</SelectItem>
-              {(["block", "street", "misc"] as const).map((l) => (
+              {(["block", "street", "misc", "chainage"] as const).map((l) => (
                 <SelectItem key={l} value={l}>{t(`loc.${l}`)}</SelectItem>
               ))}
             </SelectContent>

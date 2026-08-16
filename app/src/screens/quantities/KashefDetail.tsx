@@ -262,6 +262,10 @@ function EditDialog({ k, onDone }: { k: KashefOverview; onDone: () => void }) {
       kashef_date: k.kashefDate,
       wo_no: k.woNo, wo_date: k.woDate ?? "",
       duration_days: k.durationDays != null ? String(k.durationDays) : "",
+      location_text: k.locationText,
+      km_from: k.kmFrom != null ? String(k.kmFrom) : "",
+      km_to: k.kmTo != null ? String(k.kmTo) : "",
+      direction: k.direction,
     })
   }, [open, k])
 
@@ -297,7 +301,7 @@ function EditDialog({ k, onDone }: { k: KashefOverview; onDone: () => void }) {
             <Input dir="ltr" type="date" value={f.kashef_date ?? ""} onChange={set("kashef_date")} />
           </div>
           <div className="space-y-1">
-            <Label>{t("new.area")}</Label>
+            <Label>{f.loc_type === "chainage" ? t("new.road") : t("new.area")}</Label>
             <Input value={f.area ?? ""} onChange={set("area")} />
           </div>
           <div className="space-y-1">
@@ -308,6 +312,7 @@ function EditDialog({ k, onDone }: { k: KashefOverview; onDone: () => void }) {
                 <SelectItem value="block">{t("loc.block")}</SelectItem>
                 <SelectItem value="street">{t("loc.street")}</SelectItem>
                 <SelectItem value="misc">{t("loc.misc")}</SelectItem>
+                <SelectItem value="chainage">{t("loc.chainage")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -322,6 +327,26 @@ function EditDialog({ k, onDone }: { k: KashefOverview; onDone: () => void }) {
               <Label>{t("new.streetName")}</Label>
               <Input value={f.street_name ?? ""} onChange={set("street_name")} />
             </div>
+          )}
+          {f.loc_type === "chainage" && (
+            <>
+              <div className="space-y-1 col-span-2 lg:col-span-3">
+                <Label>{t("new.locationText")}</Label>
+                <Input value={f.location_text ?? ""} onChange={set("location_text")} />
+              </div>
+              <div className="space-y-1">
+                <Label>{t("new.kmFrom")}</Label>
+                <Input dir="ltr" inputMode="decimal" value={f.km_from ?? ""} onChange={set("km_from")} />
+              </div>
+              <div className="space-y-1">
+                <Label>{t("new.kmTo")}</Label>
+                <Input dir="ltr" inputMode="decimal" value={f.km_to ?? ""} onChange={set("km_to")} />
+              </div>
+              <div className="space-y-1">
+                <Label>{t("new.direction")}</Label>
+                <Input value={f.direction ?? ""} onChange={set("direction")} />
+              </div>
+            </>
           )}
           <div className="space-y-1">
             <Label>{t("new.workType")}</Label>

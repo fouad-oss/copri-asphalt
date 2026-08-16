@@ -4,7 +4,11 @@
 // { success, error, … } envelope.
 import { supabase, rpc } from "@/lib/supabase"
 
-export type LocType = "block" | "street" | "misc"
+// 'chainage' locates a work order along a highway by station rather than
+// by قطعة/شارع — the Expressway contract's model. locationText carries the
+// ministry's own wording and is the authoritative field; km/direction are
+// the optional structured extract. See migration 0049.
+export type LocType = "block" | "street" | "misc" | "chainage"
 
 export interface BopItem {
   id: number
@@ -39,6 +43,10 @@ export interface KashefOverview {
   durationDays: number | null
   closed: boolean
   contractValue: number | null
+  locationText: string
+  kmFrom: number | null
+  kmTo: number | null
+  direction: string
 }
 
 export interface LineStatus {
@@ -232,6 +240,10 @@ function mapOverview(r: any): KashefOverview {
     durationDays: r.duration_days ?? null,
     closed: !!r.closed,
     contractValue: r.contract_value != null ? Number(r.contract_value) : null,
+    locationText: r.location_text ?? "",
+    kmFrom: r.km_from != null ? Number(r.km_from) : null,
+    kmTo: r.km_to != null ? Number(r.km_to) : null,
+    direction: r.direction ?? "",
   }
 }
 
@@ -576,6 +588,10 @@ export interface KashefCreateInput {
   workType: string
   woDate: string | null
   durationDays: number | null
+  locationText: string
+  kmFrom: number | null
+  kmTo: number | null
+  direction: string
   lines: { bopItemId: number; qty: number }[]
 }
 
@@ -594,6 +610,10 @@ export function kashefCreate(k: KashefCreateInput) {
     p_wo_no: String(k.woNo),
     p_wo_date: k.woDate,
     p_duration_days: k.durationDays,
+    p_location_text: k.locationText,
+    p_km_from: k.kmFrom,
+    p_km_to: k.kmTo,
+    p_direction: k.direction,
   })
 }
 

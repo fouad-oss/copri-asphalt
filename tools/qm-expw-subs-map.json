@@ -1,0 +1,66 @@
+{
+ "confirmed": false,
+ "_help": "Set vendor_id for each folder (an existing vendors.id) or vendor_name to have the row created. Set confirmed=true to let the tool emit SQL.",
+ "subs": {
+  "ANA": {
+   "vendor_id": null,
+   "vendor_name": null,
+   "note": ""
+  },
+  "ابراهيم اعمال مدنية": {
+   "vendor_id": null,
+   "vendor_name": null,
+   "note": ""
+  },
+  "الشملان- الميزان": {
+   "vendor_id": null,
+   "vendor_name": null,
+   "note": ""
+  },
+  "بحر الابداع نظافة": {
+   "vendor_id": 10,
+   "vendor_name": null,
+   "note": ""
+  },
+  "بحر الابداع نظافة / العقد الجديد": {
+   "vendor_id": 10,
+   "vendor_name": null,
+   "note": ""
+  },
+  "بحر الابداع- مدني": {
+   "vendor_id": 10,
+   "vendor_name": null,
+   "note": ""
+  },
+  "دالكو": {
+   "vendor_id": 493,
+   "vendor_name": null,
+   "note": ""
+  },
+  "ريكافكو": {
+   "vendor_id": null,
+   "vendor_name": null,
+   "note": ""
+  },
+  "شركة سكوير-ابراهيم نظافة": {
+   "vendor_id": null,
+   "vendor_name": null,
+   "note": ""
+  },
+  "قشط الاسفلت": {
+   "vendor_id": null,
+   "vendor_name": null,
+   "note": ""
+  },
+  "قصر البيداء": {
+   "vendor_id": null,
+   "vendor_name": null,
+   "note": ""
+  },
+  "قصر البيداء تخطيط ارضي": {
+   "vendor_id": null,
+   "vendor_name": null,
+   "note": ""
+  }
+ }
+}

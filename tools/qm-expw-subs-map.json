@@ -1,66 +1,67 @@
 {
- "confirmed": false,
- "_help": "Set vendor_id for each folder (an existing vendors.id) or vendor_name to have the row created. Set confirmed=true to let the tool emit SQL.",
+ "confirmed": true,
+ "_help": "Set vendor_id for each folder (an existing vendors.id) or vendor_name to have the row created. Set confirmed=true to let the tool emit SQL. Folders sharing a vendor are SUMMED, not overwritten.",
+ "_answers": "Fouad, 2026-08-16: بحر الابداع is one company across its three folders; دالكو confirmed; ANA keeps its Latin name; the milling was done by COPRI's own garage/milling division; سكوير and ابراهيم are ONE company across the board; قصر البيداء is one company with two scopes.",
  "subs": {
   "ANA": {
    "vendor_id": null,
-   "vendor_name": null,
-   "note": ""
+   "vendor_name": "ANA",
+   "note": "no Arabic name — Fouad: keep as ANA"
   },
   "ابراهيم اعمال مدنية": {
    "vendor_id": null,
-   "vendor_name": null,
-   "note": ""
+   "vendor_name": "شركة سكوير",
+   "note": "Fouad: سكوير and ابراهيم are one company — same vendor as the نظافة folder, summed"
   },
   "الشملان- الميزان": {
    "vendor_id": null,
-   "vendor_name": null,
-   "note": ""
+   "vendor_name": "الشملان — الميزان",
+   "note": "claim workbook has no quantities filled in yet (WO 23, weighbridge) — allocates nothing"
   },
   "بحر الابداع نظافة": {
    "vendor_id": 10,
    "vendor_name": null,
-   "note": ""
+   "note": "one company across all three بحر الابداع folders (Fouad confirmed)"
   },
   "بحر الابداع نظافة / العقد الجديد": {
    "vendor_id": 10,
    "vendor_name": null,
-   "note": ""
+   "note": "same vendor — summed with the other two folders, not overwritten"
   },
   "بحر الابداع- مدني": {
    "vendor_id": 10,
    "vendor_name": null,
-   "note": ""
+   "note": "same vendor"
   },
   "دالكو": {
    "vendor_id": 493,
    "vendor_name": null,
-   "note": ""
+   "note": "existing vendor from the Hawalli contract"
   },
   "ريكافكو": {
    "vendor_id": null,
-   "vendor_name": null,
-   "note": ""
+   "vendor_name": "ريكافكو",
+   "note": "folder name is the company name; its WO 1 claim exceeds the work-order line x5.5 — flagged in the report"
   },
   "شركة سكوير-ابراهيم نظافة": {
    "vendor_id": null,
-   "vendor_name": null,
-   "note": ""
+   "vendor_name": "شركة سكوير",
+   "note": "Fouad: سكوير and ابراهيم are one company across the board"
   },
   "قشط الاسفلت": {
-   "vendor_id": null,
+   "vendor_id": 18,
    "vendor_name": null,
-   "note": ""
+   "note": "Fouad: the milling was done by COPRI's own garage/milling division. Mapped to the existing كوبري القشط unit row (id 18); the migration RAISES if that id does not exist rather than allocating to the wrong vendor."
   },
   "قصر البيداء": {
    "vendor_id": null,
-   "vendor_name": null,
-   "note": ""
+   "vendor_name": "قصر البيداء",
+   "note": "one company, two scopes (Fouad) — summed with the تخطيط ارضي folder"
   },
   "قصر البيداء تخطيط ارضي": {
    "vendor_id": null,
-   "vendor_name": null,
-   "note": ""
+   "vendor_name": "قصر البيداء",
+   "note": "same vendor as above"
   }
  }
 }

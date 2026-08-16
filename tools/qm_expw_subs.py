@@ -185,27 +185,48 @@ def main():
     json.dump(cfg, open(MAP_PATH, "w", encoding="utf-8"),
               ensure_ascii=False, indent=1)
 
-    # ── allocation split, capped at the work-order line quantity ──
-    per_pair = collections.defaultdict(dict)      # (wo,key) -> sub -> qty
+    # ── fold folders onto vendors BEFORE splitting ──────────────────
+    # Several folders can be the same vendor (بحر الابداع is three: مدني,
+    # نظافة and نظافة/العقد الجديد; قصر البيداء is two), and they overlap on
+    # the same work orders. Allocations are keyed (kashef_line, vendor), so
+    # folder-by-folder writes would OVERWRITE rather than sum. Aggregate on
+    # the vendor key first.
+    def vendor_key(sub):
+        e = cfg["subs"].get(sub, {})
+        if e.get("vendor_id"):
+            return ("id", e["vendor_id"])
+        if e.get("vendor_name"):
+            return ("name", e["vendor_name"])
+        return ("folder", sub)
+
+    by_vendor = collections.defaultdict(float)    # (vkey, wo, k) -> qty
+    folders_of = collections.defaultdict(set)
     for (sub, wo, k), q in claims.items():
-        per_pair[(wo, k)][sub] = q
+        vk = vendor_key(sub)
+        by_vendor[(vk, wo, k)] += q
+        folders_of[vk].add(sub)
+
+    # ── allocation split, capped at the work-order line quantity ──
+    per_pair = collections.defaultdict(dict)      # (wo,key) -> vkey -> qty
+    for (vk, wo, k), q in by_vendor.items():
+        per_pair[(wo, k)][vk] = q
     alloc, capped, orphan = {}, [], []
-    for (wo, k), subs in per_pair.items():
+    for (wo, k), vends in per_pair.items():
         line_qty = woline.get((wo, k))
         if line_qty is None:
-            orphan.append((wo, k, sum(subs.values())))
+            orphan.append((wo, k, sum(vends.values())))
             continue
-        total = sum(subs.values())
+        total = sum(vends.values())
         scale = 1.0
         if total > line_qty * 1.001:
             scale = line_qty / total
             capped.append((wo, k, total, line_qty))
-        for sub, q in subs.items():
-            alloc[(sub, wo, k)] = q * scale
+        for vk, q in vends.items():
+            alloc[(vk, wo, k)] = q * scale
 
     per_sub_val = collections.defaultdict(float)
-    for (sub, wo, k), q in alloc.items():
-        per_sub_val[sub] += q * bop[k]["rate"]
+    for (vk, wo, k), q in alloc.items():
+        per_sub_val[vk] += q * bop[k]["rate"]
     total_alloc = sum(per_sub_val.values())
     wo_total = sum(w["value_calc"] for w in wos.values())
 
@@ -229,14 +250,16 @@ def main():
                "subcontractor executed, NOT what they are owed (the claim sheets "
                "sometimes carry negotiated rates: they equal the BOP rate on "
                "6,057 of 6,252 lines).\n")
-    rep.append("| folder | files | work orders | allocated value pre-pct | share |")
+    rep.append("| vendor | folders | work orders | allocated value pre-pct | share |")
     rep.append("|---|---|---|---|---|")
-    for sub in sorted(per_sub_val, key=lambda s: -per_sub_val[s]):
-        ws_ = sorted({w for (s2, w, _) in alloc if s2 == sub})
-        rep.append("| %s | %d | %s | %s | %.1f%% |"
-                   % (sub, len(groups[sub]), ", ".join(str(x) for x in ws_),
-                      "{:,.3f}".format(per_sub_val[sub]),
-                      100 * per_sub_val[sub] / wo_total))
+    for vk in sorted(per_sub_val, key=lambda s: -per_sub_val[s]):
+        ws_ = sorted({w for (v2, w, _) in alloc if v2 == vk})
+        label = ("vendors.id %s" % vk[1]) if vk[0] == "id" else vk[1]
+        rep.append("| %s | %s | %s | %s | %.1f%% |"
+                   % (label, " + ".join(sorted(folders_of[vk])),
+                      ", ".join(str(x) for x in ws_),
+                      "{:,.3f}".format(per_sub_val[vk]),
+                      100 * per_sub_val[vk] / wo_total))
     rep.append("| **%s** (remainder) | — | — | **%s** | **%.1f%%** |"
                % (COPRI, "{:,.3f}".format(copri_val), 100 * copri_val / wo_total))
     rep.append("\n- subcontracted: **KD %s** · self-performed: **KD %s** · "
@@ -262,20 +285,20 @@ def main():
         rep.append("- WO %d — bab %d band %d%s, qty %s"
                    % (wo, k[0], k[1], k[2] or "", "{:,.2f}".format(q)))
 
-    rep.append("\n## Vendor mapping — NEEDS FOUAD\n")
-    rep.append("Edit `tools/qm-expw-subs-map.json`: give each folder a "
-               "`vendor_id` (an existing `vendors.id`) or a `vendor_name` to "
-               "create, then set `confirmed: true` and re-run.\n")
-    rep.append("| folder | proposed | note |")
+    rep.append("\n## Vendor mapping\n")
+    rep.append("From `tools/qm-expw-subs-map.json` (confirmed: **%s**).\n"
+               % cfg.get("confirmed"))
+    rep.append("| folder | vendor | note |")
     rep.append("|---|---|---|")
     for sub in sorted(groups):
         e = cfg["subs"][sub]
-        guess = ("vendor_id %s" % e["vendor_id"]) if e["vendor_id"] else "**unmapped**"
-        note = ("`قشط الاسفلت` is a work type, not a company — which vendor?"
-                if "قشط" in sub else
-                "two folders for the same company?" if "قصر البيداء" in sub
-                or "بحر الابداع" in sub else "")
-        rep.append("| %s | %s | %s |" % (sub, guess, note))
+        if e.get("vendor_id"):
+            who = "`vendors.id %s`" % e["vendor_id"]
+        elif e.get("vendor_name"):
+            who = "%s *(by name)*" % e["vendor_name"]
+        else:
+            who = "**unmapped**"
+        rep.append("| %s | %s | %s |" % (sub, who, e.get("note", "")))
 
     rep.append("\n## The executed tier — NEEDS FOUAD\n")
     rep.append("This split covers ALLOCATIONS only. طلبات التدقيق stay on "
@@ -307,9 +330,6 @@ def main():
         return
 
     # ── SQL (only once confirmed) ──
-    vend = {}
-    for sub, e in cfg["subs"].items():
-        vend[sub] = e
     body = ["""-- 0054_qm_expw_subs — GENERATED by tools/qm_expw_subs.py, do not hand-edit.
 -- Per-subcontractor ALLOCATION split for the Expressway, from
 -- دفعات مقاولي الباطن. Replaces the flat allocated:=executed rows that
@@ -332,21 +352,28 @@ begin
 """ % (esc(COPRI), "{:,.3f}".format(total_alloc), "{:,.3f}".format(wo_total),
        esc(COPRI))]
 
-    for sub, e in sorted(vend.items()):
-        if e.get("vendor_id"):
-            body.append("\n  v_vendor := %d;  -- %s" % (e["vendor_id"], sub))
+    for vk in sorted(per_sub_val, key=lambda s: -per_sub_val[s]):
+        label = " + ".join(sorted(folders_of[vk]))
+        if vk[0] == "id":
+            # fail loudly rather than silently allocating to the wrong row
+            body.append("""
+  -- %s
+  select id into v_vendor from vendors where id = %d;
+  if v_vendor is null then raise exception 'vendor %d not found (%s)'; end if;"""
+                        % (esc(label), vk[1], vk[1], esc(label)))
         else:
             body.append("""
+  -- %s
   select id into v_vendor from vendors where name = '%s';
   if v_vendor is null then
     insert into vendors (name, kind, notes) values ('%s', 'subcontractor',
       'quantities module — Expressway subcontractor (backfill)')
     returning id into v_vendor;
-  end if;""" % (esc(e["vendor_name"]), esc(e["vendor_name"])))
+  end if;""" % (esc(label), esc(vk[1]), esc(vk[1])))
         body.append("  update vendors set qm_subcontractor = true where id = "
                     "v_vendor and not qm_subcontractor;")
-        for (s2, wo, k), q in sorted(alloc.items()):
-            if s2 != sub:
+        for (v2, wo, k), q in sorted(alloc.items(), key=lambda x: (x[0][1], x[0][2])):
+            if v2 != vk:
                 continue
             body.append("""  select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = %d;
   select id into v_item from qm_bop_items where contract_id = v_contract and bab = %d and band = %d and coalesce(suffix,'') = '%s';

@@ -20,6 +20,8 @@ import { Label } from "@/components/ui/label"
 import { Spinner } from "@/components/ui/spinner"
 import logoInk from "@/assets/brand/copri-logo-ink.png"
 import { Dashboard } from "./Dashboard"
+import { ProjectSwitcher } from "./ProjectSwitcher"
+import { getContract } from "./data"
 import { KashefList } from "./KashefList"
 import { PayCerts } from "./PayCerts"
 import { PayCertNew } from "./PayCertNew"
@@ -80,7 +82,10 @@ function LoginCard() {
   )
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({ children, onProjectChange }: {
+  children: React.ReactNode
+  onProjectChange: (code: string) => void
+}) {
   const { t } = useTranslation("quantities")
   const tabs = [
     { to: "/quantities", end: true, label: t("nav.home") },
@@ -109,6 +114,7 @@ function Shell({ children }: { children: React.ReactNode }) {
             ))}
           </nav>
           <div className="ms-auto flex items-center gap-2">
+            <ProjectSwitcher onChange={onProjectChange} />
             <LangToggle />
             <Button variant="ghost" size="sm" onClick={() => void supabase.auth.signOut()}>
               {t("app.logout")}
@@ -124,6 +130,9 @@ function Shell({ children }: { children: React.ReactNode }) {
 export default function QuantitiesPortal() {
   const { i18n } = useTranslation("quantities")
   const [session, setSession] = useState<Session | null | undefined>(undefined)
+  // Switching project remounts every screen so each refetches for the
+  // newly selected contract instead of showing the previous one's data.
+  const [project, setProject] = useState(getContract())
 
   // The office/accounting shells pin the document to en/ltr; re-apply
   // the user's saved language whenever this portal is mounted.
@@ -143,8 +152,8 @@ export default function QuantitiesPortal() {
   if (!session) return <LoginCard />
 
   return (
-    <Shell>
-      <Routes>
+    <Shell onProjectChange={setProject}>
+      <Routes key={project}>
         <Route index element={<Dashboard />} />
         <Route path="list" element={<KashefList />} />
         <Route path="kashef/:id" element={<KashefDetail />} />

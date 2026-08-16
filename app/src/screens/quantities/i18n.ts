@@ -19,6 +19,7 @@ const AR = {
     retry: "إعادة المحاولة",
   },
   nav: {
+    project: "المشروع",
     home: "الرئيسية",
     kashefs: "أوامر العمل",
     paycerts: "دفعات الوزارة",
@@ -343,6 +344,7 @@ const EN = {
     retry: "Retry",
   },
   nav: {
+    project: "Project",
     home: "Home",
     kashefs: "Work orders",
     paycerts: "MPW payments",

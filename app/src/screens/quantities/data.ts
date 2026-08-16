@@ -107,11 +107,33 @@ export function itemRef(i: { bab: number; band: number; suffix?: string | null }
   return `${i.bab}/${i.band}${i.suffix ?? ""}`
 }
 
-export const CONTRACT_CODE = "HAW9"
+// ── Selected project ─────────────────────────────────────────────────
+// Every qm_* table hangs off a contract (unique(contract_id, kashef_no),
+// so each project keeps its own WO numbering and its own BOP). The whole
+// module reads whichever contract is selected in the header.
+const CONTRACT_KEY = "qm.contract"
+const DEFAULT_CONTRACT = "HAW9"
+
+let currentContract =
+  (typeof localStorage !== "undefined" && localStorage.getItem(CONTRACT_KEY)) || DEFAULT_CONTRACT
+
+export function getContract(): string {
+  return currentContract
+}
+
+/** Switch project: clears the per-project caches so screens refetch. */
+export function setContract(code: string) {
+  if (code === currentContract) return
+  currentContract = code
+  try { localStorage.setItem(CONTRACT_KEY, code) } catch { /* private mode */ }
+  contractCache.clear()
+  bopCache.clear()
+}
 
 // ── Reads ────────────────────────────────────────────────────────────
 
 export interface ContractInfo {
+  id: number
   code: string
   contractNo: string
   name: string
@@ -119,39 +141,64 @@ export interface ContractInfo {
   pct: number
 }
 
-let contractCache: ContractInfo | null = null
-export async function contractInfo(): Promise<ContractInfo> {
-  if (contractCache) return contractCache
+const contractCache = new Map<string, ContractInfo>()
+export async function contractInfo(code = getContract()): Promise<ContractInfo> {
+  const hit = contractCache.get(code)
+  if (hit) return hit
   const { data, error } = await supabase
     .from("qm_contracts")
-    .select("code,contract_no,name,contractor,pct")
-    .eq("code", CONTRACT_CODE).single()
+    .select("id,code,contract_no,name,contractor,pct")
+    .eq("code", code).single()
   if (error) throw error
-  contractCache = {
-    code: data.code, contractNo: data.contract_no, name: data.name,
+  const info: ContractInfo = {
+    id: data.id, code: data.code, contractNo: data.contract_no, name: data.name,
     contractor: data.contractor, pct: Number(data.pct),
   }
-  return contractCache
+  contractCache.set(code, info)
+  return info
 }
 
-// The BOP is ~1,310 rows; PostgREST caps a single request at 1,000 —
-// page through and cache for the session (rates are static reference).
-let bopCache: BopItem[] | null = null
+/** All projects, for the header switcher. */
+export async function contractList(): Promise<ContractInfo[]> {
+  const { data, error } = await supabase
+    .from("qm_contracts")
+    .select("id,code,contract_no,name,contractor,pct")
+    .order("id")
+  if (error) throw error
+  return (data ?? []).map((r: any) => ({
+    id: r.id, code: r.code, contractNo: r.contract_no, name: r.name,
+    contractor: r.contractor, pct: Number(r.pct),
+  }))
+}
+
+async function contractId(): Promise<number> {
+  return (await contractInfo()).id
+}
+
+// Each project has its own BOP (~1,310 rows for Hawalli); PostgREST caps a
+// single request at 1,000 — page through and cache per project.
+const bopCache = new Map<string, BopItem[]>()
 export async function bopItems(): Promise<BopItem[]> {
-  if (bopCache) return bopCache
+  const code = getContract()
+  const hit = bopCache.get(code)
+  if (hit) return hit
+  const cid = await contractId()
   const out: BopItem[] = []
   for (let from = 0; ; from += 1000) {
     const { data, error } = await supabase
       .from("qm_bop_items")
       .select("id,bab,band,suffix,description,unit,rate")
+      .eq("contract_id", cid)
       .order("bab").order("band").order("suffix", { nullsFirst: true })
       .range(from, from + 999)
     if (error) throw error
     out.push(...(data ?? []).map((r: any) => ({ ...r, rate: Number(r.rate) })))
     if (!data || data.length < 1000) break
   }
-  if (out.length === 0) throw new Error("bop empty")
-  bopCache = out
+  // A project whose جدول الأسعار has not been seeded yet legitimately has
+  // no items — return empty (and don't cache it, so the screens pick the
+  // price book up as soon as it lands) rather than failing the screen.
+  if (out.length > 0) bopCache.set(code, out)
   return out
 }
 
@@ -159,6 +206,7 @@ export async function kashefList(): Promise<KashefOverview[]> {
   const { data, error } = await supabase
     .from("qm_kashef_overview")
     .select("*")
+    .eq("contract_code", getContract())
     .order("kashef_no", { ascending: false })
   if (error) throw error
   return (data ?? []).map(mapOverview)
@@ -200,7 +248,8 @@ export interface SubTotal {
 }
 
 export async function subTotals(): Promise<SubTotal[]> {
-  const { data, error } = await supabase.from("qm_sub_totals").select("*")
+  const { data, error } = await supabase
+    .from("qm_sub_totals").select("*").eq("contract_id", await contractId())
   if (error) throw error
   return (data ?? []).map((r: any) => ({
     vendorId: r.vendor_id, vendorName: r.vendor_name,
@@ -219,7 +268,8 @@ export interface MonthlyExec {
 
 export async function monthlyExec(): Promise<MonthlyExec[]> {
   const { data, error } = await supabase
-    .from("qm_monthly_exec").select("*").order("month")
+    .from("qm_monthly_exec").select("*")
+    .eq("contract_id", await contractId()).order("month")
   if (error) throw error
   return (data ?? []).map((r: any) => ({
     month: r.month, opening: !!r.opening,
@@ -235,7 +285,8 @@ export interface WoFlags {
 }
 
 export async function woFlags(): Promise<WoFlags[]> {
-  const { data, error } = await supabase.from("qm_wo_flags").select("*")
+  const { data, error } = await supabase
+    .from("qm_wo_flags").select("*").eq("contract_id", await contractId())
   if (error) throw error
   return (data ?? []).map((r: any) => ({
     kashefId: r.kashef_id, overAllocLines: r.over_alloc_lines,
@@ -337,7 +388,8 @@ function mapPayCert(r: any): PayCertOverview {
 
 export async function paycertList(): Promise<PayCertOverview[]> {
   const { data, error } = await supabase
-    .from("qm_paycert_overview").select("*").order("cert_no", { ascending: false })
+    .from("qm_paycert_overview").select("*")
+    .eq("contract_code", getContract()).order("cert_no", { ascending: false })
   if (error) throw error
   return (data ?? []).map(mapPayCert)
 }
@@ -439,7 +491,7 @@ export interface ContractProgress {
 
 export async function contractProgress(): Promise<ContractProgress | null> {
   const { data, error } = await supabase
-    .from("qm_contract_progress").select("*").eq("code", CONTRACT_CODE).maybeSingle()
+    .from("qm_contract_progress").select("*").eq("code", getContract()).maybeSingle()
   if (error) throw error
   if (!data) return null
   return {
@@ -470,7 +522,8 @@ export interface WoCertification {
 }
 
 export async function woCertification(): Promise<WoCertification[]> {
-  const { data, error } = await supabase.from("qm_wo_certification").select("*")
+  const { data, error } = await supabase
+    .from("qm_wo_certification").select("*").eq("contract_id", await contractId())
   if (error) throw error
   return (data ?? []).map((r: any) => ({
     kashefId: r.kashef_id, kashefNo: r.kashef_no, closed: !!r.closed,
@@ -487,7 +540,8 @@ export interface QtyByWoItem {
 }
 
 export async function certifiedTotals(): Promise<QtyByWoItem[]> {
-  const { data, error } = await supabase.from("qm_certified_totals").select("*")
+  const { data, error } = await supabase
+    .from("qm_certified_totals").select("*").eq("contract_id", await contractId())
   if (error) throw error
   return (data ?? []).map((r: any) => ({
     kashefId: r.kashef_id, bopItemId: r.bop_item_id, qty: Number(r.qty_certified),
@@ -495,7 +549,8 @@ export async function certifiedTotals(): Promise<QtyByWoItem[]> {
 }
 
 export async function execTotals(): Promise<QtyByWoItem[]> {
-  const { data, error } = await supabase.from("qm_exec_totals").select("*")
+  const { data, error } = await supabase
+    .from("qm_exec_totals").select("*").eq("contract_id", await contractId())
   if (error) throw error
   return (data ?? []).map((r: any) => ({
     kashefId: r.kashef_id, bopItemId: r.bop_item_id, qty: Number(r.qty_executed),
@@ -526,7 +581,7 @@ export interface KashefCreateInput {
 
 export function kashefCreate(k: KashefCreateInput) {
   return call("qm_kashef_create", {
-    p_contract_code: CONTRACT_CODE,
+    p_contract_code: getContract(),
     p_kashef_no: k.woNo,
     p_area: k.area,
     p_loc_type: k.locType,
@@ -604,7 +659,7 @@ export interface PayCertCreateInput {
 
 export function paycertCreate(c: PayCertCreateInput) {
   return call("qm_paycert_create", {
-    p_contract_code: CONTRACT_CODE,
+    p_contract_code: getContract(),
     p_cert_no: c.certNo,
     p_period_end: c.periodEnd,
     p_source: c.source,

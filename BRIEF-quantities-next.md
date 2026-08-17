@@ -17,7 +17,14 @@ with Fouad.
 - **Module**: `/app/quantities`, React screens in `app/src/screens/quantities/`,
   own Supabase-Auth email gate, Arabic-first with an AR⇄EN toggle.
   Repo: `C:\Users\fszog\Desktop\Copri webapp` (local-only, not in OneDrive).
-- **Migrations 0033–0056 are ALL pasted and confirmed.** Nothing pending.
+- **Migrations 0033–0056 are ALL pasted and confirmed.**
+  **0057 (`0057_qm_expw_exec_split_part1.sql` + `_part2.sql`) is WRITTEN,
+  simulated, and AWAITING FOUAD'S PASTE** (2026-08-17) — it moves the
+  Expressway executed tier onto the subcontractors, see §2a. Paste part 1
+  then part 2; both are idempotent; each raises loudly if 0051/0054 rows are
+  missing. Verify afterwards: `select count(*) from qm_tadqiq t join
+  qm_kashefs k on k.id=t.kashef_id join qm_contracts c on c.id=k.contract_id
+  where c.code='EXPW'` should be **1,312** (was 1,085).
 - **Front-end deploys on push to `main`.** Last commit `d0060ae`.
 - **Two projects**, switched from the header (`ProjectSwitcher`, selection in
   `localStorage['qm.contract']`, default `HAW9`):
@@ -53,6 +60,35 @@ the import:
 
 Money split: **43% subcontracted / 57% self-performed** (KD 5,700,418 vs
 7,415,919 pre-pct).
+
+### 2a. Executed per subcontractor (0057) — how it was derived
+
+Fouad's key (2026-08-17): the subcontractor payment workbooks are a **time
+series**. Each folder's numbered files are that sub's payment certificates in
+order; `رئيسي` states «الاعمال المنتهية حتى dd/mm/yyyy» (period end, the 5th,
+same calendar as the ministry certs) and «كشف رقم N»; each numbered sheet is a
+work order with cumulative quantities per BOP item. Proof: WO 54's طلبات
+التدقيق (33/2 = 5,078.75, 92/2 = 1,587, 93/2 = 195, 1/5 = 31.16, 34/5 = 966,
+62/5 = 10,315 + 10,000) equal, item for item, بحر الابداع مدني certificate 13
+sheet 54.
+
+`tools/qm_expw_exec_split.py` reassigns each request (or request line) to
+the vendor whose certificate absorbed it. Per (WO, item): no claim → كوبري
+(57.6% of value); one vendor whose claim ≥ requests → whole (35.0%); else
+exact/combo delta matching (2.2%) then **pro rata** for the unmatched
+remainder (5.2%, 87 pairs, listed in `expw-exec-report.md` — the only
+estimated part; the milling certificates on WO 43 etc. simply do not
+reconcile line-by-line with the requests). Dates are a tie-break only: request
+and certificate dates disagree by months in both directions. Result per
+vendor lands within 2–7% of the 0054 allocation (ANA, ريكافكو, سكوير, milling
+exactly 1.00). 786 of 1,090 requests touched, 222 split into two vendor rows;
+quantities and dates unchanged. Simulated twice against 0051's state:
+per-(WO, item) totals identical to the source, idempotent.
+
+It also **heals a 0051 gap**: 5 requests share (WO, serial, date) with
+another (WO 2/99, 30/716, 31/506, 31/507, 31/508) and 0051's `not exists`
+guard silently skipped the second of each — the DB held 1,085 requests, not
+1,090. 0057 inserts them with note «… (2)».
 
 ## 3. The traps — do not relearn these
 
@@ -102,6 +138,12 @@ Money split: **43% subcontracted / 57% self-performed** (KD 5,700,418 vs
   so folder-by-folder writes overwrite instead of summing.
 - **Subcontractor rates are usually but not always the BOP rate** (6,057 of
   6,252 lines). Claim value ≠ what they are owed.
+- **Idempotency guards on (kashef, vendor, serial, date) are NOT unique** in
+  the تدقيق cross-tabs — the same serial+date can appear on two rows. 0051
+  lost 5 requests that way (healed by 0057). Guard on an occurrence
+  discriminator (0057 uses the note text «… (2)»).
+- **`قشط الاسفلت-1` states period end 05/03/2022** — a stale-copy year; it is
+  the first certificate, so sorting by date still orders it correctly.
 - **Certificate periods**: works up to the **fifth of the month**, certificate
   1 = 2024-12-05, so `period_end(N) = 2024-12-05 + (N−1) months`. Note the
   working papers in `الدفعة` run **one ahead** of the payment number on the
@@ -171,6 +213,7 @@ second-guess an established one.
 | `qm_expw_paycert.py` | certificates as per-payment deltas of sheets 1..21 |
 | `qm_expw_close_wos.py` | closes WOs the register calls نهائي |
 | `qm_expw_subs.py` | subcontractor claims → allocation split; **gated on `qm-expw-subs-map.json`** |
+| `qm_expw_exec_split.py` | claims as a time series → executed (تدقيق) split per sub, emits 0057 in ≤600 KB parts; same gate; report `expw-exec-report.md` |
 | `qm_backfill.py` and the other `qm_*.py` | the Hawalli equivalents |
 
 Outputs land in `~\Desktop\quantities-backfill\`. The `expw-*-report.md` files
@@ -195,13 +238,11 @@ and dataset but **refuse to emit SQL** until a mapping file is confirmed.
 
 **Decisions taken that could be revisited**
 
-5. **Per-sub executed is still all on «كوبري — تنفيذ ذاتي».** The تدقيق sheets
-   name no subcontractor, so Fouad chose (2026-08-16) to keep the 1,090 dated
-   requests rather than replace them with per-sub opening balances. Consequence:
-   the subcontractor page shows subs with an allocation and **zero executed**,
-   and كوبري with executed above its allocation. It self-corrects as the QA
-   records تدقيق per sub. The Hawalli-style alternative (0045 model) can be
-   generated from the same claim data if he changes his mind.
+5. ~~Per-sub executed is still all on «كوبري — تنفيذ ذاتي».~~ **Resolved by
+   0057 (§2a) — pending paste.** Residual judgement: the 87 pro-rata pairs
+   (KD 671k, 5.2%) in `expw-exec-report.md`; if Fouad prefers a rule other than
+   proportional (e.g. earliest requests to the sub), change `attribute()`
+   step 3 and re-run — the migration is idempotent and rewrites split rows.
 6. **9 subcontractor claims reference items absent from their work order**
    (largest WO 11 bab 4/4, 137,275 م²) and are skipped.
 

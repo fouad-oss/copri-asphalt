@@ -28,6 +28,12 @@ requests with per-sub opening balances (the Hawalli 0045 model) — which
 buys correct per-sub executed totals at the cost of the real request
 history. That trade is Fouad's call, not this script's.
 
+  → RESOLVED 2026-08-17 by tools/qm_expw_exec_split.py (0057): the same
+    claim workbooks read as a TIME SERIES reassign each request to the
+    subcontractor whose certificate absorbed it — history kept, executed
+    split. The "executed tier — NEEDS FOUAD" section of the report this
+    script writes is therefore historical.
+
 ── source shape ────────────────────────────────────────────────────────
 One workbook per subcontractor per payment, named `<sub>-<N>.xlsm`, with
 ONE SHEET PER WORK ORDER (sheet name = the WO number) plus 'رئيسي' and

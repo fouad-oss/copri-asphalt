@@ -4,9 +4,9 @@
 -- كميات 9المفصلة.xls, each of which is the cumulative certified position.
 -- Σ certificates therefore equals cumulative certified: KD 13,116,337.355 pre-pct,
 -- which matches the sum of the 65 imported work orders to the dinar.
--- period_end is NULL except payment 21 — the corpus does not state the
--- period ends and no monthly rule fits; each note carries the PDF
--- submission date instead. See expw-paycert-report.md.
+-- Each certificate covers works to the fifth of its month, starting at
+-- 2024-12-05 (Fouad, 2026-08-17); every PDF was submitted after its own
+-- period end, which corroborates it. See expw-paycert-report.md.
 -- Paste 0050 first (the work orders these lines attach to).
 -- Re-runnable: deletes and rebuilds only source='mpw' EXPW certificates.
 
@@ -20,10 +20,10 @@ begin
   select id into v_contract from qm_contracts where code = 'EXPW';
   if v_contract is null then raise exception 'run 0047 first'; end if;
 
-  -- ══ دفعة 1 — الفترة غير مسجَّلة ══
+  -- ══ دفعة 1 — حتى 2024-12-05 ══
   delete from qm_pay_cert_lines where cert_id in (select id from qm_pay_certs where contract_id = v_contract and cert_no = 1 and source = 'mpw');
   delete from qm_pay_certs where contract_id = v_contract and cert_no = 1 and source = 'mpw';
-  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 1, null, 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-01-26') returning id into v_c;
+  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 1, date '2024-12-05', 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-01-26') returning id into v_c;
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 1;
   select id into v_item from qm_bop_items where contract_id = v_contract and bab = 2 and band = 1 and coalesce(suffix,'') = '';
   if v_k is not null and v_item is not null then
@@ -335,10 +335,10 @@ begin
     insert into qm_pay_cert_lines (cert_id, kashef_id, bop_item_id, qty, amount) values (v_c, v_k, v_item, 7500, 20925) on conflict (cert_id, kashef_id, bop_item_id) do update set qty = excluded.qty, amount = excluded.amount;
   end if;
 
-  -- ══ دفعة 2 — الفترة غير مسجَّلة ══
+  -- ══ دفعة 2 — حتى 2025-01-05 ══
   delete from qm_pay_cert_lines where cert_id in (select id from qm_pay_certs where contract_id = v_contract and cert_no = 2 and source = 'mpw');
   delete from qm_pay_certs where contract_id = v_contract and cert_no = 2 and source = 'mpw';
-  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 2, null, 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-01-26') returning id into v_c;
+  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 2, date '2025-01-05', 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-01-26') returning id into v_c;
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 2;
   select id into v_item from qm_bop_items where contract_id = v_contract and bab = 2 and band = 16 and coalesce(suffix,'') = '';
   if v_k is not null and v_item is not null then
@@ -625,10 +625,10 @@ begin
     insert into qm_pay_cert_lines (cert_id, kashef_id, bop_item_id, qty, amount) values (v_c, v_k, v_item, 47306.17, 22706.9616) on conflict (cert_id, kashef_id, bop_item_id) do update set qty = excluded.qty, amount = excluded.amount;
   end if;
 
-  -- ══ دفعة 3 — الفترة غير مسجَّلة ══
+  -- ══ دفعة 3 — حتى 2025-02-05 ══
   delete from qm_pay_cert_lines where cert_id in (select id from qm_pay_certs where contract_id = v_contract and cert_no = 3 and source = 'mpw');
   delete from qm_pay_certs where contract_id = v_contract and cert_no = 3 and source = 'mpw';
-  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 3, null, 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-03-21') returning id into v_c;
+  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 3, date '2025-02-05', 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-03-21') returning id into v_c;
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 2;
   select id into v_item from qm_bop_items where contract_id = v_contract and bab = 2 and band = 16 and coalesce(suffix,'') = '';
   if v_k is not null and v_item is not null then
@@ -950,10 +950,10 @@ begin
     insert into qm_pay_cert_lines (cert_id, kashef_id, bop_item_id, qty, amount) values (v_c, v_k, v_item, 795, 5310.6) on conflict (cert_id, kashef_id, bop_item_id) do update set qty = excluded.qty, amount = excluded.amount;
   end if;
 
-  -- ══ دفعة 4 — الفترة غير مسجَّلة ══
+  -- ══ دفعة 4 — حتى 2025-03-05 ══
   delete from qm_pay_cert_lines where cert_id in (select id from qm_pay_certs where contract_id = v_contract and cert_no = 4 and source = 'mpw');
   delete from qm_pay_certs where contract_id = v_contract and cert_no = 4 and source = 'mpw';
-  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 4, null, 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-03-22') returning id into v_c;
+  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 4, date '2025-03-05', 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-03-22') returning id into v_c;
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 6;
   select id into v_item from qm_bop_items where contract_id = v_contract and bab = 2 and band = 17 and coalesce(suffix,'') = '';
   if v_k is not null and v_item is not null then
@@ -1155,10 +1155,10 @@ begin
     insert into qm_pay_cert_lines (cert_id, kashef_id, bop_item_id, qty, amount) values (v_c, v_k, v_item, 192, 819.84) on conflict (cert_id, kashef_id, bop_item_id) do update set qty = excluded.qty, amount = excluded.amount;
   end if;
 
-  -- ══ دفعة 5 — الفترة غير مسجَّلة ══
+  -- ══ دفعة 5 — حتى 2025-04-05 ══
   delete from qm_pay_cert_lines where cert_id in (select id from qm_pay_certs where contract_id = v_contract and cert_no = 5 and source = 'mpw');
   delete from qm_pay_certs where contract_id = v_contract and cert_no = 5 and source = 'mpw';
-  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 5, null, 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-04-13') returning id into v_c;
+  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 5, date '2025-04-05', 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-04-13') returning id into v_c;
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 10;
   select id into v_item from qm_bop_items where contract_id = v_contract and bab = 4 and band = 4 and coalesce(suffix,'') = '';
   if v_k is not null and v_item is not null then
@@ -1250,10 +1250,10 @@ begin
     insert into qm_pay_cert_lines (cert_id, kashef_id, bop_item_id, qty, amount) values (v_c, v_k, v_item, 1651, 1370.33) on conflict (cert_id, kashef_id, bop_item_id) do update set qty = excluded.qty, amount = excluded.amount;
   end if;
 
-  -- ══ دفعة 6 — الفترة غير مسجَّلة ══
+  -- ══ دفعة 6 — حتى 2025-05-05 ══
   delete from qm_pay_cert_lines where cert_id in (select id from qm_pay_certs where contract_id = v_contract and cert_no = 6 and source = 'mpw');
   delete from qm_pay_certs where contract_id = v_contract and cert_no = 6 and source = 'mpw';
-  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 6, null, 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-05-18') returning id into v_c;
+  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 6, date '2025-05-05', 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-05-18') returning id into v_c;
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 5;
   select id into v_item from qm_bop_items where contract_id = v_contract and bab = 2 and band = 23 and coalesce(suffix,'') = '';
   if v_k is not null and v_item is not null then
@@ -1660,10 +1660,10 @@ begin
     insert into qm_pay_cert_lines (cert_id, kashef_id, bop_item_id, qty, amount) values (v_c, v_k, v_item, 1500, 18285) on conflict (cert_id, kashef_id, bop_item_id) do update set qty = excluded.qty, amount = excluded.amount;
   end if;
 
-  -- ══ دفعة 7 — الفترة غير مسجَّلة ══
+  -- ══ دفعة 7 — حتى 2025-06-05 ══
   delete from qm_pay_cert_lines where cert_id in (select id from qm_pay_certs where contract_id = v_contract and cert_no = 7 and source = 'mpw');
   delete from qm_pay_certs where contract_id = v_contract and cert_no = 7 and source = 'mpw';
-  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 7, null, 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-06-18') returning id into v_c;
+  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 7, date '2025-06-05', 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-06-18') returning id into v_c;
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 13;
   select id into v_item from qm_bop_items where contract_id = v_contract and bab = 7 and band = 25 and coalesce(suffix,'') = '';
   if v_k is not null and v_item is not null then
@@ -2105,10 +2105,10 @@ begin
     insert into qm_pay_cert_lines (cert_id, kashef_id, bop_item_id, qty, amount) values (v_c, v_k, v_item, 8, 7.04) on conflict (cert_id, kashef_id, bop_item_id) do update set qty = excluded.qty, amount = excluded.amount;
   end if;
 
-  -- ══ دفعة 8 — الفترة غير مسجَّلة ══
+  -- ══ دفعة 8 — حتى 2025-07-05 ══
   delete from qm_pay_cert_lines where cert_id in (select id from qm_pay_certs where contract_id = v_contract and cert_no = 8 and source = 'mpw');
   delete from qm_pay_certs where contract_id = v_contract and cert_no = 8 and source = 'mpw';
-  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 8, null, 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-07-12') returning id into v_c;
+  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 8, date '2025-07-05', 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-07-12') returning id into v_c;
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 16;
   select id into v_item from qm_bop_items where contract_id = v_contract and bab = 4 and band = 4 and coalesce(suffix,'') = '';
   if v_k is not null and v_item is not null then
@@ -2390,10 +2390,10 @@ begin
     insert into qm_pay_cert_lines (cert_id, kashef_id, bop_item_id, qty, amount) values (v_c, v_k, v_item, 2, 39.96) on conflict (cert_id, kashef_id, bop_item_id) do update set qty = excluded.qty, amount = excluded.amount;
   end if;
 
-  -- ══ دفعة 9 — الفترة غير مسجَّلة ══
+  -- ══ دفعة 9 — حتى 2025-08-05 ══
   delete from qm_pay_cert_lines where cert_id in (select id from qm_pay_certs where contract_id = v_contract and cert_no = 9 and source = 'mpw');
   delete from qm_pay_certs where contract_id = v_contract and cert_no = 9 and source = 'mpw';
-  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 9, null, 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-08-05') returning id into v_c;
+  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 9, date '2025-08-05', 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-08-05') returning id into v_c;
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 9;
   select id into v_item from qm_bop_items where contract_id = v_contract and bab = 13 and band = 47 and coalesce(suffix,'') = '';
   if v_k is not null and v_item is not null then
@@ -2885,10 +2885,10 @@ begin
     insert into qm_pay_cert_lines (cert_id, kashef_id, bop_item_id, qty, amount) values (v_c, v_k, v_item, 4106, 25005.54) on conflict (cert_id, kashef_id, bop_item_id) do update set qty = excluded.qty, amount = excluded.amount;
   end if;
 
-  -- ══ دفعة 10 — الفترة غير مسجَّلة ══
+  -- ══ دفعة 10 — حتى 2025-09-05 ══
   delete from qm_pay_cert_lines where cert_id in (select id from qm_pay_certs where contract_id = v_contract and cert_no = 10 and source = 'mpw');
   delete from qm_pay_certs where contract_id = v_contract and cert_no = 10 and source = 'mpw';
-  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 10, null, 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-09-09') returning id into v_c;
+  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 10, date '2025-09-05', 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-09-09') returning id into v_c;
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 9;
   select id into v_item from qm_bop_items where contract_id = v_contract and bab = 13 and band = 47 and coalesce(suffix,'') = '';
   if v_k is not null and v_item is not null then
@@ -3540,10 +3540,10 @@ begin
     insert into qm_pay_cert_lines (cert_id, kashef_id, bop_item_id, qty, amount) values (v_c, v_k, v_item, 36.2, 249.056) on conflict (cert_id, kashef_id, bop_item_id) do update set qty = excluded.qty, amount = excluded.amount;
   end if;
 
-  -- ══ دفعة 11 — الفترة غير مسجَّلة ══
+  -- ══ دفعة 11 — حتى 2025-10-05 ══
   delete from qm_pay_cert_lines where cert_id in (select id from qm_pay_certs where contract_id = v_contract and cert_no = 11 and source = 'mpw');
   delete from qm_pay_certs where contract_id = v_contract and cert_no = 11 and source = 'mpw';
-  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 11, null, 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-10-12') returning id into v_c;
+  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 11, date '2025-10-05', 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-10-12') returning id into v_c;
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 24;
   select id into v_item from qm_bop_items where contract_id = v_contract and bab = 7 and band = 20 and coalesce(suffix,'') = '';
   if v_k is not null and v_item is not null then
@@ -4120,10 +4120,10 @@ begin
     insert into qm_pay_cert_lines (cert_id, kashef_id, bop_item_id, qty, amount) values (v_c, v_k, v_item, 3625, 3915) on conflict (cert_id, kashef_id, bop_item_id) do update set qty = excluded.qty, amount = excluded.amount;
   end if;
 
-  -- ══ دفعة 12 — الفترة غير مسجَّلة ══
+  -- ══ دفعة 12 — حتى 2025-11-05 ══
   delete from qm_pay_cert_lines where cert_id in (select id from qm_pay_certs where contract_id = v_contract and cert_no = 12 and source = 'mpw');
   delete from qm_pay_certs where contract_id = v_contract and cert_no = 12 and source = 'mpw';
-  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 12, null, 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-11-26') returning id into v_c;
+  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 12, date '2025-11-05', 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-11-26') returning id into v_c;
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 24;
   select id into v_item from qm_bop_items where contract_id = v_contract and bab = 7 and band = 20 and coalesce(suffix,'') = '';
   if v_k is not null and v_item is not null then
@@ -4640,10 +4640,10 @@ begin
     insert into qm_pay_cert_lines (cert_id, kashef_id, bop_item_id, qty, amount) values (v_c, v_k, v_item, 20315, 142611.3) on conflict (cert_id, kashef_id, bop_item_id) do update set qty = excluded.qty, amount = excluded.amount;
   end if;
 
-  -- ══ دفعة 13 — الفترة غير مسجَّلة ══
+  -- ══ دفعة 13 — حتى 2025-12-05 ══
   delete from qm_pay_cert_lines where cert_id in (select id from qm_pay_certs where contract_id = v_contract and cert_no = 13 and source = 'mpw');
   delete from qm_pay_certs where contract_id = v_contract and cert_no = 13 and source = 'mpw';
-  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 13, null, 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-12-13') returning id into v_c;
+  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 13, date '2025-12-05', 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2025-12-13') returning id into v_c;
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 30;
   select id into v_item from qm_bop_items where contract_id = v_contract and bab = 1 and band = 7 and coalesce(suffix,'') = '';
   if v_k is not null and v_item is not null then
@@ -4790,10 +4790,10 @@ begin
     insert into qm_pay_cert_lines (cert_id, kashef_id, bop_item_id, qty, amount) values (v_c, v_k, v_item, 130, 685.1) on conflict (cert_id, kashef_id, bop_item_id) do update set qty = excluded.qty, amount = excluded.amount;
   end if;
 
-  -- ══ دفعة 14 — الفترة غير مسجَّلة ══
+  -- ══ دفعة 14 — حتى 2026-01-05 ══
   delete from qm_pay_cert_lines where cert_id in (select id from qm_pay_certs where contract_id = v_contract and cert_no = 14 and source = 'mpw');
   delete from qm_pay_certs where contract_id = v_contract and cert_no = 14 and source = 'mpw';
-  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 14, null, 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2026-01-26') returning id into v_c;
+  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 14, date '2026-01-05', 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2026-01-26') returning id into v_c;
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 30;
   select id into v_item from qm_bop_items where contract_id = v_contract and bab = 1 and band = 7 and coalesce(suffix,'') = '';
   if v_k is not null and v_item is not null then
@@ -4980,10 +4980,10 @@ begin
     insert into qm_pay_cert_lines (cert_id, kashef_id, bop_item_id, qty, amount) values (v_c, v_k, v_item, 23600, 114932) on conflict (cert_id, kashef_id, bop_item_id) do update set qty = excluded.qty, amount = excluded.amount;
   end if;
 
-  -- ══ دفعة 15 — الفترة غير مسجَّلة ══
+  -- ══ دفعة 15 — حتى 2026-02-05 ══
   delete from qm_pay_cert_lines where cert_id in (select id from qm_pay_certs where contract_id = v_contract and cert_no = 15 and source = 'mpw');
   delete from qm_pay_certs where contract_id = v_contract and cert_no = 15 and source = 'mpw';
-  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 15, null, 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2026-02-10') returning id into v_c;
+  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 15, date '2026-02-05', 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2026-02-10') returning id into v_c;
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 30;
   select id into v_item from qm_bop_items where contract_id = v_contract and bab = 1 and band = 7 and coalesce(suffix,'') = '';
   if v_k is not null and v_item is not null then
@@ -5235,10 +5235,10 @@ begin
     insert into qm_pay_cert_lines (cert_id, kashef_id, bop_item_id, qty, amount) values (v_c, v_k, v_item, 50, 3687.5) on conflict (cert_id, kashef_id, bop_item_id) do update set qty = excluded.qty, amount = excluded.amount;
   end if;
 
-  -- ══ دفعة 16 — الفترة غير مسجَّلة ══
+  -- ══ دفعة 16 — حتى 2026-03-05 ══
   delete from qm_pay_cert_lines where cert_id in (select id from qm_pay_certs where contract_id = v_contract and cert_no = 16 and source = 'mpw');
   delete from qm_pay_certs where contract_id = v_contract and cert_no = 16 and source = 'mpw';
-  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 16, null, 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2026-03-15') returning id into v_c;
+  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 16, date '2026-03-05', 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2026-03-15') returning id into v_c;
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 39;
   select id into v_item from qm_bop_items where contract_id = v_contract and bab = 2 and band = 96 and coalesce(suffix,'') = '';
   if v_k is not null and v_item is not null then
@@ -5405,10 +5405,10 @@ begin
     insert into qm_pay_cert_lines (cert_id, kashef_id, bop_item_id, qty, amount) values (v_c, v_k, v_item, 5020, 29467.4) on conflict (cert_id, kashef_id, bop_item_id) do update set qty = excluded.qty, amount = excluded.amount;
   end if;
 
-  -- ══ دفعة 17 — الفترة غير مسجَّلة ══
+  -- ══ دفعة 17 — حتى 2026-04-05 ══
   delete from qm_pay_cert_lines where cert_id in (select id from qm_pay_certs where contract_id = v_contract and cert_no = 17 and source = 'mpw');
   delete from qm_pay_certs where contract_id = v_contract and cert_no = 17 and source = 'mpw';
-  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 17, null, 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2026-04-13') returning id into v_c;
+  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 17, date '2026-04-05', 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2026-04-13') returning id into v_c;
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 56;
   select id into v_item from qm_bop_items where contract_id = v_contract and bab = 1 and band = 41 and coalesce(suffix,'') = '';
   if v_k is not null and v_item is not null then
@@ -5645,10 +5645,10 @@ begin
     insert into qm_pay_cert_lines (cert_id, kashef_id, bop_item_id, qty, amount) values (v_c, v_k, v_item, 750, 547.5) on conflict (cert_id, kashef_id, bop_item_id) do update set qty = excluded.qty, amount = excluded.amount;
   end if;
 
-  -- ══ دفعة 18 — الفترة غير مسجَّلة ══
+  -- ══ دفعة 18 — حتى 2026-05-05 ══
   delete from qm_pay_cert_lines where cert_id in (select id from qm_pay_certs where contract_id = v_contract and cert_no = 18 and source = 'mpw');
   delete from qm_pay_certs where contract_id = v_contract and cert_no = 18 and source = 'mpw';
-  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 18, null, 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2026-05-13') returning id into v_c;
+  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 18, date '2026-05-05', 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2026-05-13') returning id into v_c;
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 56;
   select id into v_item from qm_bop_items where contract_id = v_contract and bab = 1 and band = 41 and coalesce(suffix,'') = '';
   if v_k is not null and v_item is not null then
@@ -5765,10 +5765,10 @@ begin
     insert into qm_pay_cert_lines (cert_id, kashef_id, bop_item_id, qty, amount) values (v_c, v_k, v_item, 180, 502.2) on conflict (cert_id, kashef_id, bop_item_id) do update set qty = excluded.qty, amount = excluded.amount;
   end if;
 
-  -- ══ دفعة 19 — الفترة غير مسجَّلة ══
+  -- ══ دفعة 19 — حتى 2026-06-05 ══
   delete from qm_pay_cert_lines where cert_id in (select id from qm_pay_certs where contract_id = v_contract and cert_no = 19 and source = 'mpw');
   delete from qm_pay_certs where contract_id = v_contract and cert_no = 19 and source = 'mpw';
-  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 19, null, 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2026-06-15') returning id into v_c;
+  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 19, date '2026-06-05', 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2026-06-15') returning id into v_c;
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 52;
   select id into v_item from qm_bop_items where contract_id = v_contract and bab = 7 and band = 20 and coalesce(suffix,'') = '';
   if v_k is not null and v_item is not null then
@@ -5835,10 +5835,10 @@ begin
     insert into qm_pay_cert_lines (cert_id, kashef_id, bop_item_id, qty, amount) values (v_c, v_k, v_item, 60, 672.6) on conflict (cert_id, kashef_id, bop_item_id) do update set qty = excluded.qty, amount = excluded.amount;
   end if;
 
-  -- ══ دفعة 20 — الفترة غير مسجَّلة ══
+  -- ══ دفعة 20 — حتى 2026-07-05 ══
   delete from qm_pay_cert_lines where cert_id in (select id from qm_pay_certs where contract_id = v_contract and cert_no = 20 and source = 'mpw');
   delete from qm_pay_certs where contract_id = v_contract and cert_no = 20 and source = 'mpw';
-  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 20, null, 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2026-08-08') returning id into v_c;
+  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 20, date '2026-07-05', 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2026-08-08') returning id into v_c;
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 23;
   select id into v_item from qm_bop_items where contract_id = v_contract and bab = 17 and band = 83 and coalesce(suffix,'') = '';
   if v_k is not null and v_item is not null then
@@ -5865,10 +5865,10 @@ begin
     insert into qm_pay_cert_lines (cert_id, kashef_id, bop_item_id, qty, amount) values (v_c, v_k, v_item, 60, 672.6) on conflict (cert_id, kashef_id, bop_item_id) do update set qty = excluded.qty, amount = excluded.amount;
   end if;
 
-  -- ══ دفعة 21 — حتى 2026-07-05 ══
+  -- ══ دفعة 21 — حتى 2026-08-05 ══
   delete from qm_pay_cert_lines where cert_id in (select id from qm_pay_certs where contract_id = v_contract and cert_no = 21 and source = 'mpw');
   delete from qm_pay_certs where contract_id = v_contract and cert_no = 21 and source = 'mpw';
-  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 21, date '2026-07-05', 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2026-08-12') returning id into v_c;
+  insert into qm_pay_certs (contract_id, cert_no, period_end, source, status, note) values (v_contract, 21, date '2026-08-05', 'mpw', 'certified', 'استيراد تاريخي — الطرق السريعة · قُدِّمت 2026-08-12') returning id into v_c;
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 63;
   select id into v_item from qm_bop_items where contract_id = v_contract and bab = 2 and band = 17 and coalesce(suffix,'') = '';
   if v_k is not null and v_item is not null then

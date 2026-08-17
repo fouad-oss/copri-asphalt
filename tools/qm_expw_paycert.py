@@ -25,19 +25,20 @@ per sheet here. With that fixed the series is cleanly monotonic and the
 final cumulative lands on 13,116,337.355 pre-pct — exactly the sum of the
 65 work orders imported by qm_expw_wo.py, to the dinar.
 
-── period_end is deliberately left NULL ────────────────────────────────
-Nothing in the corpus states the 21 period ends, and no uniform monthly
-rule fits:
-  * anchoring on the documented current payment (الكشف الشهري: شهادة دفع
-    021 «حتى 05/07/2026») and stepping back monthly puts payment 1 at
-    2024-11-05 — but sheet 1 already carries work order 1 complete, and
-    that work order only STARTED on 2024-11-06.
-  * anchoring on the work-order dates instead puts payment 21 in
-    September 2026, which is in the future.
-So the early payments were plainly irregular. Rather than invent dates,
-period_end is NULL except payment 21 (2026-07-05, documented) and each
-certificate's note records the PDF submission date. Fouad can supply the
-21 real dates in a one-line follow-up, or the PDF covers can be OCR'd.
+── period_end ──────────────────────────────────────────────────────────
+Fouad, 2026-08-17: each certificate covers works up to the FIFTH of its
+month, starting with certificate 1 at 2024-12-05. So
+
+    period_end(N) = 2024-12-05 + (N - 1) months
+
+Corroborated against the submission dates of the 21 PDFs: every one was
+submitted AFTER its period end (lag 0–52 days, typically one to three
+weeks), with zero violations. The competing reading — anchoring on
+الكشف الشهري «حتى 05/07/2026» for شهادة دفع 021 and stepping back — would
+have put certificate 1 at 2024-11-05, before work order 1 had even
+started on 2024-11-06. Under the confirmed rule that 05/07/2026 date is
+certificate 20's period end, so the working papers in `الدفعة` are one
+ahead of the payment they are filed under.
 
 Outputs to ~\\Desktop\\quantities-backfill\\ and the migration into
 supabase/migrations/0052_qm_expw_paycert*.sql.
@@ -62,9 +63,18 @@ N_SHEETS = 21
 MAX_PART = 700_000          # whole set is ~610 KB — one comfortable paste
 AR = "اأإآبتثجحخدذرزسشصضطظعغفقكلمنهةوىي"
 PCT = 1.19
-# the one period end the corpus actually states (الكشف الشهري للدفعة +
-# مرفقات الدفعة «شهادة دفع رقم (021)»)
-KNOWN_PERIOD_END = {21: "2026-07-05"}
+# Certificate 1 covers works to 2024-12-05, and each one after it to the
+# fifth of the following month (Fouad, 2026-08-17).
+FIRST_PERIOD_END = (2024, 12, 5)
+
+
+def period_end(n):
+    """-> 'YYYY-MM-05' for certificate n."""
+    y, m, d = FIRST_PERIOD_END
+    m += n - 1
+    y += (m - 1) // 12
+    m = (m - 1) % 12 + 1
+    return datetime.date(y, m, d).isoformat()
 
 
 def clean(v):
@@ -180,7 +190,7 @@ def main():
             if key not in cur and abs(q) > 1e-9:
                 delta[key] = -q
         certs.append({"no": n, "delta": delta,
-                      "period_end": KNOWN_PERIOD_END.get(n),
+                      "period_end": period_end(n),
                       "submitted": submitted.get(n)})
         prev = cur
 
@@ -231,22 +241,26 @@ def main():
                    "— these lines are SKIPPED (a certificate line needs a work "
                    "order)." % no_wo)
 
-    rep.append("\n## period_end is NULL except payment 21\n")
-    rep.append("Nothing states the 21 period ends and no uniform monthly rule "
-               "fits — see the module docstring. Payment 21 is set to "
-               "**2026-07-05** (الكشف الشهري + مرفقات الدفعة «شهادة دفع رقم 021»); "
-               "the rest are NULL and each certificate's note carries the PDF "
-               "submission date instead. Supply the real dates and they can be "
-               "set in one statement.\n")
-    rep.append("| # | lines | value pre-pct | cumulative | PDF submitted |")
-    rep.append("|---|---|---|---|---|")
+    rep.append("\n## Periods\n")
+    rep.append("Each certificate covers works to the **fifth of its month**, "
+               "starting at 2024-12-05 (Fouad, 2026-08-17). Corroborated by the "
+               "PDF submission dates below: every certificate was submitted "
+               "AFTER its period end, with no exceptions.\n")
+    rep.append("| # | period end | lines | value pre-pct | cumulative | "
+               "PDF submitted | lag |")
+    rep.append("|---|---|---|---|---|---|---|")
     cum = 0.0
     for c in certs:
         v = sum(d * bop[k]["rate"] for (w, k), d in c["delta"].items())
         cum += v
-        rep.append("| %d | %d | %s | %s | %s |"
-                   % (c["no"], len(c["delta"]), "{:,.3f}".format(v),
-                      "{:,.3f}".format(cum), c["submitted"] or "—"))
+        lag = ""
+        if c["submitted"] and c["period_end"]:
+            lag = "%+d d" % (datetime.date.fromisoformat(c["submitted"])
+                             - datetime.date.fromisoformat(c["period_end"])).days
+        rep.append("| %d | %s | %d | %s | %s | %s | %s |"
+                   % (c["no"], c["period_end"], len(c["delta"]),
+                      "{:,.3f}".format(v), "{:,.3f}".format(cum),
+                      c["submitted"] or "—", lag))
 
     rep.append("\n## Negative lines (%d)\n" % len(negatives))
     if negatives:
@@ -295,9 +309,9 @@ def main():
 -- كميات 9المفصلة.xls, each of which is the cumulative certified position.
 -- Σ certificates therefore equals cumulative certified: KD %s pre-pct,
 -- which matches the sum of the 65 imported work orders to the dinar.
--- period_end is NULL except payment 21 — the corpus does not state the
--- period ends and no monthly rule fits; each note carries the PDF
--- submission date instead. See expw-paycert-report.md.
+-- Each certificate covers works to the fifth of its month, starting at
+-- 2024-12-05 (Fouad, 2026-08-17); every PDF was submitted after its own
+-- period end, which corroborates it. See expw-paycert-report.md.
 -- Paste 0050 first (the work orders these lines attach to).
 -- Re-runnable: deletes and rebuilds only source='mpw' EXPW certificates.
 """ % (len(certs), "{:,.3f}".format(final_val))

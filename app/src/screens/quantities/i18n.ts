@@ -378,6 +378,9 @@ const AR = {
   common: {
     save: "حفظ", cancel: "إلغاء", confirm: "تأكيد", close: "إغلاق",
     kd: "د.ك", actions: "إجراءات", optional: "اختياري",
+    dateRequired: "التاريخ مطلوب",
+    badDate: "صيغة التاريخ غير صحيحة",
+    dateOutOfWindow: "التاريخ خارج فترة المشروع (من أكتوبر 2024 حتى اليوم) — تحقق من اليوم/الشهر/السنة",
   },
 }
 
@@ -746,6 +749,9 @@ const EN = {
   common: {
     save: "Save", cancel: "Cancel", confirm: "Confirm", close: "Close",
     kd: "KD", actions: "Actions", optional: "optional",
+    dateRequired: "Date is required",
+    badDate: "Bad date format",
+    dateOutOfWindow: "Date is outside the project window (Oct 2024 → today) — check day/month/year",
   },
 }
 

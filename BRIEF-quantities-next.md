@@ -325,6 +325,29 @@ a road either a **km range** (from/to station) or a **specific intersection**.
   scrambled dd/mm/yyyy inside `dir="ltr"`), and treats a bare ISO date as a
   calendar date. Wrap inline dates in `<bdi dir="ltr">`.
 
+## 5c. Date audit (0063, tools/qm_date_audit.py)
+
+- Window **2024-10-01 .. today+31d** (`dates.ts`); every date input in the
+  module carries min/max and every save runs `checkDate()`.
+- **Serials are per WORK ORDER and increase with time**, so a request date
+  is arbitrated by its serial neighbours inside the same WO — a per-WO DP
+  picks one reading per request (as-is / dd-mm swap / year re-fit)
+  minimising Σ|Δ| over serial order, with penalties for departing from
+  the original. Requests dated BEFORE their WO's issue date are normal
+  (emergency WOs 2/11/15/31/51/59/60/68 are issued retroactively) — not
+  treated as errors.
+- Result: **344 Expressway request dates repaired** (8 impossible years,
+  29 pre-project, 11 future, 294 in-window dd/mm swaps, 2 year typos) +
+  EXPW `start_date` 2024-05-11 → 2024-11-05. Whole runs turned out to be
+  typed mm/dd (WO 7 → Feb 2025, WO 37 → Aug…Dec 2025, WO 43 → Sep…Dec
+  2025 day by day). Hawalli, WO headers, certificates: clean.
+- 27 rows left as-is (`date-audit-report.md`, mostly WO 30/35 which are
+  chaotic). `Desktop\quantities-backfill\date-audit-check.sql` lists
+  out-of-window dates in the LIVE DB — expected empty after 0063; anything
+  left is in-app entry.
+- Matching is by (WO, serial, old date) so the 0057 per-vendor split rows
+  move together; idempotent; changelog actor `date-audit`.
+
 ## 6. Conventions
 
 - Migrations are append-only numbered files in `supabase/migrations/`.

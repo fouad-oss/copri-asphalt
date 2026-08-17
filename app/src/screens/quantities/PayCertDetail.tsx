@@ -23,6 +23,7 @@ import {
   contractInfo, itemRef, paycertDelete, paycertLineDetail, paycertLineSet, paycertOne,
   paycertUpdate, type ContractInfo, type PayCertLineDetail, type PayCertOverview,
 } from "./data"
+import { checkDate, dateInputProps } from "./dates"
 import { sourceBadge, statusBadge } from "./PayCerts"
 import { printCert } from "./certPrint"
 
@@ -41,6 +42,8 @@ function EditDialog({ c, onDone }: { c: PayCertOverview; onDone: () => void }) {
   const [busy, setBusy] = useState(false)
 
   async function save() {
+    const dateErr = checkDate(period)
+    if (dateErr) { toast.error(t(dateErr)); return }
     setBusy(true)
     try {
       await paycertUpdate(c.id, { cert_no: no, period_end: period, note })
@@ -68,7 +71,7 @@ function EditDialog({ c, onDone }: { c: PayCertOverview; onDone: () => void }) {
           </div>
           <div className="space-y-1">
             <Label>{t("pc.periodEnd")}</Label>
-            <Input dir="ltr" type="date" value={period} onChange={(e) => setPeriod(e.target.value)} />
+            <Input dir="ltr" type="date" value={period} onChange={(e) => setPeriod(e.target.value)} {...dateInputProps()} />
           </div>
           <div className="space-y-1">
             <Label>{t("pc.noteField")}</Label>

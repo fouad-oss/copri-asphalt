@@ -19,6 +19,7 @@ import {
   type BopItem, type KashefOverview,
 } from "./data"
 import { locationLabel } from "./KashefList"
+import { checkDate, dateInputProps } from "./dates"
 
 interface BalanceRow {
   kashefId: number
@@ -105,6 +106,8 @@ export function PayCertNew() {
         ? [{ kashefId: r.kashefId, bopItemId: r.bopItemId, qty: q }] : []
     }))
     if (lines.length === 0) { toast.error(t("pc.nothingToBill")); return }
+    const dateErr = checkDate(periodEnd)
+    if (dateErr) { toast.error(t(dateErr)); return }
     setBusy(true)
     try {
       const res = await paycertCreate({
@@ -156,7 +159,7 @@ export function PayCertNew() {
         <div className="space-y-1">
           <Label htmlFor="pc-date">{t("pc.periodEnd")}</Label>
           <Input id="pc-date" className="w-40" dir="ltr" type="date"
-                 value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
+                 value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} {...dateInputProps()} />
         </div>
         <div className="min-w-56 flex-1 space-y-1">
           <Label htmlFor="pc-note">{t("pc.noteField")}</Label>

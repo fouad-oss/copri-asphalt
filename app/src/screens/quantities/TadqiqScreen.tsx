@@ -26,6 +26,7 @@ import {
   type Subcontractor, type TadqiqRow,
 } from "./data"
 import { locationLabel, WoBadge } from "./KashefList"
+import { checkDate, dateInputProps } from "./dates"
 
 interface DraftLine {
   bopItem: BopItem
@@ -133,6 +134,8 @@ export function TadqiqScreen() {
   async function submit() {
     if (!kashef || !vendorId || !date || lines.length === 0 || busy) return
     if (kashef.locType === "block" && !streetNo.trim()) { toast.error(t("tadqiq.streetNo")); return }
+    const dateErr = checkDate(date, true)
+    if (dateErr) { toast.error(t(dateErr)); return }
     setBusy(true)
     try {
       const res = await tadqiqCreate({
@@ -204,7 +207,7 @@ export function TadqiqScreen() {
             </div>
             <div className="space-y-1">
               <Label>{t("tadqiq.date")}</Label>
-              <Input dir="ltr" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <Input dir="ltr" type="date" value={date} onChange={(e) => setDate(e.target.value)} {...dateInputProps()} />
             </div>
             <div className="space-y-1">
               <Label>{t("tadqiq.serial")}</Label>

@@ -30,6 +30,7 @@ import {
 import { locationLabel, siteFromRow, siteKind, siteModelFor, siteToFields, type SiteState } from "./site"
 import { SiteFields } from "./SiteFields"
 import { ScopeFields } from "./ScopeFields"
+import { checkDate, dateInputProps } from "./dates"
 import { scopeLabel, scopesToWorkType, workTypeLabel } from "./scopes"
 import type { ScopeCode } from "./data"
 import { printSubWo } from "./subPrint"
@@ -280,6 +281,8 @@ function EditDialog({ k, onDone }: { k: KashefOverview; onDone: () => void }) {
   async function submit() {
     const loc = siteToFields(site, model)
     if (!loc.ok) { toast.error(t(loc.error)); return }
+    const dateErr = checkDate(f.kashef_date, true) || checkDate(f.wo_date)
+    if (dateErr) { toast.error(t(dateErr)); return }
     setBusy(true)
     try {
       await kashefUpdate(k.id, {
@@ -321,7 +324,7 @@ function EditDialog({ k, onDone }: { k: KashefOverview; onDone: () => void }) {
           </div>
           <div className="space-y-1">
             <Label>{t("detail.kashefDate")}</Label>
-            <Input dir="ltr" type="date" value={f.kashef_date ?? ""} onChange={set("kashef_date")} />
+            <Input dir="ltr" type="date" value={f.kashef_date ?? ""} onChange={set("kashef_date")} {...dateInputProps()} />
           </div>
           <SiteFields model={model} value={site} wide="col-span-2"
                       onChange={(patch) => setSite((x) => ({ ...x, ...patch }))} />
@@ -331,7 +334,7 @@ function EditDialog({ k, onDone }: { k: KashefOverview; onDone: () => void }) {
           </div>
           <div className="space-y-1">
             <Label>{t("detail.woDateField")}</Label>
-            <Input dir="ltr" type="date" value={f.wo_date ?? ""} onChange={set("wo_date")} />
+            <Input dir="ltr" type="date" value={f.wo_date ?? ""} onChange={set("wo_date")} {...dateInputProps()} />
           </div>
           <div className="space-y-1">
             <Label>{t("new.duration")}</Label>

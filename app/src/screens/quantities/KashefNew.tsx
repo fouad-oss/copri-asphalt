@@ -29,6 +29,7 @@ import {
 import { SiteFields } from "./SiteFields"
 import { ScopeFields } from "./ScopeFields"
 import { scopesToWorkType } from "./scopes"
+import { checkDate, dateInputProps } from "./dates"
 import type { ScopeCode } from "./data"
 import { emptySite, siteFromRow, siteModelFor, siteToFields, type SiteState } from "./site"
 import {
@@ -78,7 +79,7 @@ function HeaderFields({ h, setH, suggestedNo, areas }: {
                   onChange={(patch) => setH((x) => ({ ...x, site: { ...x.site, ...patch } }))} />
       <div className="space-y-1">
         <Label>{t("new.woDate")}</Label>
-        <Input dir="ltr" type="date" value={h.woDate} onChange={set("woDate")} />
+        <Input dir="ltr" type="date" value={h.woDate} onChange={set("woDate")} {...dateInputProps()} />
       </div>
       <div className="space-y-1">
         <Label>{t("new.duration")}</Label>
@@ -192,6 +193,8 @@ export function KashefNew() {
     if (effectiveLines.length === 0) { toast.error(t("new.noLines")); return }
     const site = siteToFields(h.site, MODEL())
     if (!site.ok) { toast.error(t(site.error)); return }
+    const dateErr = checkDate(h.woDate)
+    if (dateErr) { toast.error(t(dateErr)); return }
     if (busy) return
     setBusy(true)
     try {

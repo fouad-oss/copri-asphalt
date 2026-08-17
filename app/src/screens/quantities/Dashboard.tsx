@@ -20,6 +20,7 @@ import {
   type ContractProgress, type WoCertification,
 } from "./data"
 import { locationLabel } from "./KashefList"
+import { categoryLabel, primaryCategory } from "./scopes"
 
 const NEARING_DAYS = 20
 const ACTIVE_DAYS = 60
@@ -56,7 +57,7 @@ function Bar({ value, max, warn }: { value: number; max: number; warn?: boolean 
 }
 
 export function Dashboard() {
-  const { t } = useTranslation("quantities")
+  const { t, i18n } = useTranslation("quantities")
   const [data, setData] = useState<Data | undefined>(undefined)
   const [error, setError] = useState(false)
 
@@ -151,10 +152,11 @@ export function Dashboard() {
       delayed, nearing, flagged, attention,
       subsOpen, subsActive, subRows,
       byArea: breakdown((k) => k.area),
-      byType: breakdown((k) => k.workType),
+      // one bucket per WO — its primary scope category (first in taxonomy order)
+      byType: breakdown((k) => { const c = primaryCategory(k); return c ? categoryLabel(c, i18n.language) : "" }),
       trend, trendMax, today, progress, awaitingCert, awaitingTotal,
     }
-  }, [data])
+  }, [data, i18n.language])
 
   if (error) {
     return (

@@ -151,7 +151,7 @@ export function PayCerts() {
               <Link key={c.id} to={`/quantities/paycerts/${c.id}`} className="flex items-center gap-3 text-sm hover:opacity-80">
                 <span className="w-10"><RefCode>{String(c.certNo)}</RefCode></span>
                 <span className="w-20 font-mono text-xs tabular-nums text-muted-foreground" dir="ltr">
-                  {c.periodEnd ? c.periodEnd.slice(0, 7) : "—"}
+                  <bdi dir="ltr">{c.periodEnd ? c.periodEnd.slice(0, 7) : "—"}</bdi>
                 </span>
                 <Bar value={c.totalAfterPct} max={view.maxCert} />
                 <span className="w-28 text-end font-mono text-xs tabular-nums" dir="ltr">{kd(c.totalAfterPct)}</span>

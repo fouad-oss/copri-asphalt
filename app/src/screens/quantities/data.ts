@@ -47,7 +47,11 @@ export interface KashefOverview {
   kmFrom: number | null
   kmTo: number | null
   direction: string
+  description: string     // the ministry's wording — WO page only (0062)
+  scopes: ScopeCode[]     // multi-select scope of works (0062); work_type stays the printable label
 }
+
+export type ScopeCode = "asphalt" | "civil" | "storm" | "sewage" | "tiles" | "metal" | "other"
 
 export interface LineStatus {
   kashefLineId: number
@@ -244,6 +248,8 @@ function mapOverview(r: any): KashefOverview {
     kmFrom: r.km_from != null ? Number(r.km_from) : null,
     kmTo: r.km_to != null ? Number(r.km_to) : null,
     direction: r.direction ?? "",
+    description: r.description ?? "",
+    scopes: Array.isArray(r.scopes) ? r.scopes : [],
   }
 }
 
@@ -647,6 +653,8 @@ export interface KashefCreateInput {
   kmFrom: number | null
   kmTo: number | null
   direction: string
+  description: string
+  scopes: ScopeCode[]
   lines: { bopItemId: number; qty: number }[]
 }
 
@@ -669,6 +677,8 @@ export function kashefCreate(k: KashefCreateInput) {
     p_km_from: k.kmFrom,
     p_km_to: k.kmTo,
     p_direction: k.direction,
+    p_description: k.description,
+    p_scopes: k.scopes,
   })
 }
 

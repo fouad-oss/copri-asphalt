@@ -16,6 +16,7 @@ import { kd } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { getContract, kashefList, woCertification, type KashefOverview, type WoCertification } from "./data"
 import { locationLabel, siteKind, siteModelFor, type SiteKind } from "./site"
+import { CATEGORIES, categoriesOf, categoryLabel, workTypeLabel, type ScopeCategory } from "./scopes"
 
 // kept as a re-export: every screen imported it from here before site.ts existed
 export { locationLabel }
@@ -53,7 +54,7 @@ function overdueDays(k: KashefOverview): number | null {
 }
 
 export function KashefList() {
-  const { t } = useTranslation("quantities")
+  const { t, i18n } = useTranslation("quantities")
   const [rows, setRows] = useState<KashefOverview[] | undefined>(undefined)
   const [certs, setCerts] = useState<WoCertification[]>([])
   const [error, setError] = useState(false)
@@ -93,14 +94,15 @@ export function KashefList() {
 
   const options = useMemo(() => {
     const areas = new Set<string>()
-    const types = new Set<string>()
+    const cats = new Set<ScopeCategory>()
     for (const k of rows ?? []) {
       if (k.area) areas.add(k.area)
-      if (k.workType) types.add(k.workType)
+      for (const c of categoriesOf(k)) cats.add(c)
     }
     return {
       areas: [...areas].sort((a, b) => a.localeCompare(b, "ar")),
-      types: [...types].sort((a, b) => a.localeCompare(b, "ar")),
+      // scope categories in taxonomy order, only those present
+      types: CATEGORIES.map((c) => c.code).filter((c) => cats.has(c)),
     }
   }, [rows])
 
@@ -111,13 +113,13 @@ export function KashefList() {
     const max = Number(maxValue)
     const out = rows.filter((k) => {
       if (needle) {
-        const hay = `${k.kashefNo} ${k.area} ${k.blockNo} ${k.streetName} ${k.locationText} ${k.workType} ${k.woNo}`
+        const hay = `${k.kashefNo} ${k.area} ${k.blockNo} ${k.streetName} ${k.locationText} ${k.description} ${k.workType} ${k.woNo}`
         if (!hay.includes(needle)) return false
       }
       if (status === "open" && k.closed) return false
       if (status === "closed" && !k.closed) return false
       if (area !== ALL && k.area !== area) return false
-      if (workType !== ALL && k.workType !== workType) return false
+      if (workType !== ALL && !categoriesOf(k).includes(workType as ScopeCategory)) return false
       if (locType !== ALL && siteKind(k) !== locType) return false
       if (minValue && isFinite(min) && k.totalAfterPct < min) return false
       if (maxValue && isFinite(max) && k.totalAfterPct > max) return false
@@ -204,7 +206,7 @@ export function KashefList() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL}>{t("list.workType")}: {t("list.all")}</SelectItem>
-              {options.types.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+              {options.types.map((a) => <SelectItem key={a} value={a}>{categoryLabel(a, i18n.language)}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={locType} onValueChange={setLocType}>
@@ -307,7 +309,7 @@ export function KashefList() {
                     </Badge>
                   )}
                   <span className="text-sm text-muted-foreground">{locationLabel(k, t)}</span>
-                  {k.workType && <span className="text-xs text-muted-foreground">· {k.workType}</span>}
+                  {workTypeLabel(k, i18n.language) && <span className="text-xs text-muted-foreground">· {workTypeLabel(k, i18n.language)}</span>}
                   {k.durationDays != null && (
                     <span className="text-xs text-muted-foreground">
                       · {t("list.duration")}: <bdi dir="ltr">{k.durationDays}</bdi> {t("list.days")}

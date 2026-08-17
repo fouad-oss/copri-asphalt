@@ -29,6 +29,9 @@ import {
 } from "./data"
 import { locationLabel, siteFromRow, siteKind, siteModelFor, siteToFields, type SiteState } from "./site"
 import { SiteFields } from "./SiteFields"
+import { ScopeFields } from "./ScopeFields"
+import { scopeLabel, scopesToWorkType, workTypeLabel } from "./scopes"
+import type { ScopeCode } from "./data"
 import { printSubWo } from "./subPrint"
 import { useNavigate } from "react-router-dom"
 
@@ -256,6 +259,8 @@ function EditDialog({ k, onDone }: { k: KashefOverview; onDone: () => void }) {
   const [f, setF] = useState<Record<string, string>>({})
   const model = siteModelFor(k.contractCode)
   const [site, setSite] = useState<SiteState>(() => siteFromRow(k, model))
+  const [scopes, setScopes] = useState<ScopeCode[]>(k.scopes)
+  const [description, setDescription] = useState(k.description)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -267,6 +272,8 @@ function EditDialog({ k, onDone }: { k: KashefOverview; onDone: () => void }) {
         duration_days: k.durationDays != null ? String(k.durationDays) : "",
       })
       setSite(siteFromRow(k, model))
+      setScopes(k.scopes)
+      setDescription(k.description)
     }
   }, [open, k, model])
 
@@ -283,6 +290,11 @@ function EditDialog({ k, onDone }: { k: KashefOverview; onDone: () => void }) {
         km_from: loc.f.kmFrom != null ? String(loc.f.kmFrom) : "",
         km_to: loc.f.kmTo != null ? String(loc.f.kmTo) : "",
         direction: loc.f.direction,
+        // scopes travel as a comma-separated code list; work_type keeps
+        // the printable label (legacy free text survives when nothing is ticked)
+        scopes: scopes.join(","),
+        work_type: scopes.length ? scopesToWorkType(scopes) : (f.work_type ?? ""),
+        description: description.trim(),
       })
       toast.success(t("detail.saved"))
       setOpen(false)
@@ -314,10 +326,6 @@ function EditDialog({ k, onDone }: { k: KashefOverview; onDone: () => void }) {
           <SiteFields model={model} value={site} wide="col-span-2"
                       onChange={(patch) => setSite((x) => ({ ...x, ...patch }))} />
           <div className="space-y-1">
-            <Label>{t("new.workType")}</Label>
-            <Input value={f.work_type ?? ""} onChange={set("work_type")} />
-          </div>
-          <div className="space-y-1">
             <Label>{t("detail.woNoField")}</Label>
             <Input dir="ltr" value={f.wo_no ?? ""} onChange={set("wo_no")} />
           </div>
@@ -329,6 +337,8 @@ function EditDialog({ k, onDone }: { k: KashefOverview; onDone: () => void }) {
             <Label>{t("new.duration")}</Label>
             <Input dir="ltr" inputMode="numeric" value={f.duration_days ?? ""} onChange={set("duration_days")} />
           </div>
+          <ScopeFields scopes={scopes} description={description} wide="col-span-2"
+                       onChange={(p) => { if (p.scopes) setScopes(p.scopes); if (p.description != null) setDescription(p.description) }} />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>{t("common.cancel")}</Button>
@@ -370,7 +380,7 @@ function ChangelogPanel({ log }: { log: ChangelogRow[] }) {
 
 export function KashefDetail() {
   const { id } = useParams()
-  const { t } = useTranslation("quantities")
+  const { t, i18n } = useTranslation("quantities")
   const nav = useNavigate()
   const { data, error, load } = useDetail(Number(id))
   const [expanded, setExpanded] = useState<number | null>(null)
@@ -457,7 +467,7 @@ export function KashefDetail() {
       contractNo: contract.contractNo, contractName: contract.name,
       contractor: contract.contractor, pct: contract.pct,
       kashefNo: k.kashefNo, woNo: k.woNo,
-      location: locationLabel(k, t), workType: k.workType,
+      location: locationLabel(k, t), workType: workTypeLabel(k, "ar"),
       vendorName: v.name,
       date: new Date().toLocaleDateString("en-GB", { timeZone: "Asia/Kuwait" }),
       lines: linesFor,
@@ -474,6 +484,7 @@ export function KashefDetail() {
             {t("list.kashefNo")} <RefCode>{k.woNo || String(k.kashefNo)}</RefCode>
           </h1>
           <Badge variant="outline">{t(`loc.${siteKind(k)}`)}</Badge>
+          {k.scopes.map((c) => <Badge key={c} variant="secondary">{scopeLabel(c, i18n.language)}</Badge>)}
           {k.closed && <Badge variant="secondary">{t("status.closed")}</Badge>}
           <div className="ms-auto flex flex-wrap items-center gap-2">
             <EditDialog k={k} onDone={refresh} />
@@ -500,15 +511,20 @@ export function KashefDetail() {
         <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3 lg:grid-cols-4">
           <div><span className="text-muted-foreground">{t("detail.contract")}: </span><bdi dir="ltr" className="font-mono">{contract.contractNo}</bdi></div>
           <div><span className="text-muted-foreground">{t("detail.location")}: </span>{locationLabel(k, t)}</div>
-          <div><span className="text-muted-foreground">{t("detail.workType")}: </span>{k.workType || "—"}</div>
+          <div><span className="text-muted-foreground">{t("detail.workType")}: </span>{workTypeLabel(k, i18n.language) || "—"}</div>
           {k.woDate && (
-            <div><span className="text-muted-foreground">{t("detail.woDate")}: </span><span dir="ltr">{k.woDate}</span></div>
+            <div><span className="text-muted-foreground">{t("detail.woDate")}: </span><bdi dir="ltr">{fmtKWDate(k.woDate)}</bdi></div>
           )}
           <div>
             <span className="text-muted-foreground">{t("detail.duration")}: </span>
             {k.durationDays != null ? <><bdi dir="ltr">{k.durationDays}</bdi> {t("detail.days")}</> : "—"}
           </div>
         </div>
+        {k.description && (
+          <p className="mt-2 text-sm text-muted-foreground">
+            <span className="me-1">{t("detail.description")}:</span>{k.description}
+          </p>
+        )}
         <div className="mt-3 flex flex-wrap gap-6 border-t pt-3 text-sm">
           <div>
             <span className="text-muted-foreground">{t("detail.subtotal")}: </span>

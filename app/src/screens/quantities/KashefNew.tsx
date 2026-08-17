@@ -27,6 +27,9 @@ import {
   type BopItem, type KashefCreateInput,
 } from "./data"
 import { SiteFields } from "./SiteFields"
+import { ScopeFields } from "./ScopeFields"
+import { scopesToWorkType } from "./scopes"
+import type { ScopeCode } from "./data"
 import { emptySite, siteFromRow, siteModelFor, siteToFields, type SiteState } from "./site"
 import {
   candidateSheets, lineDisplayRef, openWorkbook, parseKashefSheet,
@@ -42,7 +45,9 @@ interface DraftLine {
 interface HeaderState {
   woNo: string
   site: SiteState
-  workType: string
+  workType: string        // legacy free text — kept when the Excel sheet carried one and no scope is ticked
+  scopes: ScopeCode[]
+  description: string
   woDate: string
   duration: string
 }
@@ -50,7 +55,7 @@ interface HeaderState {
 const MODEL = () => siteModelFor(getContract())
 
 function emptyHeader(): HeaderState {
-  return { woNo: "", site: emptySite(MODEL()), workType: "", woDate: "", duration: "" }
+  return { woNo: "", site: emptySite(MODEL()), workType: "", scopes: [], description: "", woDate: "", duration: "" }
 }
 
 function HeaderFields({ h, setH, suggestedNo, areas }: {
@@ -72,10 +77,6 @@ function HeaderFields({ h, setH, suggestedNo, areas }: {
       <SiteFields model={MODEL()} value={h.site} areas={areas}
                   onChange={(patch) => setH((x) => ({ ...x, site: { ...x.site, ...patch } }))} />
       <div className="space-y-1">
-        <Label>{t("new.workType")}</Label>
-        <Input value={h.workType} onChange={set("workType")} placeholder="أمطار / أعمال مدنية…" />
-      </div>
-      <div className="space-y-1">
         <Label>{t("new.woDate")}</Label>
         <Input dir="ltr" type="date" value={h.woDate} onChange={set("woDate")} />
       </div>
@@ -83,6 +84,8 @@ function HeaderFields({ h, setH, suggestedNo, areas }: {
         <Label>{t("new.duration")}</Label>
         <Input dir="ltr" inputMode="numeric" value={h.duration} onChange={set("duration")} />
       </div>
+      <ScopeFields scopes={h.scopes} description={h.description}
+                   onChange={(patch) => setH((x) => ({ ...x, ...patch }))} />
     </div>
   )
 }
@@ -196,7 +199,9 @@ export function KashefNew() {
       const input: KashefCreateInput = {
         woNo,
         ...site.f,
-        workType: h.workType.trim(),
+        workType: h.scopes.length ? scopesToWorkType(h.scopes) : h.workType.trim(),
+        scopes: h.scopes,
+        description: h.description.trim(),
         woDate: h.woDate || null,
         durationDays: isFinite(duration) && duration > 0 ? duration : null,
         lines: effectiveLines.map((l) => ({ bopItemId: l.bopItem.id, qty: l.qty })),

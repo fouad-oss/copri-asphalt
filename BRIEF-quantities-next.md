@@ -300,6 +300,32 @@ a road either a **km range** (from/to station) or a **specific intersection**.
   19 → «طريق الفحيحيل» (WO 53 «… + …» skipped by the `+` guard). Optional but
   it un-splits the register's area filter.
 
+## 5b. Description + scope taxonomy + Expressway site clean-up (0062)
+
+- **`qm_kashefs.description`** — the ministry's own wording; **shown ONLY on
+  the WO page** (header + edit dialog). Register/dashboard use the short
+  site fields. **`qm_kashefs.scopes text[]`** — MULTI-select scope of works,
+  codes `asphalt | civil | storm | sewage | tiles | metal | other`; the four
+  reporting categories are asphalt / civil (general, أمطار, صحي, بلاط) /
+  metal / other (`scopes.ts`, `ScopeFields.tsx`). `work_type` stays the
+  printable label, rewritten from the scopes on save («أسفلت + أعمال
+  معدنية»); rows with empty scopes (Hawalli backfill) still show/filter by
+  their legacy text via a keyword fallback (`categoriesOf`). Dashboard «حسب
+  نوع الأعمال» buckets each WO under its PRIMARY category (first in
+  taxonomy order) so money is not double-counted.
+- **0062 = schema + RPCs (create/update learn description + scopes; scopes
+  arrive in `qm_kashef_update` as a comma-separated code string) + view
+  columns APPENDED + the Expressway DATA clean-up: all 65 WOs re-keyed by
+  the explicit table in `tools/qm_expw_site_clean.py`** (area = road or a
+  short «other» site, location_text = range/spot, direction, description =
+  old sentence, scopes + work_type; changelog actor `expw-site-clean`).
+  Re-run the tool after editing the mapping; the SQL only UPDATEs.
+  **Until 0062 is pasted, WO create/edit fail** (new RPC params) — reads are
+  safe. 0061 becomes redundant once 0062 runs (harmless either way).
+- Dates: `fmtKWDate` strips the RTL marks the `ar-KW` locale inserts (they
+  scrambled dd/mm/yyyy inside `dir="ltr"`), and treats a bare ISO date as a
+  calendar date. Wrap inline dates in `<bdi dir="ltr">`.
+
 ## 6. Conventions
 
 - Migrations are append-only numbered files in `supabase/migrations/`.

@@ -19,13 +19,10 @@ with Fouad.
   Repo: `C:\Users\fszog\Desktop\Copri webapp` (local-only, not in OneDrive).
 - **Migrations 0033–0057 are ALL pasted and confirmed** (0057 pasted
   2026-08-17 — Expressway executed tier now per subcontractor, see §2a).
-  **0058 + 0059 (WO 3) WRITTEN, AWAITING PASTE** — WO 3's request sheet is
-  named `الطلبات`, not `طلبات التدقيق`, so 0051 skipped it (KD 290,353;
-  27 requests / 33 lines, ties to its own نهائي at 1.000). `0058_qm_expw_tadqiq_wo3.sql`
-  (30 KB) inserts them on كوبري, `0059_qm_expw_exec_split_wo3.sql` (26 KB)
-  splits them (27 → بحر الابداع, 5 كوبري pro-rata remainders). Paste 0058 then
-  0059; EXPW `qm_tadqiq` count afterwards = **1,344**. Both tools now take
-  `--wo N --mig <file>` for such increments (they never touch 0051/0057).
+  **0058 + 0059 (WO 3) pasted 2026-08-17** — WO 3's request sheet is named
+  `الطلبات`, so 0051 had skipped it (27 requests / KD 290,353, all بحر الابداع
+  bar 5 pro-rata remainders). Migrations 0033–0059 all applied. Nothing
+  pending. Both tools take `--wo N --mig <file>` for such increments.
 - **Front-end deploys on push to `main`.** Last commit `d0060ae`.
 - **Two projects**, switched from the header (`ProjectSwitcher`, selection in
   `localStorage['qm.contract']`, default `HAW9`):
@@ -38,7 +35,7 @@ with Fouad.
 | BOP items | 1,309 | 1,737 |
 | work orders | 76 (46 closed) | 65 (58 closed) |
 | WO lines | ~2,295 | 876 |
-| طلبات تدقيق | 148 opening entries | **1,117 real dated requests (1,344 rows after the per-sub split, once 0058/0059 are in)** |
+| طلبات تدقيق | 148 opening entries | **1,117 real dated requests (1,344 rows after the per-sub split)** |
 | certificates | 17 (KD 9.38M after pct) | 21 (KD 15.61M after pct) |
 
 ### Screens

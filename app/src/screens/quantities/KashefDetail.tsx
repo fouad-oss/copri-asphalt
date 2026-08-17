@@ -27,7 +27,8 @@ import {
   tadqiqList, type BopItem, type ChangelogRow, type ContractInfo, type KashefOverview,
   type LineStatus, type SubLineStatus, type Subcontractor, type TadqiqRow,
 } from "./data"
-import { locationLabel } from "./KashefList"
+import { locationLabel, siteFromRow, siteKind, siteModelFor, siteToFields, type SiteState } from "./site"
+import { SiteFields } from "./SiteFields"
 import { printSubWo } from "./subPrint"
 import { useNavigate } from "react-router-dom"
 
@@ -253,26 +254,36 @@ function EditDialog({ k, onDone }: { k: KashefOverview; onDone: () => void }) {
   const { t } = useTranslation("quantities")
   const [open, setOpen] = useState(false)
   const [f, setF] = useState<Record<string, string>>({})
+  const model = siteModelFor(k.contractCode)
+  const [site, setSite] = useState<SiteState>(() => siteFromRow(k, model))
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    if (open) setF({
-      kashef_no: String(k.kashefNo), area: k.area, loc_type: k.locType,
-      block_no: k.blockNo, street_name: k.streetName, work_type: k.workType,
-      kashef_date: k.kashefDate,
-      wo_no: k.woNo, wo_date: k.woDate ?? "",
-      duration_days: k.durationDays != null ? String(k.durationDays) : "",
-      location_text: k.locationText,
-      km_from: k.kmFrom != null ? String(k.kmFrom) : "",
-      km_to: k.kmTo != null ? String(k.kmTo) : "",
-      direction: k.direction,
-    })
-  }, [open, k])
+    if (open) {
+      setF({
+        kashef_no: String(k.kashefNo), work_type: k.workType,
+        kashef_date: k.kashefDate,
+        wo_no: k.woNo, wo_date: k.woDate ?? "",
+        duration_days: k.durationDays != null ? String(k.durationDays) : "",
+      })
+      setSite(siteFromRow(k, model))
+    }
+  }, [open, k, model])
 
   async function submit() {
+    const loc = siteToFields(site, model)
+    if (!loc.ok) { toast.error(t(loc.error)); return }
     setBusy(true)
     try {
-      await kashefUpdate(k.id, f)
+      await kashefUpdate(k.id, {
+        ...f,
+        area: loc.f.area, loc_type: loc.f.locType,
+        block_no: loc.f.blockNo, street_name: loc.f.streetName,
+        location_text: loc.f.locationText,
+        km_from: loc.f.kmFrom != null ? String(loc.f.kmFrom) : "",
+        km_to: loc.f.kmTo != null ? String(loc.f.kmTo) : "",
+        direction: loc.f.direction,
+      })
       toast.success(t("detail.saved"))
       setOpen(false)
       onDone()
@@ -297,57 +308,11 @@ function EditDialog({ k, onDone }: { k: KashefOverview; onDone: () => void }) {
             <Input dir="ltr" inputMode="numeric" value={f.kashef_no ?? ""} onChange={set("kashef_no")} />
           </div>
           <div className="space-y-1">
-            <Label>{t("new.kashefDate")}</Label>
+            <Label>{t("detail.kashefDate")}</Label>
             <Input dir="ltr" type="date" value={f.kashef_date ?? ""} onChange={set("kashef_date")} />
           </div>
-          <div className="space-y-1">
-            <Label>{f.loc_type === "chainage" ? t("new.road") : t("new.area")}</Label>
-            <Input value={f.area ?? ""} onChange={set("area")} />
-          </div>
-          <div className="space-y-1">
-            <Label>{t("new.locType")}</Label>
-            <Select value={f.loc_type ?? ""} onValueChange={(v) => setF((x) => ({ ...x, loc_type: v }))}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="block">{t("loc.block")}</SelectItem>
-                <SelectItem value="street">{t("loc.street")}</SelectItem>
-                <SelectItem value="misc">{t("loc.misc")}</SelectItem>
-                <SelectItem value="chainage">{t("loc.chainage")}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {f.loc_type === "block" && (
-            <div className="space-y-1">
-              <Label>{t("new.blockNo")}</Label>
-              <Input dir="ltr" value={f.block_no ?? ""} onChange={set("block_no")} />
-            </div>
-          )}
-          {f.loc_type === "street" && (
-            <div className="space-y-1">
-              <Label>{t("new.streetName")}</Label>
-              <Input value={f.street_name ?? ""} onChange={set("street_name")} />
-            </div>
-          )}
-          {f.loc_type === "chainage" && (
-            <>
-              <div className="space-y-1 col-span-2 lg:col-span-3">
-                <Label>{t("new.locationText")}</Label>
-                <Input value={f.location_text ?? ""} onChange={set("location_text")} />
-              </div>
-              <div className="space-y-1">
-                <Label>{t("new.kmFrom")}</Label>
-                <Input dir="ltr" inputMode="decimal" value={f.km_from ?? ""} onChange={set("km_from")} />
-              </div>
-              <div className="space-y-1">
-                <Label>{t("new.kmTo")}</Label>
-                <Input dir="ltr" inputMode="decimal" value={f.km_to ?? ""} onChange={set("km_to")} />
-              </div>
-              <div className="space-y-1">
-                <Label>{t("new.direction")}</Label>
-                <Input value={f.direction ?? ""} onChange={set("direction")} />
-              </div>
-            </>
-          )}
+          <SiteFields model={model} value={site} wide="col-span-2"
+                      onChange={(patch) => setSite((x) => ({ ...x, ...patch }))} />
           <div className="space-y-1">
             <Label>{t("new.workType")}</Label>
             <Input value={f.work_type ?? ""} onChange={set("work_type")} />
@@ -508,7 +473,7 @@ export function KashefDetail() {
           <h1 className="text-lg font-semibold">
             {t("list.kashefNo")} <RefCode>{k.woNo || String(k.kashefNo)}</RefCode>
           </h1>
-          <Badge variant="outline">{t(`loc.${k.locType}`)}</Badge>
+          <Badge variant="outline">{t(`loc.${siteKind(k)}`)}</Badge>
           {k.closed && <Badge variant="secondary">{t("status.closed")}</Badge>}
           <div className="ms-auto flex flex-wrap items-center gap-2">
             <EditDialog k={k} onDone={refresh} />

@@ -23,9 +23,11 @@ import { RefCode } from "@/components/patterns"
 import { kd, qty as fq } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import {
-  bopItems, contractInfo, itemRef, kashefCreate, kashefList,
-  type BopItem, type KashefCreateInput, type LocType,
+  bopItems, contractInfo, getContract, itemRef, kashefCreate, kashefList,
+  type BopItem, type KashefCreateInput,
 } from "./data"
+import { SiteFields } from "./SiteFields"
+import { emptySite, siteFromRow, siteModelFor, siteToFields, type SiteState } from "./site"
 import {
   candidateSheets, lineDisplayRef, openWorkbook, parseKashefSheet,
   type ParsedKashef,
@@ -39,31 +41,23 @@ interface DraftLine {
 
 interface HeaderState {
   woNo: string
-  area: string
-  locType: LocType
-  blockNo: string
-  streetName: string
-  locationText: string
-  kmFrom: string
-  kmTo: string
-  direction: string
+  site: SiteState
   workType: string
   woDate: string
   duration: string
 }
 
+const MODEL = () => siteModelFor(getContract())
+
 function emptyHeader(): HeaderState {
-  return {
-    woNo: "", area: "", locType: "block", blockNo: "", streetName: "",
-    locationText: "", kmFrom: "", kmTo: "", direction: "",
-    workType: "", woDate: "", duration: "",
-  }
+  return { woNo: "", site: emptySite(MODEL()), workType: "", woDate: "", duration: "" }
 }
 
-function HeaderFields({ h, setH, suggestedNo }: {
+function HeaderFields({ h, setH, suggestedNo, areas }: {
   h: HeaderState
   setH: React.Dispatch<React.SetStateAction<HeaderState>>
   suggestedNo: number | null
+  areas: string[]
 }) {
   const { t } = useTranslation("quantities")
   const set = (key: keyof HeaderState) => (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -75,59 +69,8 @@ function HeaderFields({ h, setH, suggestedNo }: {
         <Input dir="ltr" inputMode="numeric" value={h.woNo} onChange={set("woNo")}
                placeholder={suggestedNo ? String(suggestedNo) : ""} />
       </div>
-      <div className="space-y-1">
-        {/* on a highway WO the same column carries the road, not an area */}
-        <Label>{h.locType === "chainage" ? t("new.road") : t("new.area")}</Label>
-        <Input value={h.area} onChange={set("area")} />
-      </div>
-      <div className="space-y-1">
-        <Label>{t("new.locType")}</Label>
-        <Select value={h.locType} onValueChange={(v) => setH((x) => ({ ...x, locType: v as LocType }))}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="block">{t("loc.block")}</SelectItem>
-            <SelectItem value="street">{t("loc.street")}</SelectItem>
-            <SelectItem value="misc">{t("loc.misc")}</SelectItem>
-            <SelectItem value="chainage">{t("loc.chainage")}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      {h.locType === "block" && (
-        <div className="space-y-1">
-          <Label>{t("new.blockNo")}</Label>
-          <Input dir="ltr" value={h.blockNo} onChange={set("blockNo")} />
-        </div>
-      )}
-      {h.locType === "street" && (
-        <div className="space-y-1">
-          <Label>{t("new.streetName")}</Label>
-          <Input value={h.streetName} onChange={set("streetName")} />
-        </div>
-      )}
-      {h.locType === "chainage" && (
-        <>
-          {/* the ministry's wording is the authoritative location — the km
-              pair and direction are an optional structured extract */}
-          <div className="space-y-1 col-span-2 lg:col-span-3">
-            <Label>{t("new.locationText")}</Label>
-            <Input value={h.locationText} onChange={set("locationText")}
-                   placeholder="طريق الفحيحيل من محطة 200+9 الى محطة 200+12" />
-          </div>
-          <div className="space-y-1">
-            <Label>{t("new.kmFrom")}</Label>
-            <Input dir="ltr" inputMode="decimal" value={h.kmFrom} onChange={set("kmFrom")} />
-          </div>
-          <div className="space-y-1">
-            <Label>{t("new.kmTo")}</Label>
-            <Input dir="ltr" inputMode="decimal" value={h.kmTo} onChange={set("kmTo")} />
-          </div>
-          <div className="space-y-1">
-            <Label>{t("new.direction")}</Label>
-            <Input value={h.direction} onChange={set("direction")}
-                   placeholder="بالاتجاهين / اتجاه الشمال…" />
-          </div>
-        </>
-      )}
+      <SiteFields model={MODEL()} value={h.site} areas={areas}
+                  onChange={(patch) => setH((x) => ({ ...x, site: { ...x.site, ...patch } }))} />
       <div className="space-y-1">
         <Label>{t("new.workType")}</Label>
         <Input value={h.workType} onChange={set("workType")} placeholder="أمطار / أعمال مدنية…" />
@@ -150,6 +93,7 @@ export function KashefNew() {
   const [bop, setBop] = useState<BopItem[] | null>(null)
   const [pct, setPct] = useState(0)
   const [suggestedNo, setSuggestedNo] = useState<number | null>(null)
+  const [areas, setAreas] = useState<string[]>([])
   const [h, setH] = useState<HeaderState>(emptyHeader())
   const [busy, setBusy] = useState(false)
 
@@ -175,6 +119,7 @@ export function KashefNew() {
         // suggest the next WO number below the 900-range placeholders
         const next = list.reduce((m, k) => (k.kashefNo < 900 ? Math.max(m, k.kashefNo) : m), 0) + 1
         setSuggestedNo(next)
+        setAreas([...new Set(list.map((k) => k.area).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ar")))
         setH((x) => ({ ...x, woNo: x.woNo || String(next) }))
       } catch {
         toast.error(t("app.loadError"))
@@ -226,14 +171,11 @@ export function KashefNew() {
       setParsed(p)
       setH((x) => ({
         ...x,
-        area: p.area || x.area,
-        locType: p.locType,
-        blockNo: p.blockNo,
-        streetName: p.streetName,
-        locationText: p.locationText,
-        kmFrom: p.kmFrom == null ? "" : String(p.kmFrom),
-        kmTo: p.kmTo == null ? "" : String(p.kmTo),
-        direction: p.direction,
+        site: siteFromRow({
+          area: p.area || x.site.area, locType: p.locType, blockNo: p.blockNo,
+          streetName: p.streetName, locationText: p.locationText,
+          kmFrom: p.kmFrom, kmTo: p.kmTo, direction: p.direction,
+        }, MODEL()),
         workType: p.workType || x.workType,
       }))
     } catch {
@@ -245,24 +187,15 @@ export function KashefNew() {
     const woNo = Number(h.woNo)
     if (!isFinite(woNo) || woNo < 1) { toast.error(t("new.kashefNo")); return }
     if (effectiveLines.length === 0) { toast.error(t("new.noLines")); return }
+    const site = siteToFields(h.site, MODEL())
+    if (!site.ok) { toast.error(t(site.error)); return }
     if (busy) return
     setBusy(true)
     try {
       const duration = Number(h.duration)
-      const kmNum = (s: string) => {
-        const n = Number(s.trim())
-        return s.trim() !== "" && isFinite(n) && n >= 0 ? n : null
-      }
       const input: KashefCreateInput = {
         woNo,
-        area: h.area.trim(),
-        locType: h.locType,
-        blockNo: h.blockNo.trim(),
-        streetName: h.streetName.trim(),
-        locationText: h.locationText.trim(),
-        kmFrom: kmNum(h.kmFrom),
-        kmTo: kmNum(h.kmTo),
-        direction: h.direction.trim(),
+        ...site.f,
         workType: h.workType.trim(),
         woDate: h.woDate || null,
         durationDays: isFinite(duration) && duration > 0 ? duration : null,
@@ -291,7 +224,7 @@ export function KashefNew() {
       <Card>
         <CardHeader><CardTitle className="text-base">{t("new.header")}</CardTitle></CardHeader>
         <CardContent>
-          <HeaderFields h={h} setH={setH} suggestedNo={suggestedNo} />
+          <HeaderFields h={h} setH={setH} suggestedNo={suggestedNo} areas={areas} />
         </CardContent>
       </Card>
 

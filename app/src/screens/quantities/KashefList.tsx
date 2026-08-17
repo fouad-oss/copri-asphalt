@@ -14,14 +14,16 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { RefCode } from "@/components/patterns"
 import { kd } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { kashefList, woCertification, type KashefOverview, type WoCertification } from "./data"
+import { getContract, kashefList, woCertification, type KashefOverview, type WoCertification } from "./data"
+import { locationLabel, siteKind, siteModelFor, type SiteKind } from "./site"
 
-export function locationLabel(k: KashefOverview, t: (k: string) => string): string {
-  if (k.locType === "block") return `${k.area} — ${t("loc.block")} (${k.blockNo})`
-  if (k.locType === "street") return `${k.area} — ${k.streetName}`
-  // highway WOs: the ministry's own wording already names the road
-  if (k.locType === "chainage") return k.locationText || `${k.area} — ${t("loc.chainage")}`
-  return `${k.area} — ${t("loc.misc")}`
+// kept as a re-export: every screen imported it from here before site.ts existed
+export { locationLabel }
+
+// site-type filter values per contract model (see site.ts)
+const KINDS: Record<ReturnType<typeof siteModelFor>, SiteKind[]> = {
+  areas: ["block", "street", "misc"],
+  roads: ["range", "spot", "road", "misc"],
 }
 
 export function WoBadge({ k }: { k: KashefOverview }) {
@@ -109,14 +111,14 @@ export function KashefList() {
     const max = Number(maxValue)
     const out = rows.filter((k) => {
       if (needle) {
-        const hay = `${k.kashefNo} ${k.area} ${k.blockNo} ${k.streetName} ${k.workType} ${k.woNo}`
+        const hay = `${k.kashefNo} ${k.area} ${k.blockNo} ${k.streetName} ${k.locationText} ${k.workType} ${k.woNo}`
         if (!hay.includes(needle)) return false
       }
       if (status === "open" && k.closed) return false
       if (status === "closed" && !k.closed) return false
       if (area !== ALL && k.area !== area) return false
       if (workType !== ALL && k.workType !== workType) return false
-      if (locType !== ALL && k.locType !== locType) return false
+      if (locType !== ALL && siteKind(k) !== locType) return false
       if (minValue && isFinite(min) && k.totalAfterPct < min) return false
       if (maxValue && isFinite(max) && k.totalAfterPct > max) return false
       if (onlyDelayed && overdueDays(k) == null) return false
@@ -211,7 +213,7 @@ export function KashefList() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL}>{t("list.locType")}: {t("list.all")}</SelectItem>
-              {(["block", "street", "misc", "chainage"] as const).map((l) => (
+              {KINDS[siteModelFor(getContract())].map((l) => (
                 <SelectItem key={l} value={l}>{t(`loc.${l}`)}</SelectItem>
               ))}
             </SelectContent>
@@ -292,7 +294,7 @@ export function KashefList() {
                   <span className="text-sm font-semibold">
                     {t("list.kashefNo")} <RefCode>{k.woNo || String(k.kashefNo)}</RefCode>
                   </span>
-                  <Badge variant="outline">{t(`loc.${k.locType}`)}</Badge>
+                  <Badge variant="outline">{t(`loc.${siteKind(k)}`)}</Badge>
                   {k.closed && <Badge variant="secondary">{t("status.closed")}</Badge>}
                   {late != null && (
                     <Badge className="bg-danger-surface text-danger hover:bg-danger-surface">

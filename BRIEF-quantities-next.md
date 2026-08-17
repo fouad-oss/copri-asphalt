@@ -270,6 +270,36 @@ integration, per-sub executed split, a subcontractor payment/valuation view
 (the page currently reports quantities and contract value, not what is owed at
 negotiated rates).
 
+## 5a. Site / location model (front-end rework, 2026-08-17)
+
+Fouad's spec: **Hawalli** = قطعة + شارع / شارع رئيسي / أخرى;
+**Expressway** = طريق الفحيحيل (30) / طريق الملك فهد (40) / أخرى, and under
+a road either a **km range** (from/to station) or a **specific intersection**.
+
+- Lives in `app/src/screens/quantities/site.ts` (model, station parsing,
+  derivations, `locationLabel`) + `SiteFields.tsx` (the form cells, shared by
+  `KashefNew` and the detail `EditDialog`). Model is chosen by contract code:
+  `EXPW` → roads, everything else → areas.
+- **No schema change.** Roads model maps onto 0049's columns: `area` = the
+  canonical road name (or free text for «أخرى»), `loc_type` 'chainage' when a
+  road / level 2 is given, 'misc' only for «أخرى» + «بدون تحديد»;
+  `km_from/km_to` for a range, `location_text` = the intersection name (spot)
+  or an optional description (range — auto-composed «من محطة 9+200 إلى محطة
+  12+200» when empty, because 0049 requires a non-empty text for chainage).
+- **Level 2 is derived on read-back**: km set ⇒ range; else text beyond the
+  road + direction ⇒ spot; else whole road. Historic rows keep the ministry's
+  full sentence in `location_text`; the label only prefixes the road when the
+  text does not already name it. Badges/filters use `siteKind()`
+  (block / street / misc / range / spot / road), not `loc_type`.
+- Stations are typed as **km+m** («9+200»); the parser also takes the
+  mirrored «200+9», «9.2» and plain «12» — the 3-digit token is metres.
+- Misc rows are pinned to «أخرى» in the edit dialog: their `area` IS the
+  description (WO 34 mentions الفحيحيل) and must not be re-read as a road.
+- **0061 (data-only, PENDING PASTE)** canonicalises `area` for Expressway
+  chainage rows naming exactly one road — simulated against 0050: WOs 3, 6,
+  19 → «طريق الفحيحيل» (WO 53 «… + …» skipped by the `+` guard). Optional but
+  it un-splits the register's area filter.
+
 ## 6. Conventions
 
 - Migrations are append-only numbered files in `supabase/migrations/`.

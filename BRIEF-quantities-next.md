@@ -17,14 +17,9 @@ with Fouad.
 - **Module**: `/app/quantities`, React screens in `app/src/screens/quantities/`,
   own Supabase-Auth email gate, Arabic-first with an AR⇄EN toggle.
   Repo: `C:\Users\fszog\Desktop\Copri webapp` (local-only, not in OneDrive).
-- **Migrations 0033–0056 are ALL pasted and confirmed.**
-  **0057 (`0057_qm_expw_exec_split_part1.sql` + `_part2.sql`) is WRITTEN,
-  simulated, and AWAITING FOUAD'S PASTE** (2026-08-17) — it moves the
-  Expressway executed tier onto the subcontractors, see §2a. Paste part 1
-  then part 2; both are idempotent; each raises loudly if 0051/0054 rows are
-  missing. Verify afterwards: `select count(*) from qm_tadqiq t join
-  qm_kashefs k on k.id=t.kashef_id join qm_contracts c on c.id=k.contract_id
-  where c.code='EXPW'` should be **1,312** (was 1,085).
+- **Migrations 0033–0057 are ALL pasted and confirmed** (0057 pasted
+  2026-08-17 — Expressway executed tier now per subcontractor, see §2a).
+  Nothing pending.
 - **Front-end deploys on push to `main`.** Last commit `d0060ae`.
 - **Two projects**, switched from the header (`ProjectSwitcher`, selection in
   `localStorage['qm.contract']`, default `HAW9`):
@@ -37,7 +32,7 @@ with Fouad.
 | BOP items | 1,309 | 1,737 |
 | work orders | 76 (46 closed) | 65 (58 closed) |
 | WO lines | ~2,295 | 876 |
-| طلبات تدقيق | 148 opening entries | **1,090 real dated requests** |
+| طلبات تدقيق | 148 opening entries | **1,090 real dated requests (1,312 rows after the per-sub split)** |
 | certificates | 17 (KD 9.38M after pct) | 21 (KD 15.61M after pct) |
 
 ### Screens
@@ -243,7 +238,7 @@ and dataset but **refuse to emit SQL** until a mapping file is confirmed.
 **Decisions taken that could be revisited**
 
 5. ~~Per-sub executed is still all on «كوبري — تنفيذ ذاتي».~~ **Resolved by
-   0057 (§2a) — pending paste.** Residual judgement: the 87 pro-rata pairs
+   0057 (§2a), pasted 2026-08-17.** Residual judgement: the 87 pro-rata pairs
    (KD 671k, 5.2%) in `expw-exec-report.md`; if Fouad prefers a rule other than
    proportional (e.g. earliest requests to the sub), change `attribute()`
    step 3 and re-run — the migration is idempotent and rewrites split rows.

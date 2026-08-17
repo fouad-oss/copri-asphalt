@@ -19,7 +19,13 @@ with Fouad.
   Repo: `C:\Users\fszog\Desktop\Copri webapp` (local-only, not in OneDrive).
 - **Migrations 0033–0057 are ALL pasted and confirmed** (0057 pasted
   2026-08-17 — Expressway executed tier now per subcontractor, see §2a).
-  Nothing pending.
+  **0058 + 0059 (WO 3) WRITTEN, AWAITING PASTE** — WO 3's request sheet is
+  named `الطلبات`, not `طلبات التدقيق`, so 0051 skipped it (KD 290,353;
+  27 requests / 33 lines, ties to its own نهائي at 1.000). `0058_qm_expw_tadqiq_wo3.sql`
+  (30 KB) inserts them on كوبري, `0059_qm_expw_exec_split_wo3.sql` (26 KB)
+  splits them (27 → بحر الابداع, 5 كوبري pro-rata remainders). Paste 0058 then
+  0059; EXPW `qm_tadqiq` count afterwards = **1,344**. Both tools now take
+  `--wo N --mig <file>` for such increments (they never touch 0051/0057).
 - **Front-end deploys on push to `main`.** Last commit `d0060ae`.
 - **Two projects**, switched from the header (`ProjectSwitcher`, selection in
   `localStorage['qm.contract']`, default `HAW9`):
@@ -32,7 +38,7 @@ with Fouad.
 | BOP items | 1,309 | 1,737 |
 | work orders | 76 (46 closed) | 65 (58 closed) |
 | WO lines | ~2,295 | 876 |
-| طلبات تدقيق | 148 opening entries | **1,090 real dated requests (1,312 rows after the per-sub split)** |
+| طلبات تدقيق | 148 opening entries | **1,117 real dated requests (1,344 rows after the per-sub split, once 0058/0059 are in)** |
 | certificates | 17 (KD 9.38M after pct) | 21 (KD 15.61M after pct) |
 
 ### Screens
@@ -122,7 +128,10 @@ reason and rolled back cleanly; regenerated.
 - **`طلبات التدقيق` sheets are CROSS-TABS**: rows = رقم الطلب + تاريخ الطلب,
   columns = BOP codes, cells = quantity. Use the **unnumbered** sheet (WO 19's
   has 69 requests against 35/17/19 in its (2)/(3)/(4) subsets). They carry
-  **no subcontractor at all**.
+  **no subcontractor at all**. **WO 3 names its sheet `الطلبات`** (variants
+  `الطلبات (2)`, `الطلبات حسب الترتيب`) — and it is an `.xls`, so xlrd hands
+  serials back as floats (`340.0`): normalise before the `^\d+$` test or every
+  row is silently skipped.
 - **In-sheet titles and headers are STALE COPIES.** WO 19's file contains a
   sheet titled `امر عمل رقم : 6`; a دالكو claim file cites the *Hawalli*
   contract number; a سكوير file names بحر الابداع as the contractor. **Identity
@@ -231,8 +240,9 @@ and dataset but **refuse to emit SQL** until a mapping file is confirmed.
 2. **WO 26** — قصر البيداء and دالكو both claim the same bab-7 kerb work
    (×1.9 to ×2.8 of the line). Also scaled pro rata, which is a guess.
 3. **Source files worth repairing**: WOs 63–68 have `#REF!` in `نهائي`
-   (read from the sibling `1` sheet); WO 3 has no تدقيق sheet at all (KD 290k);
-   WOs 61, 62, 69, 70 are in the register with no workbook.
+   (read from the sibling `1` sheet); WOs 61, 62, 69, 70 are in the register
+   with no workbook. (WO 3's «missing» تدقيق sheet was just named `الطلبات` —
+   loaded by 0058/0059.)
 4. **WOs 27 and 31** do not tie to their own line quantities (0.87 and 1.10).
 
 **Decisions taken that could be revisited**

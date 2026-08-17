@@ -1203,12 +1203,12 @@ begin
   for r in select id, work_type from qm_kashefs
             where contract_id = v_contract and coalesce(scopes, '{}') = '{}' loop
     v_scopes := '{}';
-    if r.work_type ~ 'سفلت'                 then v_scopes := v_scopes || 'asphalt'; end if;
-    if r.work_type ~ 'معدني'                then v_scopes := v_scopes || 'metal';   end if;
-    if r.work_type ~ 'مطار'                 then v_scopes := v_scopes || 'storm';   end if;
-    if r.work_type ~ 'صحي'                  then v_scopes := v_scopes || 'sewage';  end if;
-    if r.work_type ~ 'بلاط|انترلوك|طابوق'   then v_scopes := v_scopes || 'tiles';   end if;
-    if r.work_type ~ 'مدني'                 then v_scopes := v_scopes || 'civil';   end if;
+    if r.work_type ~ 'سفلت'                 then v_scopes := array_append(v_scopes, 'asphalt'); end if;
+    if r.work_type ~ 'معدني'                then v_scopes := array_append(v_scopes, 'metal');   end if;
+    if r.work_type ~ 'مطار'                 then v_scopes := array_append(v_scopes, 'storm');   end if;
+    if r.work_type ~ 'صحي'                  then v_scopes := array_append(v_scopes, 'sewage');  end if;
+    if r.work_type ~ 'بلاط|انترلوك|طابوق'   then v_scopes := array_append(v_scopes, 'tiles');   end if;
+    if r.work_type ~ 'مدني'                 then v_scopes := array_append(v_scopes, 'civil');   end if;
     if v_scopes = '{}' and r.work_type <> '' then v_scopes := array['other']; end if;
     if v_scopes <> '{}' then
       update qm_kashefs set scopes = v_scopes where id = r.id;

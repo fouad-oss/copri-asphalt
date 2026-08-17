@@ -40,8 +40,13 @@ with Fouad.
 
 ### Screens
 
-home dashboard · أوامر العمل register · دفعات الوزارة (dashboard, detail,
-generate) · طلبات التدقيق · **مقاولو الباطن** (new) · new work order.
+home dashboard · أوامر العمل register (+ «أمر عمل جديد» button → /quantities/new;
+the nav tab for it was removed 2026-08-17) · دفعات الوزارة (dashboard, detail,
+generate) · **طلبات التدقيق = سجل** (`TadqiqRegister`, all requests of the
+project, server-paged 50/page via `tadqiqPage()` with `qm_kashefs!inner`
+contract scoping; filters WO/sub/serial/date range live in the URL; rows
+expand to items; «تسجيل طلب» → /quantities/tadqiq/new = the old
+`TadqiqScreen`) · مقاولو الباطن.
 
 ## 2. What the Expressway looks like, and why to trust it
 

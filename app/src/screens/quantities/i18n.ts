@@ -269,6 +269,15 @@ const AR = {
     importPct: "نسبة العقد في الملف",
     save: "حفظ أمر العمل",
   },
+  treg: {
+    title: "سجل طلبات التدقيق",
+    requests: "طلب",
+    serialSearch: "بحث برقم الطلب",
+    from: "من تاريخ", to: "إلى تاريخ",
+    empty: "لا توجد طلبات تدقيق مطابقة",
+    page: "صفحة",
+    col: { date: "التاريخ", serial: "رقم الطلب", wo: "أمر العمل", site: "الموقع", sub: "المقاول", items: "البنود" },
+  },
   tadqiq: {
     title: "طلبات التدقيق",
     newEntry: "تسجيل طلب تدقيق",
@@ -643,6 +652,15 @@ const EN = {
     skipLine: "Skip",
     importPct: "Contract % in file",
     save: "Save work order",
+  },
+  treg: {
+    title: "Tadqiq register",
+    requests: "requests",
+    serialSearch: "Search serial",
+    from: "From", to: "To",
+    empty: "No matching tadqiq requests",
+    page: "Page",
+    col: { date: "Date", serial: "Serial", wo: "Work order", site: "Site", sub: "Subcontractor", items: "Items" },
   },
   tadqiq: {
     title: "Tadqiq requests",

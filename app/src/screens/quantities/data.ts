@@ -418,6 +418,79 @@ export async function tadqiqList(kashefId: number): Promise<TadqiqRow[]> {
   }))
 }
 
+// ── Register of ALL طلبات التدقيق for the selected contract, paged
+//    server-side (1,344 rows on the Expressway — never load them all).
+export interface TadqiqRegLine { ref: string; description: string; unit: string; qty: number }
+export interface TadqiqRegRow {
+  id: number
+  date: string | null
+  serialNo: string
+  streetNo: string
+  note: string
+  opening: boolean
+  vendorId: number
+  vendorName: string
+  kashefId: number
+  kashefNo: number
+  woNo: string
+  site: Pick<KashefOverview, "locType" | "area" | "blockNo" | "streetName" | "locationText" | "kmFrom" | "kmTo" | "direction">
+  lines: TadqiqRegLine[]
+}
+export interface TadqiqPageQuery {
+  page: number            // 0-based
+  size: number
+  kashefId?: number | null
+  vendorId?: number | null
+  serial?: string         // ilike on serial_no
+  dateFrom?: string | null
+  dateTo?: string | null
+}
+export async function tadqiqPage(q: TadqiqPageQuery): Promise<{ rows: TadqiqRegRow[]; total: number }> {
+  const cid = await contractId()
+  let req = supabase
+    .from("qm_tadqiq")
+    .select(
+      "id,kashef_id,vendor_id,tadqiq_date,serial_no,street_no,note,opening," +
+      "vendors(name)," +
+      "qm_kashefs!inner(contract_id,kashef_no,wo_no,area,loc_type,block_no,street_name,location_text,km_from,km_to,direction)," +
+      "qm_tadqiq_lines(qty,qm_bop_items(bab,band,suffix,description,unit))",
+      { count: "exact" })
+    .eq("qm_kashefs.contract_id", cid)
+  if (q.kashefId) req = req.eq("kashef_id", q.kashefId)
+  if (q.vendorId) req = req.eq("vendor_id", q.vendorId)
+  if (q.serial?.trim()) req = req.ilike("serial_no", `%${q.serial.trim()}%`)
+  if (q.dateFrom) req = req.gte("tadqiq_date", q.dateFrom)
+  if (q.dateTo) req = req.lte("tadqiq_date", q.dateTo)
+  const from = q.page * q.size
+  const { data, error, count } = await req
+    .order("tadqiq_date", { ascending: false, nullsFirst: false })
+    .order("id", { ascending: false })
+    .range(from, from + q.size - 1)
+  if (error) throw error
+  const rows: TadqiqRegRow[] = (data ?? []).map((r: any) => {
+    const k = r.qm_kashefs ?? {}
+    return {
+      id: r.id, date: r.tadqiq_date ?? null, serialNo: r.serial_no ?? "", streetNo: r.street_no ?? "",
+      note: r.note ?? "", opening: !!r.opening,
+      vendorId: r.vendor_id, vendorName: r.vendors?.name ?? "",
+      kashefId: r.kashef_id, kashefNo: k.kashef_no, woNo: k.wo_no ?? "",
+      site: {
+        locType: k.loc_type, area: k.area ?? "", blockNo: k.block_no ?? "", streetName: k.street_name ?? "",
+        locationText: k.location_text ?? "", kmFrom: k.km_from != null ? Number(k.km_from) : null,
+        kmTo: k.km_to != null ? Number(k.km_to) : null, direction: k.direction ?? "",
+      },
+      lines: (r.qm_tadqiq_lines ?? [])
+        .map((l: any) => ({
+          ref: itemRef(l.qm_bop_items ?? { bab: 0, band: 0, suffix: null }),
+          description: l.qm_bop_items?.description ?? "", unit: l.qm_bop_items?.unit ?? "",
+          qty: Number(l.qty),
+        }))
+        .sort((a: TadqiqRegLine, b: TadqiqRegLine) => a.ref.localeCompare(b.ref, "ar", { numeric: true })),
+    }
+  })
+  return { rows, total: count ?? rows.length }
+}
+
 export async function changelog(kashefId: number): Promise<ChangelogRow[]> {
   const { data, error } = await supabase
     .from("qm_changelog")

@@ -29,6 +29,7 @@ import { PayCertDetail } from "./PayCertDetail"
 import { KashefDetail } from "./KashefDetail"
 import { KashefNew } from "./KashefNew"
 import { TadqiqScreen } from "./TadqiqScreen"
+import { TadqiqRegister } from "./TadqiqRegister"
 import { Subs } from "./Subs"
 import { SubDetail } from "./SubDetail"
 import { NavLink } from "react-router-dom"
@@ -95,7 +96,7 @@ function Shell({ children, onProjectChange }: {
     { to: "/quantities/paycerts", end: false, label: t("nav.paycerts") },
     { to: "/quantities/tadqiq", end: false, label: t("nav.tadqiq") },
     { to: "/quantities/subs", end: false, label: t("nav.subs") },
-    { to: "/quantities/new", end: false, label: t("nav.newKashef") },
+    // "new work order" is reached from the WO register, not the nav
   ]
   return (
     <div className="min-h-dvh bg-background">
@@ -164,7 +165,8 @@ export default function QuantitiesPortal() {
         <Route path="paycerts/new" element={<PayCertNew />} />
         <Route path="paycerts/:id" element={<PayCertDetail />} />
         <Route path="new" element={<KashefNew />} />
-        <Route path="tadqiq" element={<TadqiqScreen />} />
+        <Route path="tadqiq" element={<TadqiqRegister />} />
+        <Route path="tadqiq/new" element={<TadqiqScreen />} />
         <Route path="subs" element={<Subs />} />
         <Route path="subs/:vendorId" element={<SubDetail />} />
         <Route path="*" element={<Navigate to="/quantities" replace />} />

@@ -325,7 +325,7 @@ a road either a **km range** (from/to station) or a **specific intersection**.
   scrambled dd/mm/yyyy inside `dir="ltr"`), and treats a bare ISO date as a
   calendar date. Wrap inline dates in `<bdi dir="ltr">`.
 
-## 5c. Date audit (0063, tools/qm_date_audit.py)
+## 5c. Date audit (0063 PASTED 2026-08-17, tools/qm_date_audit.py)
 
 - Window **2024-10-01 .. today+31d** (`dates.ts`); every date input in the
   module carries min/max and every save runs `checkDate()`.

@@ -320,8 +320,7 @@ a road either a **km range** (from/to station) or a **specific intersection**.
   short «other» site, location_text = range/spot, direction, description =
   old sentence, scopes + work_type; changelog actor `expw-site-clean`).
   Re-run the tool after editing the mapping; the SQL only UPDATEs.
-  **Until 0062 is pasted, WO create/edit fail** (new RPC params) — reads are
-  safe. 0061 becomes redundant once 0062 runs (harmless either way).
+  **0062 PASTED 2026-08-17.** 0061 is redundant (skip it).
 - Dates: `fmtKWDate` strips the RTL marks the `ar-KW` locale inserts (they
   scrambled dd/mm/yyyy inside `dir="ltr"`), and treats a bare ISO date as a
   calendar date. Wrap inline dates in `<bdi dir="ltr">`.

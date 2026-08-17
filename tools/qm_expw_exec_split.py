@@ -44,9 +44,9 @@ rewritten; a new row (same serial, date, note) is inserted per other vendor.
 Requests untouched by any subcontractor are not mentioned in the SQL.
 
 ── heals a 0051 gap ───────────────────────────────────────────────────────
-Five requests share (WO, serial, date) with another request; 0051's guard
-`not exists (kashef, vendor, serial, date)` silently skipped the second of
-each. They are inserted here with note «… (2)», which is also the
+Six requests were skipped by 0051's guard — five share (WO, serial, date)
+with another request, and one UNDATED request (WO 15 طلب 514) shares its
+serial with a dated one (undated rows were guarded on serial alone). They are inserted here with note «… (2)», which is also the
 discriminator that keeps this migration idempotent.
 
 Always writes the report + dataset. Gated on the same
@@ -320,8 +320,14 @@ def main():
     reqs = []
     pair_lines = collections.defaultdict(list)
     for r in td:
-        occ = seen[(r["wo"], r["serial"], r["date"])]
-        seen[(r["wo"], r["serial"], r["date"])] += 1
+        # mimic 0051's guard exactly: dated requests were guarded on
+        # (kashef, vendor, serial, date); UNDATED ones on (kashef, vendor,
+        # serial) only — so an undated request whose serial already appeared
+        # in the same WO was skipped as well (WO 15 طلب 514).
+        gkey = (r["wo"], r["serial"], r["date"]) if r["date"] else (r["wo"], r["serial"])
+        occ = seen[gkey] + (0 if r["date"] else seen[(r["wo"], r["serial"], "any")])
+        seen[gkey] += 1
+        seen[(r["wo"], r["serial"], "any")] += 1
         rr = {"wo": r["wo"], "serial": r["serial"], "date": r["date"], "occ": occ, "lines": []}
         for l in r["lines"]:
             k = "%d|%d|%s" % (l["bab"], l["band"], l["suffix"] or "")
@@ -482,8 +488,8 @@ def main():
 
     dups = [rr for rr in reqs if rr["occ"] > 0]
     rep.append("\n## Healed 0051 duplicates (%d)\n" % len(dups))
-    rep.append("These share (WO, serial, date) with another request and were skipped by "
-               "0051's guard. Inserted here with note «%s (2)».\n" % NOTE)
+    rep.append("These collide with another request under 0051's guard (same serial+date, "
+               "or undated with a dated same-serial sibling) and were skipped. Inserted here with note «%s (2)».\n" % NOTE)
     for rr in dups:
         rep.append("- WO %d — طلب %s (%s): %s" % (rr["wo"], rr["serial"], rr["date"],
                    ", ".join("%s × %s" % (l["k"], num(l["qty"])) for l in rr["lines"])))
@@ -522,7 +528,7 @@ def main():
 -- دفعات مقاولي الباطن read as a time series (see the tool docstring and
 -- quantities-backfill/expw-exec-report.md). Quantities and dates are unchanged;
 -- only vendor_id moves. %d of %d requests touched, %d split across vendors.
--- Also inserts the 5 requests 0051's guard skipped (note «… (2)»).
+-- Also inserts the 6 requests 0051's guard skipped (note «… (2)»).
 -- Idempotent. Paste after 0054 (needs its vendor rows).
 do $qmexpwex$
 declare
@@ -565,7 +571,9 @@ begin
         others = [v for v in vs if v != primary]
         date_expr = ("date '%s'" % rr["date"]) if rr["date"] else \
             "coalesce((select wo_date from qm_kashefs where id = v_k), (now() at time zone 'Asia/Kuwait')::date)"
-        date_where = ("and tadqiq_date = date '%s'" % rr["date"]) if rr["date"] else ""
+        # undated rows carry the WO date (0051's coalesce) — constrain on it so
+        # the lookup cannot pick up a dated sibling with the same serial
+        date_where = ("and tadqiq_date = date '%s'" % rr["date"]) if rr["date"] else             "and tadqiq_date = " + date_expr
 
         def lines_for(v):
             out = []

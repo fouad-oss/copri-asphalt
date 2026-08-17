@@ -85,10 +85,13 @@ exactly 1.00). 786 of 1,090 requests touched, 222 split into two vendor rows;
 quantities and dates unchanged. Simulated twice against 0051's state:
 per-(WO, item) totals identical to the source, idempotent.
 
-It also **heals a 0051 gap**: 5 requests share (WO, serial, date) with
-another (WO 2/99, 30/716, 31/506, 31/507, 31/508) and 0051's `not exists`
-guard silently skipped the second of each — the DB held 1,085 requests, not
-1,090. 0057 inserts them with note «… (2)».
+It also **heals a 0051 gap**: 6 requests were silently skipped by 0051's
+`not exists` guard — 5 share (WO, serial, date) with another (WO 2/99,
+30/716, 31/506, 31/507, 31/508) and one UNDATED one (WO 15/514) shares its
+serial with a dated sibling (undated rows were guarded on serial alone). The
+DB held 1,084 requests, not 1,090. 0057 inserts them with note «… (2)». First
+paste attempt (2026-08-17) raised «WO 15 طلب 514 missing» for exactly this
+reason and rolled back cleanly; regenerated.
 
 ## 3. The traps — do not relearn these
 
@@ -140,7 +143,8 @@ guard silently skipped the second of each — the DB held 1,085 requests, not
   6,252 lines). Claim value ≠ what they are owed.
 - **Idempotency guards on (kashef, vendor, serial, date) are NOT unique** in
   the تدقيق cross-tabs — the same serial+date can appear on two rows. 0051
-  lost 5 requests that way (healed by 0057). Guard on an occurrence
+  lost 6 requests that way (healed by 0057) — undated rows were guarded on
+  serial ALONE, so an undated request with a dated same-serial sibling died too. Guard on an occurrence
   discriminator (0057 uses the note text «… (2)»).
 - **`قشط الاسفلت-1` states period end 05/03/2022** — a stale-copy year; it is
   the first certificate, so sorting by date still orders it correctly.

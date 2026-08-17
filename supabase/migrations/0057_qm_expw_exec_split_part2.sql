@@ -4,7 +4,7 @@
 -- دفعات مقاولي الباطن read as a time series (see the tool docstring and
 -- quantities-backfill/expw-exec-report.md). Quantities and dates are unchanged;
 -- only vendor_id moves. 786 of 1090 requests touched, 222 split across vendors.
--- Also inserts the 5 requests 0051's guard skipped (note «… (2)»).
+-- Also inserts the 6 requests 0051's guard skipped (note «… (2)»).
 -- Idempotent. Paste after 0054 (needs its vendor rows).
 -- part 2 of 2
 do $qmexpwex$
@@ -42,6 +42,176 @@ begin
   select id into v_s6 from vendors where name = 'قصر البيداء';
   if v_s6 is null then raise exception 'vendor قصر البيداء missing — run 0054'; end if;
 
+
+  -- ── أمر عمل 37 — طلب تدقيق 598 (2025-09-28) → ANA ──
+  select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 37;
+  if v_k is not null then
+    select id into v_t from qm_tadqiq where kashef_id = v_k and serial_no = '598' and tadqiq_date = date '2025-09-28' and note = 'استيراد تاريخي — الطرق السريعة' and not opening and vendor_id in (v_copri, v_s3) order by (vendor_id = v_s3) desc limit 1;
+    if v_t is null then raise exception 'WO 37 طلب 598 missing — run 0051 first'; end if;
+    begin
+      update qm_tadqiq set vendor_id = v_s3 where id = v_t and vendor_id <> v_s3;
+    end;
+  end if;
+
+  -- ── أمر عمل 37 — طلب تدقيق 599 (2025-09-29) → ANA ──
+  select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 37;
+  if v_k is not null then
+    select id into v_t from qm_tadqiq where kashef_id = v_k and serial_no = '599' and tadqiq_date = date '2025-09-29' and note = 'استيراد تاريخي — الطرق السريعة' and not opening and vendor_id in (v_copri, v_s3) order by (vendor_id = v_s3) desc limit 1;
+    if v_t is null then raise exception 'WO 37 طلب 599 missing — run 0051 first'; end if;
+    begin
+      update qm_tadqiq set vendor_id = v_s3 where id = v_t and vendor_id <> v_s3;
+    end;
+  end if;
+
+  -- ── أمر عمل 37 — طلب تدقيق 600 (2025-09-30) → ANA ──
+  select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 37;
+  if v_k is not null then
+    select id into v_t from qm_tadqiq where kashef_id = v_k and serial_no = '600' and tadqiq_date = date '2025-09-30' and note = 'استيراد تاريخي — الطرق السريعة' and not opening and vendor_id in (v_copri, v_s3) order by (vendor_id = v_s3) desc limit 1;
+    if v_t is null then raise exception 'WO 37 طلب 600 missing — run 0051 first'; end if;
+    begin
+      update qm_tadqiq set vendor_id = v_s3 where id = v_t and vendor_id <> v_s3;
+    end;
+  end if;
+
+  -- ── أمر عمل 37 — طلب تدقيق 602 (2025-01-10) → ANA ──
+  select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 37;
+  if v_k is not null then
+    select id into v_t from qm_tadqiq where kashef_id = v_k and serial_no = '602' and tadqiq_date = date '2025-01-10' and note = 'استيراد تاريخي — الطرق السريعة' and not opening and vendor_id in (v_copri, v_s3) order by (vendor_id = v_s3) desc limit 1;
+    if v_t is null then raise exception 'WO 37 طلب 602 missing — run 0051 first'; end if;
+    begin
+      update qm_tadqiq set vendor_id = v_s3 where id = v_t and vendor_id <> v_s3;
+    end;
+  end if;
+
+  -- ── أمر عمل 37 — طلب تدقيق 603 (2025-04-10) → ANA ──
+  select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 37;
+  if v_k is not null then
+    select id into v_t from qm_tadqiq where kashef_id = v_k and serial_no = '603' and tadqiq_date = date '2025-04-10' and note = 'استيراد تاريخي — الطرق السريعة' and not opening and vendor_id in (v_copri, v_s3) order by (vendor_id = v_s3) desc limit 1;
+    if v_t is null then raise exception 'WO 37 طلب 603 missing — run 0051 first'; end if;
+    begin
+      update qm_tadqiq set vendor_id = v_s3 where id = v_t and vendor_id <> v_s3;
+    end;
+  end if;
+
+  -- ── أمر عمل 37 — طلب تدقيق 604 (2025-09-10) → ANA ──
+  select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 37;
+  if v_k is not null then
+    select id into v_t from qm_tadqiq where kashef_id = v_k and serial_no = '604' and tadqiq_date = date '2025-09-10' and note = 'استيراد تاريخي — الطرق السريعة' and not opening and vendor_id in (v_copri, v_s3) order by (vendor_id = v_s3) desc limit 1;
+    if v_t is null then raise exception 'WO 37 طلب 604 missing — run 0051 first'; end if;
+    begin
+      update qm_tadqiq set vendor_id = v_s3 where id = v_t and vendor_id <> v_s3;
+    end;
+  end if;
+
+  -- ── أمر عمل 37 — طلب تدقيق 605 (2025-12-10) → ANA ──
+  select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 37;
+  if v_k is not null then
+    select id into v_t from qm_tadqiq where kashef_id = v_k and serial_no = '605' and tadqiq_date = date '2025-12-10' and note = 'استيراد تاريخي — الطرق السريعة' and not opening and vendor_id in (v_copri, v_s3) order by (vendor_id = v_s3) desc limit 1;
+    if v_t is null then raise exception 'WO 37 طلب 605 missing — run 0051 first'; end if;
+    begin
+      update qm_tadqiq set vendor_id = v_s3 where id = v_t and vendor_id <> v_s3;
+    end;
+  end if;
+
+  -- ── أمر عمل 37 — طلب تدقيق 606 (2025-10-13) → ANA ──
+  select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 37;
+  if v_k is not null then
+    select id into v_t from qm_tadqiq where kashef_id = v_k and serial_no = '606' and tadqiq_date = date '2025-10-13' and note = 'استيراد تاريخي — الطرق السريعة' and not opening and vendor_id in (v_copri, v_s3) order by (vendor_id = v_s3) desc limit 1;
+    if v_t is null then raise exception 'WO 37 طلب 606 missing — run 0051 first'; end if;
+    begin
+      update qm_tadqiq set vendor_id = v_s3 where id = v_t and vendor_id <> v_s3;
+    end;
+  end if;
+
+  -- ── أمر عمل 37 — طلب تدقيق 607 (2025-10-15) → ANA ──
+  select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 37;
+  if v_k is not null then
+    select id into v_t from qm_tadqiq where kashef_id = v_k and serial_no = '607' and tadqiq_date = date '2025-10-15' and note = 'استيراد تاريخي — الطرق السريعة' and not opening and vendor_id in (v_copri, v_s3) order by (vendor_id = v_s3) desc limit 1;
+    if v_t is null then raise exception 'WO 37 طلب 607 missing — run 0051 first'; end if;
+    begin
+      update qm_tadqiq set vendor_id = v_s3 where id = v_t and vendor_id <> v_s3;
+    end;
+  end if;
+
+  -- ── أمر عمل 37 — طلب تدقيق 608 (2025-10-16) → ANA ──
+  select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 37;
+  if v_k is not null then
+    select id into v_t from qm_tadqiq where kashef_id = v_k and serial_no = '608' and tadqiq_date = date '2025-10-16' and note = 'استيراد تاريخي — الطرق السريعة' and not opening and vendor_id in (v_copri, v_s3) order by (vendor_id = v_s3) desc limit 1;
+    if v_t is null then raise exception 'WO 37 طلب 608 missing — run 0051 first'; end if;
+    begin
+      update qm_tadqiq set vendor_id = v_s3 where id = v_t and vendor_id <> v_s3;
+    end;
+  end if;
+
+  -- ── أمر عمل 37 — طلب تدقيق 609 (2025-10-17) → ANA ──
+  select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 37;
+  if v_k is not null then
+    select id into v_t from qm_tadqiq where kashef_id = v_k and serial_no = '609' and tadqiq_date = date '2025-10-17' and note = 'استيراد تاريخي — الطرق السريعة' and not opening and vendor_id in (v_copri, v_s3) order by (vendor_id = v_s3) desc limit 1;
+    if v_t is null then raise exception 'WO 37 طلب 609 missing — run 0051 first'; end if;
+    begin
+      update qm_tadqiq set vendor_id = v_s3 where id = v_t and vendor_id <> v_s3;
+    end;
+  end if;
+
+  -- ── أمر عمل 37 — طلب تدقيق 610 (2025-10-21) → ANA ──
+  select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 37;
+  if v_k is not null then
+    select id into v_t from qm_tadqiq where kashef_id = v_k and serial_no = '610' and tadqiq_date = date '2025-10-21' and note = 'استيراد تاريخي — الطرق السريعة' and not opening and vendor_id in (v_copri, v_s3) order by (vendor_id = v_s3) desc limit 1;
+    if v_t is null then raise exception 'WO 37 طلب 610 missing — run 0051 first'; end if;
+    begin
+      update qm_tadqiq set vendor_id = v_s3 where id = v_t and vendor_id <> v_s3;
+    end;
+  end if;
+
+  -- ── أمر عمل 37 — طلب تدقيق 611 (2025-10-23) → ANA ──
+  select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 37;
+  if v_k is not null then
+    select id into v_t from qm_tadqiq where kashef_id = v_k and serial_no = '611' and tadqiq_date = date '2025-10-23' and note = 'استيراد تاريخي — الطرق السريعة' and not opening and vendor_id in (v_copri, v_s3) order by (vendor_id = v_s3) desc limit 1;
+    if v_t is null then raise exception 'WO 37 طلب 611 missing — run 0051 first'; end if;
+    begin
+      update qm_tadqiq set vendor_id = v_s3 where id = v_t and vendor_id <> v_s3;
+    end;
+  end if;
+
+  -- ── أمر عمل 37 — طلب تدقيق 612 (2025-10-24) → ANA ──
+  select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 37;
+  if v_k is not null then
+    select id into v_t from qm_tadqiq where kashef_id = v_k and serial_no = '612' and tadqiq_date = date '2025-10-24' and note = 'استيراد تاريخي — الطرق السريعة' and not opening and vendor_id in (v_copri, v_s3) order by (vendor_id = v_s3) desc limit 1;
+    if v_t is null then raise exception 'WO 37 طلب 612 missing — run 0051 first'; end if;
+    begin
+      update qm_tadqiq set vendor_id = v_s3 where id = v_t and vendor_id <> v_s3;
+    end;
+  end if;
+
+  -- ── أمر عمل 37 — طلب تدقيق 613 (2025-10-26) → ANA ──
+  select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 37;
+  if v_k is not null then
+    select id into v_t from qm_tadqiq where kashef_id = v_k and serial_no = '613' and tadqiq_date = date '2025-10-26' and note = 'استيراد تاريخي — الطرق السريعة' and not opening and vendor_id in (v_copri, v_s3) order by (vendor_id = v_s3) desc limit 1;
+    if v_t is null then raise exception 'WO 37 طلب 613 missing — run 0051 first'; end if;
+    begin
+      update qm_tadqiq set vendor_id = v_s3 where id = v_t and vendor_id <> v_s3;
+    end;
+  end if;
+
+  -- ── أمر عمل 37 — طلب تدقيق 614 (2025-10-27) → ANA ──
+  select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 37;
+  if v_k is not null then
+    select id into v_t from qm_tadqiq where kashef_id = v_k and serial_no = '614' and tadqiq_date = date '2025-10-27' and note = 'استيراد تاريخي — الطرق السريعة' and not opening and vendor_id in (v_copri, v_s3) order by (vendor_id = v_s3) desc limit 1;
+    if v_t is null then raise exception 'WO 37 طلب 614 missing — run 0051 first'; end if;
+    begin
+      update qm_tadqiq set vendor_id = v_s3 where id = v_t and vendor_id <> v_s3;
+    end;
+  end if;
+
+  -- ── أمر عمل 37 — طلب تدقيق 615 (2025-01-11) → ANA ──
+  select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 37;
+  if v_k is not null then
+    select id into v_t from qm_tadqiq where kashef_id = v_k and serial_no = '615' and tadqiq_date = date '2025-01-11' and note = 'استيراد تاريخي — الطرق السريعة' and not opening and vendor_id in (v_copri, v_s3) order by (vendor_id = v_s3) desc limit 1;
+    if v_t is null then raise exception 'WO 37 طلب 615 missing — run 0051 first'; end if;
+    begin
+      update qm_tadqiq set vendor_id = v_s3 where id = v_t and vendor_id <> v_s3;
+    end;
+  end if;
 
   -- ── أمر عمل 37 — طلب تدقيق 616 (2025-02-11) → ANA ──
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 37;
@@ -3631,7 +3801,7 @@ begin
   -- ── أمر عمل 60 — طلب تدقيق 1 (بلا تاريخ) → vendors.id 10 ──
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 60;
   if v_k is not null then
-    select id into v_t from qm_tadqiq where kashef_id = v_k and serial_no = '1'  and note = 'استيراد تاريخي — الطرق السريعة' and not opening and vendor_id in (v_copri, v_s0) order by (vendor_id = v_s0) desc limit 1;
+    select id into v_t from qm_tadqiq where kashef_id = v_k and serial_no = '1' and tadqiq_date = coalesce((select wo_date from qm_kashefs where id = v_k), (now() at time zone 'Asia/Kuwait')::date) and note = 'استيراد تاريخي — الطرق السريعة' and not opening and vendor_id in (v_copri, v_s0) order by (vendor_id = v_s0) desc limit 1;
     if v_t is null then raise exception 'WO 60 طلب 1 missing — run 0051 first'; end if;
     begin
       update qm_tadqiq set vendor_id = v_s0 where id = v_t and vendor_id <> v_s0;
@@ -3845,7 +4015,7 @@ begin
   -- ── أمر عمل 65 — طلب تدقيق 942 (بلا تاريخ) → vendors.id 10 ──
   select id into v_k from qm_kashefs where contract_id = v_contract and kashef_no = 65;
   if v_k is not null then
-    select id into v_t from qm_tadqiq where kashef_id = v_k and serial_no = '942'  and note = 'استيراد تاريخي — الطرق السريعة' and not opening and vendor_id in (v_copri, v_s0) order by (vendor_id = v_s0) desc limit 1;
+    select id into v_t from qm_tadqiq where kashef_id = v_k and serial_no = '942' and tadqiq_date = coalesce((select wo_date from qm_kashefs where id = v_k), (now() at time zone 'Asia/Kuwait')::date) and note = 'استيراد تاريخي — الطرق السريعة' and not opening and vendor_id in (v_copri, v_s0) order by (vendor_id = v_s0) desc limit 1;
     if v_t is null then raise exception 'WO 65 طلب 942 missing — run 0051 first'; end if;
     begin
       update qm_tadqiq set vendor_id = v_s0 where id = v_t and vendor_id <> v_s0;

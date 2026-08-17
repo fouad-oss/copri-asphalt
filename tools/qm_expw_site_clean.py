@@ -193,6 +193,7 @@ HEADER = r"""-- ═════════════════════�
 --   D. qm_kashef_update: learns 'description' and 'scopes' (scopes arrive
 --      as a comma-separated code string — p_fields is text-valued).
 --   E. qm_kashef_overview: description + scopes APPENDED (42P16).
+--   G. Hawalli WOs get scopes from their legacy work_type (keyword map).
 --   F. DATA — every Expressway WO re-keyed: area = طريق الفحيحيل /
 --      طريق الملك فهد / a short «other» site; location_text = the km
 --      range («من محطة 9+200 إلى محطة 12+200») or the spot name
@@ -450,6 +451,38 @@ begin
 """
 
 FOOTER = r"""  raise notice '0062: % Expressway work orders re-keyed', v_n;
+end $qmsc$;
+
+-- ── G. Hawalli: scopes from the legacy work_type (keyword map) ───────
+-- Only rows still carrying no scopes; work_type text is left untouched.
+-- Backfill values seen: أعمال مدنية / صحي / أسفلت / متفرقات / اخرى / أمطار / ''.
+do $qmsc$
+declare
+  v_contract bigint;
+  r record;
+  v_scopes text[];
+  v_n int := 0;
+begin
+  select id into v_contract from qm_contracts where code = 'HAW9';
+  if v_contract is null then return; end if;
+  for r in select id, work_type from qm_kashefs
+            where contract_id = v_contract and coalesce(scopes, '{}') = '{}' loop
+    v_scopes := '{}';
+    if r.work_type ~ 'سفلت'                 then v_scopes := v_scopes || 'asphalt'; end if;
+    if r.work_type ~ 'معدني'                then v_scopes := v_scopes || 'metal';   end if;
+    if r.work_type ~ 'مطار'                 then v_scopes := v_scopes || 'storm';   end if;
+    if r.work_type ~ 'صحي'                  then v_scopes := v_scopes || 'sewage';  end if;
+    if r.work_type ~ 'بلاط|انترلوك|طابوق'   then v_scopes := v_scopes || 'tiles';   end if;
+    if r.work_type ~ 'مدني'                 then v_scopes := v_scopes || 'civil';   end if;
+    if v_scopes = '{}' and r.work_type <> '' then v_scopes := array['other']; end if;
+    if v_scopes <> '{}' then
+      update qm_kashefs set scopes = v_scopes where id = r.id;
+      insert into qm_changelog (entity, entity_id, action, field, line_ref, old_value, new_value, actor_email)
+      values ('kashef', r.id, 'update', 'scopes', '', r.work_type, array_to_string(v_scopes, ','), 'haw9-scopes');
+      v_n := v_n + 1;
+    end if;
+  end loop;
+  raise notice '0062: % Hawalli work orders given scopes', v_n;
 end $qmsc$;
 """
 

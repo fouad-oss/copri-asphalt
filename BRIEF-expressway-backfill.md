@@ -1,5 +1,11 @@
 # BRIEF — Expressway (الطرق السريعة) backfill into the quantities module
 
+> **DONE and SUPERSEDED (2026-08-17).** This job was completed in full:
+> migrations 0047–0056 are pasted and live. Read **`BRIEF-quantities-next.md`**
+> instead — it carries the current state, everything this brief warned about
+> plus what the corpus actually turned out to do, and the open items.
+> Kept for history.
+
 For the next Claude Code session. Written 2026-08-15, at the end of the
 session that built payment certificates, the MPW mirroring and multi-project
 support. Read `CLAUDE.md` (repo conventions) and `copri-frontend-SKILL.md`

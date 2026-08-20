@@ -102,7 +102,7 @@ export function TadqiqRegister() {
               <SelectItem key={k.id} value={String(k.id)}>
                 <span className="flex items-center gap-2">
                   <RefCode className="text-xs">{k.woNo || String(k.kashefNo)}</RefCode>
-                  <span className="truncate">{locationLabel(k, t)}</span>
+                  <span className="max-w-72 truncate">{locationLabel(k, t)}</span>
                 </span>
               </SelectItem>
             ))}

@@ -186,7 +186,7 @@ export function Dashboard() {
       <Link to={`/quantities/kashef/${k.id}`}
         className="flex flex-wrap items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm transition-colors hover:border-primary/40">
         <RefCode>{k.woNo || String(k.kashefNo)}</RefCode>
-        <span className="truncate text-muted-foreground">{locationLabel(k, t)}</span>
+        <span className="min-w-0 flex-1 truncate text-muted-foreground" title={locationLabel(k, t)}>{locationLabel(k, t)}</span>
         {k.workType && <span className="hidden text-xs text-muted-foreground sm:inline">· {k.workType}</span>}
         <span className="ms-auto flex items-center gap-2">{trail}</span>
       </Link>
@@ -390,7 +390,7 @@ export function Dashboard() {
               <Link key={c.kashefId} to={`/quantities/kashef/${c.kashefId}`}
                 className="flex flex-wrap items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm transition-colors hover:border-primary/40">
                 <RefCode>{k.woNo || String(k.kashefNo)}</RefCode>
-                <span className="truncate text-muted-foreground">{locationLabel(k, t)}</span>
+                <span className="min-w-0 flex-1 truncate text-muted-foreground" title={locationLabel(k, t)}>{locationLabel(k, t)}</span>
                 <span className="ms-auto flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">
                     {c.lastCertNo != null

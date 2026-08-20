@@ -189,8 +189,10 @@ export function TadqiqScreen() {
                 <SelectContent>
                   {kashefs.map((k) => (
                     <SelectItem key={k.id} value={String(k.id)}>
-                      <span dir="ltr" className="font-mono">{k.status === "wo" && k.woNo ? k.woNo : `#${k.kashefNo}`}</span>
-                      {" — "}{locationLabel(k, t)}
+                      <span className="flex items-center gap-2">
+                        <span dir="ltr" className="font-mono">{k.status === "wo" && k.woNo ? k.woNo : `#${k.kashefNo}`}</span>
+                        <span className="max-w-72 truncate">{locationLabel(k, t)}</span>
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -353,7 +355,7 @@ export function TadqiqScreen() {
             <CardTitle className="flex items-center gap-2 text-base">
               {t("tadqiq.history")}
               <WoBadge k={kashef} />
-              <span className="text-sm font-normal text-muted-foreground">{locationLabel(kashef, t)}</span>
+              <span className="min-w-0 flex-1 truncate text-sm font-normal text-muted-foreground" title={locationLabel(kashef, t)}>{locationLabel(kashef, t)}</span>
             </CardTitle>
           </CardHeader>
           <CardContent>

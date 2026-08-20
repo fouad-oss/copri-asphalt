@@ -308,7 +308,7 @@ export function KashefList() {
                       {t("list.onlyAwaiting")}
                     </Badge>
                   )}
-                  <span className="text-sm text-muted-foreground">{locationLabel(k, t)}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground" title={locationLabel(k, t)}>{locationLabel(k, t)}</span>
                   {workTypeLabel(k, i18n.language) && <span className="text-xs text-muted-foreground">· {workTypeLabel(k, i18n.language)}</span>}
                   {k.durationDays != null && (
                     <span className="text-xs text-muted-foreground">

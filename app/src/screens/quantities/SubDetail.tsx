@@ -71,7 +71,7 @@ function LineTable({ vendorId, kashefId }: { vendorId: number; kashefId: number 
             const rem = l.allocated - l.executed
             return (
               <tr key={l.kashefLineId} className="border-b last:border-0">
-                <td className="p-2">
+                <td className="max-w-md p-2">
                   <RefCode>{itemRef(l)}</RefCode>
                   <span className="ms-2 text-muted-foreground">{l.description}</span>
                 </td>

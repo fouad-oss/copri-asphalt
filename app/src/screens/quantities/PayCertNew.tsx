@@ -181,7 +181,7 @@ export function PayCertNew() {
             <span className="text-sm font-semibold">
               {t("pc.woSection")} <RefCode>{g.k.woNo || String(g.k.kashefNo)}</RefCode>
             </span>
-            <span className="text-xs text-muted-foreground">{locationLabel(g.k, t)}</span>
+            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={locationLabel(g.k, t)}>{locationLabel(g.k, t)}</span>
           </div>
           <table className="w-full text-sm">
             <thead>

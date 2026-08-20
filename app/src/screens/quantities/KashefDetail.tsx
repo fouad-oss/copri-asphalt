@@ -388,6 +388,7 @@ export function KashefDetail() {
   const { data, error, load } = useDetail(Number(id))
   const [expanded, setExpanded] = useState<number | null>(null)
   const [showLog, setShowLog] = useState(false)
+  const [fullDesc, setFullDesc] = useState(false)
   const [qtyEdits, setQtyEdits] = useState<Record<number, string>>({})
   const [printVendor, setPrintVendor] = useState("")
 
@@ -524,7 +525,8 @@ export function KashefDetail() {
           </div>
         </div>
         {k.description && (
-          <p className="mt-2 text-sm text-muted-foreground">
+          <p className={cn("mt-2 max-w-prose cursor-pointer break-words text-sm text-muted-foreground", !fullDesc && "line-clamp-2")}
+             title={k.description} onClick={() => setFullDesc((s) => !s)}>
             <span className="me-1">{t("detail.description")}:</span>{k.description}
           </p>
         )}

@@ -135,7 +135,7 @@ export function Subs() {
               <Link key={r.vendorId} to={`/quantities/subs/${r.vendorId}`}
                     className="block rounded-lg border bg-card p-3 transition-colors hover:border-primary/40">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold">{r.vendorName}</span>
+                  <span className="min-w-0 truncate text-sm font-semibold" title={r.vendorName}>{r.vendorName}</span>
                   <Badge variant="outline">
                     {t("subs.woCount", { n: r.allocatedWos })}
                   </Badge>

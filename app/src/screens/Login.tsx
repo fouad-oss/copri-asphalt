@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -59,6 +59,9 @@ export default function Login() {
             {t("login.signIn")}
           </Button>
 
+          <Link to="/signup" className="text-center text-xs text-muted-foreground underline">
+            {t("login.toSignup")}
+          </Link>
           <button type="button" className="text-xs text-muted-foreground underline"
             onClick={() => setShowPin(!showPin)}>
             {t("login.pinToggle")}

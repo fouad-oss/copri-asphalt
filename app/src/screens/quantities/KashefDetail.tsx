@@ -413,6 +413,21 @@ export function KashefDetail() {
 
   const { k, lines, subLines, subs, log, contract, bop } = data
   const existingIds = new Set(lines.map((l) => l.bopItemId))
+  // executed via طلبات التدقيق on items that are NOT among the WO's lines —
+  // they count in the header's executed total, so surface them or the totals
+  // don't reconcile against the table
+  const bopById = new Map(bop.map((b) => [b.id, b]))
+  const outOfKashef = (() => {
+    const agg = new Map<number, number>()
+    for (const tq of data.tadqiq) for (const l of tq.lines) {
+      if (existingIds.has(l.bopItemId)) continue
+      agg.set(l.bopItemId, (agg.get(l.bopItemId) ?? 0) + l.qty)
+    }
+    return [...agg.entries()]
+      .map(([id, qty]) => ({ item: bopById.get(id), qty }))
+      .filter((x): x is { item: BopItem; qty: number } => !!x.item && x.qty > 0)
+      .sort((a, b) => a.item.bab - b.item.bab || a.item.band - b.item.band)
+  })()
   const printableSubs = subs.filter((s) => subLines.some((m) => m.vendorId === s.id && m.allocated > 0))
 
   async function saveQty(line: LineStatus, value: string) {
@@ -629,6 +644,28 @@ export function KashefDetail() {
           </TableBody>
         </Table>
       </div>
+
+      {outOfKashef.length > 0 && (
+        <div className="overflow-x-auto rounded-lg border border-warning/40 bg-warning-surface/30">
+          <div className="px-3 pt-2 text-sm font-semibold text-warning">{t("detail.outOfKashefTitle")}</div>
+          <div className="px-3 pb-1 text-xs text-muted-foreground">{t("detail.outOfKashefHint")}</div>
+          <Table>
+            <TableBody>
+              {outOfKashef.map(({ item, qty }) => (
+                <TableRow key={item.id}>
+                  <TableCell className="w-20"><RefCode>{itemRef(item)}</RefCode></TableCell>
+                  <TableCell className="max-w-md text-sm">{item.description}</TableCell>
+                  <TableCell className="text-center text-sm">{item.unit}</TableCell>
+                  <TableCell className="text-center font-mono text-sm tabular-nums" dir="ltr">{fq(qty)}</TableCell>
+                  <TableCell className="text-center font-mono text-sm tabular-nums" dir="ltr">
+                    {kd(qty * item.rate * (1 + k.pct / 100))}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
 
       <AddLineRow kashefId={k.id} bop={bop} existing={existingIds} onSaved={refresh} />
     </div>

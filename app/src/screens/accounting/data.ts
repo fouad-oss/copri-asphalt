@@ -636,6 +636,31 @@ export async function grnDocNo(
   return r.grnNo as string
 }
 
+/* ── Cost-center scope (SN-style page-top filter) ─────────────────────
+   The masters row is the config point. Delivery notes carry no cost
+   center of their own — kind='project' rows scope by the linked app
+   project's name; 'division' rows can never tag a note, so selecting
+   one honestly matches nothing (the queue shows its empty state). */
+
+export type CostCenter = { id: number; code: string; name: string; project: string | null }
+
+let _costCenters: CostCenter[] | null = null
+export async function costCenters(): Promise<CostCenter[]> {
+  if (_costCenters) return _costCenters
+  const { data, error } = await supabase.from("cost_centers")
+    .select("id,code,name_en,name_ar,kind,projects:project_id(name)")
+    .eq("active", true)
+    .order("kind", { ascending: false })   // projects first, divisions after
+    .order("code", { ascending: true })
+  if (error) throw error
+  _costCenters = (data ?? []).map((r: any) => ({
+    id: r.id, code: r.code,
+    name: r.name_en || r.name_ar || "",
+    project: r.projects?.name ?? null,
+  }))
+  return _costCenters
+}
+
 let _copriNames: string[] | null = null
 async function copriNames(): Promise<string[]> {
   if (_copriNames) return _copriNames
@@ -646,9 +671,13 @@ async function copriNames(): Promise<string[]> {
 }
 
 /** Exact status counts for the tiles (head counts — no rows). */
-export async function auditCounts(channel: Channel): Promise<Record<string, number>> {
+export async function auditCounts(channel: Channel, cc?: CostCenter | null): Promise<Record<string, number>> {
   const statuses = channel === "asphalt" ? ASPHALT_STATUSES : MATERIAL_STATUSES
   const out: Record<string, number> = {}
+  if (cc && cc.project == null) {          // division cost center — no notes can match
+    statuses.forEach((s) => { out[s] = 0 })
+    return out
+  }
   await Promise.all(statuses.map(async (s) => {
     let q
     if (channel === "asphalt") {
@@ -661,6 +690,7 @@ export async function auditCounts(channel: Channel): Promise<Record<string, numb
         .select("id", { count: "exact", head: true })
         .eq("recon_status", s)
     }
+    if (cc?.project) q = q.eq("project", cc.project)
     const { count, error } = await q
     if (error) throw error
     out[s] = count ?? 0
@@ -669,26 +699,32 @@ export async function auditCounts(channel: Channel): Promise<Record<string, numb
 }
 
 /** Oldest unmatched note (queue aging, skill §standing rules). */
-export async function auditOldest(channel: Channel): Promise<string | null> {
+export async function auditOldest(channel: Channel, cc?: CostCenter | null): Promise<string | null> {
+  if (cc && cc.project == null) return null
   if (channel === "asphalt") {
-    const { data, error } = await supabase.from("note_recon")
+    let q = supabase.from("note_recon")
       .select("delivery_date")
       .eq("note_source", "dispatch").neq("recon_status", "matched")
       .in("company", await copriNames())
       .order("delivery_date", { ascending: true }).limit(1)
+    if (cc?.project) q = q.eq("project", cc.project)
+    const { data, error } = await q
     if (error) throw error
     return data?.[0]?.delivery_date ?? null
   }
-  const { data, error } = await supabase.from("material_receipts")
+  let q = supabase.from("material_receipts")
     .select("ts").neq("recon_status", "matched")
     .order("ts", { ascending: true }).limit(1)
+  if (cc?.project) q = q.eq("project", cc.project)
+  const { data, error } = await q
   if (error) throw error
   return data?.[0]?.ts ?? null
 }
 
 const PAGE = 300
 
-export async function auditRows(channel: Channel, status: NoteStatus | null): Promise<AuditRow[]> {
+export async function auditRows(channel: Channel, status: NoteStatus | null, cc?: CostCenter | null): Promise<AuditRow[]> {
+  if (cc && cc.project == null) return []
   if (channel === "asphalt") {
     let q = supabase.from("note_recon")
       .select("note_ref,note_no,site,bill_qty,recon_status,delivery_date")
@@ -697,6 +733,7 @@ export async function auditRows(channel: Channel, status: NoteStatus | null): Pr
       .order("note_ref", { ascending: false })
       .limit(PAGE)
     if (status) q = q.eq("recon_status", status)
+    if (cc?.project) q = q.eq("project", cc.project)
     const { data, error } = await q
     if (error) throw error
     return (data ?? []).map((r) => ({
@@ -710,6 +747,7 @@ export async function auditRows(channel: Channel, status: NoteStatus | null): Pr
     .order("id", { ascending: false })
     .limit(PAGE)
   if (status) q = q.eq("recon_status", status)
+  if (cc?.project) q = q.eq("project", cc.project)
   const { data, error } = await q
   if (error) throw error
   return (data ?? []).map((r: any) => ({
@@ -718,6 +756,136 @@ export async function auditRows(channel: Channel, status: NoteStatus | null): Pr
     item: r.material ?? "", qty: r.quantity, status: r.recon_status,
     ts: r.ts,
   }))
+}
+
+/* ── Note detail (screen 1b — the clickable audit row) ────────────────
+   The WHOLE record, both sides: asphalt = the clerk's dispatch entry +
+   every site receipt entry for the note (latest decides the match);
+   materials = the capture row (the capture IS the receival) + its
+   approval state. Bundle membership rides along for context. */
+
+export const kwDateTime = (iso: string | null | undefined) =>
+  iso ? new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kuwait", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit",
+  }).format(new Date(iso)) : "—"
+
+export type NoteBundleRef = { id: number; bundleNo: string; status: string; isAdjustment: boolean }
+
+export type AsphaltReceiptEntry = {
+  id: number; ts: string; engineer: string; decision: string
+  weightArrival: number | null; tempArrival: number | null
+  workOrder: string; remarks: string
+}
+
+export type AsphaltNoteDetail = {
+  channel: "asphalt"
+  id: number; note: string; ts: string
+  company: string; project: string; contract: string; workOrder: string
+  plant: string; mix: string; weight: number | null; tempDispatch: number | null
+  truck: string; driver: string; driverPhone: string; naqel: string
+  site: string; block: string; street: string; locType: string
+  clerk: string; status: string; remarks: string
+  loadNumber: number | null; isMisc: boolean
+  notifyEngineer: string
+  reconStatus: NoteStatus; followupFlag: boolean
+  receipts: AsphaltReceiptEntry[]
+  bundles: NoteBundleRef[]
+}
+
+export type MaterialNoteDetail = {
+  channel: "materials"
+  id: number; receiptId: string; ts: string
+  receiver: string; project: string; site: string; block: string; street: string
+  workOrder: string; category: string; material: string
+  quantity: number | null; unit: string
+  supplier: string; subcontractor: string
+  photoUrl: string; remarks: string
+  approvalStatus: string; approvedBy: string; approvedAt: string | null
+  exceptionNote: string; noPoFlag: boolean
+  reconStatus: NoteStatus
+  bundles: NoteBundleRef[]
+}
+
+export type NoteDetailData = AsphaltNoteDetail | MaterialNoteDetail
+
+async function noteBundles(channel: Channel, ref: number): Promise<NoteBundleRef[]> {
+  const { data, error } = await supabase.from("bundle_lines")
+    .select("is_adjustment,bundles(id,bundle_no,status)")
+    .eq("note_source", channel === "asphalt" ? "dispatch" : "material")
+    .eq("note_ref", ref)
+  if (error) throw error
+  return (data ?? [])
+    .filter((r: any) => r.bundles)
+    .map((r: any) => ({
+      id: r.bundles.id, bundleNo: r.bundles.bundle_no,
+      status: r.bundles.status, isAdjustment: !!r.is_adjustment,
+    }))
+}
+
+export async function noteDetail(channel: Channel, ref: number): Promise<NoteDetailData | null> {
+  if (channel === "asphalt") {
+    const [{ data, error }, bundles] = await Promise.all([
+      supabase.from("dispatch_loads")
+        .select("id,ts,note,project,contract,work_order,plant,truck,driver,mix,weight," +
+          "temp_dispatch,site,block,street,loc_type,clerk,remarks,status,company,naqel," +
+          "driver_phone,load_number,notify_engineer,is_misc,recon_status,followup_flag")
+        .eq("id", ref).maybeSingle(),
+      noteBundles(channel, ref),
+    ])
+    if (error) throw error
+    if (!data) return null
+    const d: any = data
+    const { data: recs, error: re } = await supabase.from("receipts")
+      .select("id,ts,engineer,decision,weight_arrival,temp_arrival,work_order,remarks")
+      .eq("note", d.note).order("ts", { ascending: false })
+    if (re) throw re
+    return {
+      channel: "asphalt",
+      id: d.id, note: d.note, ts: d.ts,
+      company: d.company ?? "", project: d.project ?? "", contract: d.contract ?? "",
+      workOrder: d.work_order ?? "", plant: d.plant ?? "", mix: d.mix ?? "",
+      weight: d.weight, tempDispatch: d.temp_dispatch,
+      truck: d.truck ?? "", driver: d.driver ?? "", driverPhone: d.driver_phone ?? "",
+      naqel: d.naqel ?? "", site: d.site ?? "", block: d.block ?? "", street: d.street ?? "",
+      locType: d.loc_type ?? "", clerk: d.clerk ?? "", status: d.status ?? "",
+      remarks: d.remarks ?? "", loadNumber: d.load_number, isMisc: !!d.is_misc,
+      notifyEngineer: d.notify_engineer ?? "",
+      reconStatus: d.recon_status, followupFlag: !!d.followup_flag,
+      receipts: (recs ?? []).map((r: any) => ({
+        id: r.id, ts: r.ts, engineer: r.engineer ?? "", decision: r.decision ?? "",
+        weightArrival: r.weight_arrival, tempArrival: r.temp_arrival,
+        workOrder: r.work_order ?? "", remarks: r.remarks ?? "",
+      })),
+      bundles,
+    }
+  }
+  const [{ data, error }, bundles] = await Promise.all([
+    supabase.from("material_receipts")
+      .select("id,receipt_id,ts,receiver,project,site,work_order,block,street,category," +
+        "material,quantity,unit,supplier,subcontractor,photo_url,remarks,approval_status," +
+        "approved_by,approved_at,exception_note,no_po_flag,recon_status,vendors:supplier_id(name)")
+      .eq("id", ref).maybeSingle(),
+    noteBundles(channel, ref),
+  ])
+  if (error) throw error
+  if (!data) return null
+  const r: any = data
+  return {
+    channel: "materials",
+    id: r.id, receiptId: r.receipt_id, ts: r.ts,
+    receiver: r.receiver ?? "", project: r.project ?? "", site: r.site ?? "",
+    block: r.block ?? "", street: r.street ?? "", workOrder: r.work_order ?? "",
+    category: r.category ?? "", material: r.material ?? "",
+    quantity: r.quantity, unit: r.unit ?? "",
+    supplier: r.vendors?.name || r.supplier || "",
+    subcontractor: r.subcontractor ?? "",
+    photoUrl: r.photo_url ?? "", remarks: r.remarks ?? "",
+    approvalStatus: r.approval_status ?? "", approvedBy: r.approved_by ?? "",
+    approvedAt: r.approved_at, exceptionNote: r.exception_note ?? "",
+    noPoFlag: !!r.no_po_flag, reconStatus: r.recon_status,
+    bundles,
+  }
 }
 
 /* ── SN sync panel (SN sync brief v2) ─────────────────────────────────

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { getSession, logout } from "@/lib/session"
 import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
+import { CcPicker, CcProvider, useCcState } from "./CcFilter"
 import { L } from "./labels"
 import logoInk from "@/assets/brand/copri-logo-ink.png"
 
@@ -22,6 +23,7 @@ const NAV: { to: string; label: string }[] = [
 export default function AccountingShell() {
   const nav = useNavigate()
   const user = getSession()
+  const ccState = useCcState()
   // Accounting REQUIRES the email (Supabase Auth) login: PIN sessions
   // read as `anon`, and 0030's RLS hides draft/verified bundles from
   // anon — the lifecycle would silently break.
@@ -83,6 +85,8 @@ export default function AccountingShell() {
               </NavLink>
             ))}
           </nav>
+          {/* SN-style page-top cost-center scope (audit queue applies it for now) */}
+          <CcPicker list={ccState.list} cc={ccState.cc} onPick={ccState.pick} />
           <div className="hidden text-sm text-muted-foreground sm:block">{user.name}</div>
           <Button variant="ghost" size="sm" onClick={async () => { await logout(); nav("/login") }}>
             {L.app.logout}
@@ -90,7 +94,9 @@ export default function AccountingShell() {
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-4 py-4">
-        <Outlet context={user} />
+        <CcProvider value={ccState.cc}>
+          <Outlet context={user} />
+        </CcProvider>
       </main>
     </div>
   )

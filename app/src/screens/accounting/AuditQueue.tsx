@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ageDays } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { useCostCenter } from "./CcFilter"
 import { L } from "./labels"
 import {
   ASPHALT_STATUSES, MATERIAL_STATUSES, auditCounts, auditOldest, auditRows,
@@ -12,8 +14,10 @@ import { ChannelTabs, EmptyCard, LoadError, Loading, seq } from "./ui"
 
 /* ── Screen 1: Audit queue (landing) ──────────────────────────────────
    Tab pills · three status tiles (counts, act as filters) · dense
-   table. No dispatched-vs-received comparison — one Qty column per
-   note (brief: a receipt confirms a load, it does not re-weigh it). ── */
+   table; rows open the note detail (screen 1b). Scoped by the shell's
+   cost-center picker. No dispatched-vs-received comparison — one Qty
+   column per note (brief: a receipt confirms a load, it does not
+   re-weigh it). ── */
 
 const TONE: Record<NoteStatus, { badge: string; tile: string }> = {
   matched:                 { badge: "bg-success/10 text-success", tile: "border-success/30" },
@@ -32,7 +36,7 @@ function statusLabel(channel: Channel, status: NoteStatus) {
   return L.status[status]
 }
 
-function AuditBadge({ channel, status }: { channel: Channel; status: NoteStatus }) {
+export function AuditBadge({ channel, status }: { channel: Channel; status: NoteStatus }) {
   return (
     <Badge variant="secondary" className={cn("font-normal", TONE[status].badge)}>
       {statusLabel(channel, status)}
@@ -41,7 +45,13 @@ function AuditBadge({ channel, status }: { channel: Channel; status: NoteStatus 
 }
 
 export default function AuditQueue() {
-  const [channel, setChannel] = useState<Channel>("asphalt")
+  const nav = useNavigate()
+  const cc = useCostCenter()
+  // channel rides the URL so the note-detail back link restores the tab
+  const [params, setParams] = useSearchParams()
+  const [channel, setChannel] = useState<Channel>(
+    params.get("ch") === "materials" ? "materials" : "asphalt",
+  )
   const [filter, setFilter] = useState<NoteStatus | null>(null)
   const [counts, setCounts] = useState<Record<string, number> | null>(null)
   const [rows, setRows] = useState<AuditRow[] | null>(null)
@@ -55,11 +65,13 @@ export default function AuditQueue() {
     const live = seq(seqRef)
     setError(false); setRows(null); setCounts(null)
     try {
-      const [c, r, o] = await Promise.all([auditCounts(ch), auditRows(ch, st), auditOldest(ch)])
+      const [c, r, o] = await Promise.all([
+        auditCounts(ch, cc), auditRows(ch, st, cc), auditOldest(ch, cc),
+      ])
       if (!live()) return
       setCounts(c); setRows(r); setOldest(o)
     } catch { if (live()) setError(true) }
-  }, [])
+  }, [cc])
 
   useEffect(() => { void load(channel, filter) }, [channel, filter, load])
 
@@ -69,7 +81,10 @@ export default function AuditQueue() {
   function pickChannel(ch: Channel) {
     if (ch === channel) return
     setChannel(ch); setFilter(null)
+    setParams(ch === "materials" ? { ch } : {}, { replace: true })
   }
+
+  const notePath = (r: AuditRow) => `/accounting/note/${channel}/${r.id}`
 
   return (
     <div className="flex flex-col gap-3">
@@ -103,13 +118,14 @@ export default function AuditQueue() {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        {channel === "materials" ? L.audit.hintMat : L.audit.hint}
+        {channel === "materials" ? L.audit.hintMat : L.audit.hint} {L.audit.rowHint}
       </p>
 
       {error && <LoadError onRetry={() => void load(channel, filter)} />}
       {!error && rows === null && <Loading rows={6} />}
       {!error && rows !== null && rows.length === 0 && (
-        <EmptyCard title={L.audit.empty} hint={L.audit.emptyHint} />
+        <EmptyCard title={L.audit.empty}
+          hint={cc && cc.project == null ? L.audit.ccNoNotes : L.audit.emptyHint} />
       )}
 
       {!error && rows !== null && rows.length > 0 && (
@@ -134,8 +150,15 @@ export default function AuditQueue() {
             </TableHeader>
             <TableBody>
               {rows.map((r) => (
-                <TableRow key={`${channel}-${r.id}`}>
-                  <TableCell className="ref-code font-semibold">{r.noteNo}</TableCell>
+                <TableRow key={`${channel}-${r.id}`}
+                  className="cursor-pointer"
+                  onClick={() => nav(notePath(r))}>
+                  <TableCell className="ref-code font-semibold">
+                    <Link to={notePath(r)} onClick={(e) => e.stopPropagation()}
+                      className="underline-offset-2 hover:underline">
+                      {r.noteNo}
+                    </Link>
+                  </TableCell>
                   {channel === "asphalt" ? (
                     <TableCell>{r.site || "—"}</TableCell>
                   ) : (

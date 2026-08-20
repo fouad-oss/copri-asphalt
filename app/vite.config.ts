@@ -14,7 +14,8 @@ export default defineConfig(({ command }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-  server: { port: 8124 },
+  // PORT override lets parallel tooling sessions run their own dev server
+  server: { port: Number(process.env.PORT) || 8124 },
   build: {
     rolldownOptions: {
       output: {

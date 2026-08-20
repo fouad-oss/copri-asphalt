@@ -10,6 +10,7 @@ import Login from "@/screens/Login"
 import SignUp from "@/screens/SignUp"
 import AccountingShell from "@/screens/accounting/AccountingShell"
 import AuditQueue from "@/screens/accounting/AuditQueue"
+import NoteDetail from "@/screens/accounting/NoteDetail"
 import PoRegister from "@/screens/accounting/PoRegister"
 import Bundling from "@/screens/accounting/Bundling"
 import BundlesList from "@/screens/accounting/BundlesList"
@@ -67,6 +68,7 @@ const router = createBrowserRouter([
     element: <Guard><AccountingShell /></Guard>,
     children: [
       { index: true, element: <AuditQueue /> },
+      { path: "note/:channel/:ref", element: <NoteDetail /> },
       { path: "po-register", element: <PoRegister /> },
       { path: "bundling", element: <Bundling /> },
       { path: "bundles", element: <BundlesList /> },

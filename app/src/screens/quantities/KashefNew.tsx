@@ -372,7 +372,7 @@ export function KashefNew() {
                   {lines.map((l, i) => (
                     <TableRow key={l.bopItem.id}>
                       <TableCell><RefCode>{itemRef(l.bopItem)}</RefCode></TableCell>
-                      <TableCell className="max-w-md text-sm">{l.bopItem.description}</TableCell>
+                      <TableCell className="max-w-md whitespace-normal break-words text-sm">{l.bopItem.description}</TableCell>
                       <TableCell className="text-center font-mono tabular-nums" dir="ltr">{fq(l.qty)}</TableCell>
                       <TableCell className="text-center text-sm">{l.bopItem.unit}</TableCell>
                       <TableCell className="text-center font-mono text-sm tabular-nums" dir="ltr">{kd(l.bopItem.rate)}</TableCell>
@@ -433,7 +433,7 @@ function ReviewTable({ parsed }: { parsed: ParsedKashef }) {
           {matched.map((l) => (
             <TableRow key={l.rowIndex} className={cn(l.issue === "rate_differs" && "bg-warning-surface/50")}>
               <TableCell><RefCode>{lineDisplayRef(l)}</RefCode></TableCell>
-              <TableCell className="max-w-md text-sm">{l.bopItem!.description}</TableCell>
+              <TableCell className="max-w-md whitespace-normal break-words text-sm">{l.bopItem!.description}</TableCell>
               <TableCell className="text-center font-mono tabular-nums" dir="ltr">{fq(l.qty)}</TableCell>
               <TableCell className="text-center text-sm">{l.bopItem!.unit}</TableCell>
               <TableCell className="text-center font-mono text-sm tabular-nums" dir="ltr">{kd(l.bopItem!.rate)}</TableCell>

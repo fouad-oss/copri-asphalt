@@ -593,7 +593,7 @@ export function KashefDetail() {
                   <TableRow className="cursor-pointer"
                     onClick={() => setExpanded(expanded === l.kashefLineId ? null : l.kashefLineId)}>
                     <TableCell><RefCode>{itemRef(l)}</RefCode></TableCell>
-                    <TableCell className="max-w-md text-sm">{l.description}</TableCell>
+                    <TableCell className="max-w-md whitespace-normal break-words text-sm">{l.description}</TableCell>
                     <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                       {editing ? (
                         <span className="inline-flex items-center gap-1">
@@ -654,7 +654,7 @@ export function KashefDetail() {
               {outOfKashef.map(({ item, qty }) => (
                 <TableRow key={item.id}>
                   <TableCell className="w-20"><RefCode>{itemRef(item)}</RefCode></TableCell>
-                  <TableCell className="max-w-md text-sm">{item.description}</TableCell>
+                  <TableCell className="max-w-md whitespace-normal break-words text-sm">{item.description}</TableCell>
                   <TableCell className="text-center text-sm">{item.unit}</TableCell>
                   <TableCell className="text-center font-mono text-sm tabular-nums" dir="ltr">{fq(qty)}</TableCell>
                   <TableCell className="text-center font-mono text-sm tabular-nums" dir="ltr">

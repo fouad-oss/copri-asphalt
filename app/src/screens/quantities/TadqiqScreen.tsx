@@ -318,7 +318,7 @@ export function TadqiqScreen() {
                       {lines.map((l, i) => (
                         <TableRow key={i}>
                           <TableCell><RefCode>{itemRef(l.bopItem)}</RefCode></TableCell>
-                          <TableCell className="max-w-md text-sm">{l.bopItem.description}</TableCell>
+                          <TableCell className="max-w-md whitespace-normal break-words text-sm">{l.bopItem.description}</TableCell>
                           <TableCell className="text-center font-mono tabular-nums" dir="ltr">{fq(l.qty)}</TableCell>
                           <TableCell className="text-center text-sm">{l.bopItem.unit}</TableCell>
                           <TableCell className="text-xs">

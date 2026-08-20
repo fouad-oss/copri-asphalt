@@ -193,7 +193,7 @@ export function TadqiqRegister() {
                               {r.lines.map((l, i) => (
                                 <TableRow key={i}>
                                   <TableCell><RefCode className="text-xs">{l.ref}</RefCode></TableCell>
-                                  <TableCell className="text-sm">{l.description}</TableCell>
+                                  <TableCell className="max-w-md whitespace-normal break-words text-sm">{l.description}</TableCell>
                                   <TableCell className="text-xs text-muted-foreground">{l.unit}</TableCell>
                                   <TableCell className="text-end font-mono text-sm tabular-nums" dir="ltr">{fq(l.qty)}</TableCell>
                                 </TableRow>

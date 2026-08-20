@@ -8,7 +8,7 @@ import { RefCode, ErrorBox } from "@/components/patterns"
 import { fmtKW } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import {
-  aggDays, currentDay, fetchDayLoads, fmtKWTime, isSingleDay, numFmt, todayStr,
+  aggDays, currentDay, fetchDayLoads, fmtKWTime, isSingleDay, KM_LOC, locText, numFmt, todayStr,
   type AggItem, type DashPayload, type DashRange, type DayLoad, type DispatchRow, type RangeMode,
 } from "./lib"
 
@@ -218,7 +218,7 @@ export function TripsPanel({ range }: { range: DashRange }) {
                   <span className="ms-auto tabular-nums">{d.weight == null ? "—" : d.weight} {t("trips.tons")}</span>
                 </div>
                 <div className="mt-0.5 text-xs text-muted-foreground">
-                  {d.company} — {d.project} · {d.site}{d.block ? ` ق${d.block}` : ""}{d.street ? ` ش${d.street}` : ""} · {d.mix}{d.plant ? ` · ${d.plant}` : ""}
+                  {d.company} — {d.project} · {locText(d.site, d.block, d.street, d.loc_type === KM_LOC)} · {d.mix}{d.plant ? ` · ${d.plant}` : ""}
                 </div>
               </div>
             ))}

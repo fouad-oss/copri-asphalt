@@ -192,10 +192,32 @@ export function fmtKWTime(iso: string): string {
 
 /* ── Direct reads (drill-downs and the accountant board) ── */
 
+/* km-range projects (e.g. كوبري — الطرق السريعة): dispatch and capture
+   store the km range in the block/street columns, so location text must
+   not label those values ق/ش. Dispatch rows carry loc_type; material
+   receipts don't — those resolve through the projects reference. */
+export const KM_LOC = "نطاق كيلومتر"
+
+export function locText(site: string, block: string | null | undefined, street: string | null | undefined, km: boolean) {
+  const b = (block || "").trim(), s = (street || "").trim()
+  if (km && (b || s)) return `${site} كم ${[b, s].filter(Boolean).join("–")}`
+  return `${site}${b ? ` ق${b}` : ""}${s ? ` ش${s}` : ""}`
+}
+
+let kmProjCache: Set<string> | null = null
+export async function kmProjects(): Promise<Set<string>> {
+  if (kmProjCache) return kmProjCache
+  const { data, error } = await supabase
+    .from("projects").select("name").eq("location_type", "km_range")
+  if (error) throw error
+  kmProjCache = new Set((data || []).map((r: any) => String(r.name)))
+  return kmProjCache
+}
+
 export type DayLoad = {
   note: string; ts: string; status: string | null; weight: number | null
   company: string; project: string; site: string; block: string | null
-  street: string | null; mix: string; plant: string | null
+  street: string | null; loc_type: string | null; mix: string; plant: string | null
 }
 
 /** Every dispatch of one Kuwait calendar day (trip drill-down + day reports). */
@@ -204,7 +226,7 @@ export async function fetchDayLoads(dayISO: string): Promise<DayLoad[]> {
   const end = new Date(start.getTime() + 864e5)
   const { data, error } = await supabase
     .from("dispatch_loads")
-    .select("note,ts,status,weight,company,project,site,block,street,mix,plant")
+    .select("note,ts,status,weight,company,project,site,block,street,loc_type,mix,plant")
     .gte("ts", start.toISOString()).lt("ts", end.toISOString())
     .order("ts", { ascending: true }).limit(1000)
   if (error) throw error

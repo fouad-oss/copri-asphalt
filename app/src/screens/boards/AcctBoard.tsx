@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { ErrorBox, LoadingList, RefCode } from "@/components/patterns"
 import { fmtKW, qty } from "@/lib/format"
-import { aggBy, fetchProjectMaterials, numFmt, useDashRange, windowRows, type MaterialReceipt } from "./lib"
+import { aggBy, fetchProjectMaterials, kmProjects, locText, numFmt, useDashRange, windowRows, type MaterialReceipt } from "./lib"
 import { BarList, BoardCard, BoardHead, KpiGrid } from "./widgets"
 import { openMaterialsReport } from "./report"
 
@@ -15,9 +15,9 @@ import { openMaterialsReport } from "./report"
 
 const CHUNK = 60
 
-function MatRow({ r }: { r: MaterialReceipt }) {
+function MatRow({ r, km }: { r: MaterialReceipt; km: boolean }) {
   const { t } = useTranslation("boards")
-  const loc = `${r.site}${r.block ? ` ق${r.block}` : ""}${r.street ? ` ش${r.street}` : ""}`
+  const loc = locText(r.site, r.block, r.street, km)
   return (
     <div className="border-b pb-2 text-sm last:border-b-0">
       <div className="flex items-baseline justify-between gap-2">
@@ -50,10 +50,12 @@ export default function AcctBoard() {
   const [all, setAll] = useState<MaterialReceipt[] | null>(null)
   const [err, setErr] = useState(false)
   const [shown, setShown] = useState(CHUNK)
+  const [km, setKm] = useState(false)
 
   const load = useCallback(() => {
     setErr(false)
     fetchProjectMaterials(proj).then(setAll).catch(() => setErr(true))
+    kmProjects().then((s) => setKm(s.has(proj))).catch(() => { /* keeps ق/ش labels */ })
   }, [proj])
   useEffect(() => { load() }, [load])
 
@@ -74,7 +76,7 @@ export default function AcctBoard() {
       ]} />
       <BoardCard title={t("acct.log", { n: numFmt(rows.length) })}>
         <Button type="button" variant="outline" size="sm" className="w-fit"
-          onClick={() => { if (rows.length) openMaterialsReport(proj, rows) }}>
+          onClick={() => { if (rows.length) openMaterialsReport(proj, rows, km) }}>
           {rows.length ? t("acct.print") : t("acct.printNone")}
         </Button>
         {!rows.length ? (
@@ -82,7 +84,7 @@ export default function AcctBoard() {
         ) : (
           <>
             <div className="flex flex-col gap-2">
-              {visible.map((r) => <MatRow key={r.id} r={r} />)}
+              {visible.map((r) => <MatRow key={r.id} r={r} km={km} />)}
             </div>
             {shown < rows.length && (
               <Button type="button" variant="outline" size="sm" className="w-fit"

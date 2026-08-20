@@ -2,7 +2,7 @@ import i18n from "@/lib/i18n"
 import { fmtKW } from "@/lib/format"
 import logoUrl from "@/assets/brand/copri-logo.png"
 import {
-  aggBy, dayStr, fetchDash, fetchDayLoads, fmtKWTime, numFmt, sum, todayStr,
+  aggBy, dayStr, fetchDash, fetchDayLoads, fmtKWTime, KM_LOC, locText, numFmt, sum, todayStr,
   type DashPayload, type DayLoad, type DispatchRow, type MaterialReceipt,
 } from "./lib"
 
@@ -71,7 +71,7 @@ function openDispatchReport(payload: DashPayload, label: string, from: string, t
   if (detail && detail.length) {
     detailTable = table(t("rep.detail", { n: detail.length }),
       [t("rep.colNote"), t("rep.colTime"), t("rep.colCompanyProj"), t("rep.colSite"), t("rep.colMix"), t("rep.colTon"), t("rep.colStatus")],
-      detail.map((d) => `<tr><td>${esc(d.note)}</td><td>${esc(fmtKWTime(d.ts))}</td><td>${esc(d.company)} — ${esc(d.project)}</td><td>${esc(d.site)}${d.block ? " ق" + esc(d.block) : ""}${d.street ? " ش" + esc(d.street) : ""}</td><td>${esc(d.mix)}</td><td>${d.weight == null ? "—" : d.weight}</td><td>${esc(d.status)}</td></tr>`).join(""))
+      detail.map((d) => `<tr><td>${esc(d.note)}</td><td>${esc(fmtKWTime(d.ts))}</td><td>${esc(d.company)} — ${esc(d.project)}</td><td>${esc(locText(d.site, d.block, d.street, d.loc_type === KM_LOC))}</td><td>${esc(d.mix)}</td><td>${d.weight == null ? "—" : d.weight}</td><td>${esc(d.status)}</td></tr>`).join(""))
   }
   const html = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>${t("rep.dispatchTitle")}</title><style>
   @page { size: A4 portrait; margin: 12mm; }
@@ -131,8 +131,9 @@ export async function generateDispatchReport(kind: "day" | "range" | "month", a?
   return openDispatchReport(payload, label, from, to, rows, detail) ? "ok" : "popup"
 }
 
-/** Itemized materials statement for the accountant (A4 landscape). */
-export function openMaterialsReport(projName: string, rows: MaterialReceipt[]): boolean {
+/** Itemized materials statement for the accountant (A4 landscape).
+    `km` = the project is km_range (block/street columns hold the km span). */
+export function openMaterialsReport(projName: string, rows: MaterialReceipt[], km = false): boolean {
   if (!rows.length) return true
   const days = rows.map((r) => r.d)
   const from = days.reduce((a, b) => (a < b ? a : b))
@@ -144,7 +145,7 @@ export function openMaterialsReport(projName: string, rows: MaterialReceipt[]): 
     <td>${esc(fmtKW(r.ts))}</td><td>${esc(r.receipt_id)}</td><td>${esc(r.category)}</td><td>${esc(r.material)}</td>
     <td>${r.quantity == null ? "—" : esc(r.quantity)}</td><td>${esc(r.unit)}</td>
     <td>${esc(r.supplier)}</td><td>${esc(r.subcontractor)}</td><td>${esc(r.receiver)}</td>
-    <td>${esc(r.site)}${r.block ? " ق" + esc(r.block) : ""}${r.street ? " ش" + esc(r.street) : ""}</td>
+    <td>${esc(locText(r.site, r.block, r.street, km))}</td>
   </tr>`).join("")
   const agg = (title: string, keyFn: (r: MaterialReceipt) => string | null | undefined) => {
     const ag = aggBy(rows, keyFn).slice(0, 30)

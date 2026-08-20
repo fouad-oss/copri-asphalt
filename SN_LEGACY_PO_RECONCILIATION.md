@@ -30,3 +30,6 @@ Material SN-only numbers: PO/0236, PO/0368, PO/0376, PO/0382, PO/0383, PO/0384, 
 ## Recommendation
 - Retiring the 424 imported rows is safe from a data-loss standpoint once `po_source` = sn (only 1 legacy bundle(s) reference a legacy line; they keep working through the legacy branch of `bundle_transcription`). The decision is Fouad's; the sync deletes nothing.
 - Review the 2 value delta(s) with accounting (likely later revisions/discounts in SN).
+
+## Outcome
+**Retired 2026-08-20** (Fouad's decision): all 424 imported commitments closed (نشط → مغلق) by migration `0069_retire_legacy_po_register.sql`, applied the same day. Nothing deleted; the PO/0378 bundle keeps rendering through the legacy branch of `bundle_transcription`. Reversible on the same predicate.

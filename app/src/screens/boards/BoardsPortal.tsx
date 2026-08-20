@@ -6,16 +6,18 @@ import "./i18n"
 import HomeBoard from "./HomeBoard"
 import ProjectBoard from "./ProjectBoard"
 import AcctBoard from "./AcctBoard"
+import PlantBoard from "./PlantBoard"
+import ExecBoard from "./ExecBoard"
+import PlantDesk from "./PlantDesk"
+import FinanceDesk from "./FinanceDesk"
 
 /* ── Boards portal (/boards/*) — migration of the legacy ?dash boards.
-   Boards stay ungated like the legacy ?dash URLs (PIN gate deferred).
+   Boards stay ungated like the legacy ?dash URLs (PIN gate deferred);
+   the desks keep their own PIN gates (plant/finance manager tables).
 
-   LEGACY RETIREMENT PHASE 1 (2026-08-12): only the two retired boards are
-   routed — project/:proj (asphalt receivals) and acct/:proj (accountant
-   materials receivals) + the picker they need. PlantBoard, ExecBoard and
-   the two desks (PlantDesk / FinanceDesk) stay UNROUTED this phase: their
-   legacy counterparts (?dash=plant, ?plantRole, ?financeRole) remain the
-   live surfaces. Restore their routes + imports when those migrate. ── */
+   LEGACY RETIREMENT PHASE 2 (2026-08-20): plant + exec boards and the
+   two desks are routed here, retiring the last ?dash / ?plantRole /
+   ?financeRole legacy surfaces (phase 1 took project/acct receivals). ── */
 
 function Shell() {
   const { t } = useTranslation("boards")
@@ -41,8 +43,12 @@ export default function BoardsPortal() {
       <Route element={<Shell />}>
         <Route index element={<Navigate to="home" replace />} />
         <Route path="home" element={<HomeBoard />} />
+        <Route path="plant" element={<PlantBoard />} />
+        <Route path="exec" element={<ExecBoard />} />
         <Route path="project/:proj" element={<ProjectBoard />} />
         <Route path="acct/:proj" element={<AcctBoard />} />
+        <Route path="desk/plant" element={<PlantDesk />} />
+        <Route path="desk/finance" element={<FinanceDesk />} />
         <Route path="*" element={<Navigate to="home" replace />} />
       </Route>
     </Routes>

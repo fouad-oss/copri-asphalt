@@ -15,4 +15,18 @@ export default defineConfig(({ command }) => ({
     },
   },
   server: { port: 8124 },
+  build: {
+    rolldownOptions: {
+      output: {
+        // Keep heavyweight vendors out of the entry chunk — the office
+        // guard's landing (login) should not pay for all of them.
+        advancedChunks: {
+          groups: [
+            { name: "react", test: /node_modules[\\/](react|react-dom|react-router|scheduler)/ },
+            { name: "supabase", test: /node_modules[\\/]@supabase/ },
+          ],
+        },
+      },
+    },
+  },
 }))

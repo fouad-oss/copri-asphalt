@@ -7,6 +7,7 @@ import "@/lib/i18n"
 import "./index.css"
 import { getSession } from "@/lib/session"
 import Login from "@/screens/Login"
+import SignUp from "@/screens/SignUp"
 import AccountingShell from "@/screens/accounting/AccountingShell"
 import AuditQueue from "@/screens/accounting/AuditQueue"
 import PoRegister from "@/screens/accounting/PoRegister"
@@ -30,6 +31,9 @@ import SnSync from "@/screens/accounting/SnSync"
 const DispatchPortal = lazy(() => import("@/screens/dispatch/DispatchPortal"))
 const CapturePortal = lazy(() => import("@/screens/capture/CapturePortal"))
 const BoardsPortal = lazy(() => import("@/screens/boards/BoardsPortal"))
+// Phase 2 (2026-08-20): milling portal + plant/exec boards + desks routed,
+// retiring ?millingRole / ?millingReport / ?dash / ?plantRole / ?financeRole.
+const MillingPortal = lazy(() => import("@/screens/milling/MillingPortal"))
 // Quantities module (QUANTITIES_MODULE_BRIEF.md) — its own Supabase-Auth
 // gate inside the portal (email login, no PIN, no pipeline_users link).
 const QuantitiesPortal = lazy(() => import("@/screens/quantities/QuantitiesPortal"))
@@ -50,11 +54,13 @@ function Guard({ children }: { children: React.ReactNode }) {
 
 const router = createBrowserRouter([
   { path: "/login", element: <Login /> },
+  { path: "/signup", element: <SignUp /> },   // PIN-gated self-onboarding (0070)
   { path: "/sn", element: <SnDataPage /> },   // external, TOKEN access — outside the guard
   // Field portals — own PIN realms, never behind the office guard.
   { path: "/dispatch/*", element: <Lazy><DispatchPortal /></Lazy> },
   { path: "/capture/*", element: <Lazy><CapturePortal /></Lazy> },
   { path: "/boards/*", element: <Lazy><BoardsPortal /></Lazy> },
+  { path: "/milling/*", element: <Lazy><MillingPortal /></Lazy> },
   { path: "/quantities/*", element: <Lazy><QuantitiesPortal /></Lazy> },
   {
     path: "/accounting",

@@ -33,6 +33,60 @@
       "has": [{ "type": "query", "key": "dash", "value": "acct" }],
       "destination": "/app/boards/home",
       "permanent": false
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "query", "key": "dash", "value": "plant" }],
+      "destination": "/app/boards/plant",
+      "permanent": false
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "query", "key": "dash", "value": "exec" }],
+      "destination": "/app/boards/exec",
+      "permanent": false
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "query", "key": "dash" }],
+      "destination": "/app/boards/home",
+      "permanent": false
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "query", "key": "plantRole", "value": "manager" }],
+      "destination": "/app/boards/desk/plant",
+      "permanent": false
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "query", "key": "financeRole", "value": "manager" }],
+      "destination": "/app/boards/desk/finance",
+      "permanent": false
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "query", "key": "millingRole", "value": "pm" }],
+      "destination": "/app/milling/pm",
+      "permanent": false
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "query", "key": "millingRole", "value": "marco" }],
+      "destination": "/app/milling/marco",
+      "permanent": false
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "query", "key": "millingRole" }],
+      "destination": "/app/milling",
+      "permanent": false
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "query", "key": "millingReport", "value": "(?<id>.+)" }],
+      "destination": "/app/milling/report/:id",
+      "permanent": false
     }
   ],
   "rewrites": [

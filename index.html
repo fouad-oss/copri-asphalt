@@ -8843,16 +8843,16 @@ const note = getNoteFromURL();
 // belt-and-braces guard for STALE CACHED copies of this page — no legacy
 // code path may create delivery notes after cutover (one writer, one
 // sequence). Module code below is untouched (code-preserved policy).
-if (millingReport || millingRole) {
-  renderShelved();                                        // milling module — shelved
+if (millingReport) {
+  // PHASE 2 RETIRED → React milling report (public, no PIN)
+  location.replace("/app/milling/report/" + encodeURIComponent(millingReport));
+} else if (millingRole) {
+  // PHASE 2 RETIRED → React milling portal (engineer / pm / marco)
+  location.replace("/app/milling" + (millingRole === "pm" ? "/pm" : millingRole === "marco" ? "/marco" : ""));
 } else if (_mparams.get("plantRole") === "manager") {
-  const plantSession = getPlantSession();
-  if (plantSession) renderPlantHome(plantSession.name);
-  else renderPlantPINScreen(name => renderPlantHome(name));
+  location.replace("/app/boards/desk/plant");             // PHASE 2 RETIRED → React plant desk
 } else if (_mparams.get("financeRole") === "manager") {
-  const finSession = getFinanceSession();
-  if (finSession) renderFinanceHome(finSession.name);
-  else renderFinancePINScreen(name => renderFinanceHome(name));
+  location.replace("/app/boards/desk/finance");           // PHASE 2 RETIRED → React finance desk
 } else if (_mparams.has("wo")) {
   renderShelved();                                        // WO reference portal — shelved
 } else if (_mparams.has("printTest")) {
@@ -8860,13 +8860,11 @@ if (millingReport || millingRole) {
 } else if (_mparams.has("sn")) {
   renderShelved();  // SN data page moved to the React app: /app/sn?token=…
 } else if (_mparams.has("dash")) {
-  // Kept: board picker (Fouad's desk selection; PIN gate waits for the auth
-  // phase) + plant board. Exec stays shelved; the project/acct receival
-  // boards RETIRED to the React boards portal (phase 1).
+  // PHASE 2 RETIRED → React boards portal (picker + plant + exec joined
+  // the phase-1 project/acct receival boards).
   const dv = _mparams.get("dash");
-  if (dv === "project" || dv === "acct") location.replace("/app/boards/home");
-  else if (dv === "exec") renderShelved();
-  else renderDashboard(dv === "plant" ? "plant" : null, null);
+  location.replace(dv === "plant" ? "/app/boards/plant"
+    : dv === "exec" ? "/app/boards/exec" : "/app/boards/home");
 } else if (_mparams.has("rf")) {
   const pipeSession = getPipeSession();
   if (pipeSession) renderPipeHome(pipeSession);

@@ -15,6 +15,7 @@ import BundlesList from "@/screens/accounting/BundlesList"
 import BundleDetail from "@/screens/accounting/BundleDetail"
 import GrnScreen from "@/screens/accounting/GrnScreen"
 import SnDataPage from "@/screens/accounting/SnDataPage"
+import SnSync from "@/screens/accounting/SnSync"
 
 /* ── ACCOUNTING REBUILD (BRIEF-accounting-rebuild-final.md) +
    LEGACY RETIREMENT PHASE 1 (LEGACY_RETIREMENT_BRIEF.md, 2026-08-12) ──
@@ -65,6 +66,7 @@ const router = createBrowserRouter([
       { path: "bundles", element: <BundlesList /> },
       { path: "bundles/:id", element: <BundleDetail /> },
       { path: "grn", element: <GrnScreen /> },
+      { path: "sn-sync", element: <SnSync /> },
     ],
   },
   { path: "*", element: <Navigate to="/accounting" replace /> },

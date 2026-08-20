@@ -5,3 +5,8 @@ Accounting raw data/
 COPRI_dedup_review.xlsx
 __pycache__/
 dist/
+
+# SpectroNova API probe — credentials + raw vendor/financial dumps (never commit)
+.env.sn
+.env.local
+sn-api-dumps/

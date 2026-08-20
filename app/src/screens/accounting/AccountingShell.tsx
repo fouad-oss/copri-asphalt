@@ -16,6 +16,7 @@ const NAV: { to: string; label: string }[] = [
   { to: "/accounting/bundling", label: L.nav.bundling },
   { to: "/accounting/bundles", label: L.nav.bundles },
   { to: "/accounting/grn", label: L.nav.grn },
+  { to: "/accounting/sn-sync", label: L.nav.snSync },
 ]
 
 export default function AccountingShell() {

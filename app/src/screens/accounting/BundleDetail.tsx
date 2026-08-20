@@ -74,7 +74,7 @@ function ImportFooter({ user, b, onSaved }: { user: Profile; b: BundleDetailData
 function AdjustEditor({ user, b, onDone }: { user: Profile; b: BundleDetailData; onDone: () => void }) {
   const [notes, setNotes] = useState<{ ref: number; noteNo: string; qty: number; diff: string }[] | null>(null)
   const [lines, setLines] = useState<PoLineOption[] | null>(null)
-  const [lineId, setLineId] = useState(String(b.commitmentLineId))
+  const [lineId, setLineId] = useState(String(b.snPoLineId ?? b.commitmentLineId ?? ""))
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -179,8 +179,8 @@ export default function BundleDetail() {
 
   const fields: [string, React.ReactNode][] = [
     [L.detail.fieldSupplier, f?.supplier ?? "—"],
-    [L.detail.fieldPo, b.commitmentId != null ? (
-      <Link key="po" to={`/accounting/po-register?po=${b.commitmentId}`}
+    [L.detail.fieldPo, b.snPoId != null || b.commitmentId != null ? (
+      <Link key="po" to={b.snPoId != null ? `/accounting/po-register?snpo=${b.snPoId}` : `/accounting/po-register?po=${b.commitmentId}`}
         className="underline-offset-2 hover:underline">
         <RefCode>{f?.po_number ?? "—"}</RefCode>
       </Link>

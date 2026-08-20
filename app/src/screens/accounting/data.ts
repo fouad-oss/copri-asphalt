@@ -25,17 +25,42 @@ export type AuditRow = {
   ts: string | null
 }
 
+/* ── PO SOURCE SEAM (SN sync brief v2) ─────────────────────────────────
+   SpectroNova is the PO master (decision 2026-08-12). The register and
+   the bundling picker read from ONE of two sources, chosen at runtime by
+   pipeline_settings.po_source = {"source":"legacy"|"sn"} (migration
+   0065 seeds 'legacy'; flip the row after the first full sync). Every
+   consumer goes through the functions below — nothing else changes when
+   the switch flips. In SN mode: PO ids are sn_po_id, line ids are
+   sn_po_line_id, received qty is Σ stock-receipt lines, bundles are
+   created with bundle_create_sn. */
+export type PoSource = "legacy" | "sn"
+let _poSource: PoSource | null = null
+export async function poSource(): Promise<PoSource> {
+  if (_poSource) return _poSource
+  const { data } = await supabase.from("pipeline_settings").select("value").eq("key", "po_source").maybeSingle()
+  _poSource = (data?.value as any)?.source === "sn" ? "sn" : "legacy"
+  return _poSource
+}
+/** Force a re-read (settings changed in this session). */
+export function resetPoSource() { _poSource = null }
+
 export type Po = {
-  id: number
+  id: number                 // legacy: commitments.id · sn: sn_po_id
   number: string
   sn_po: string
   po_date: string | null
   status: string
   vendor: string
+  source: PoSource
+  department?: string
+  isFixedAsset?: boolean
+  isClosed?: boolean
+  netAmount?: number | null
 }
 
 export type PoLine = {
-  line_id: number
+  line_id: number            // legacy: commitment_lines.id · sn: sn_po_line_id
   line_no: number
   item: string
   item_code: string | null
@@ -46,11 +71,29 @@ export type PoLine = {
   published_qty: number
   pending_qty: number
   remaining_qty: number | null
+  received_qty?: number | null   // sn only — Σ stock-receipt lines (PO QuantityReceived is never maintained)
+  receipt_count?: number
 }
 
 /** Active POs for the register selector (newest by DATE — PO numbers
  *  reset each fiscal year and must never imply recency). */
-export async function poList(): Promise<Po[]> {
+export async function poList(opts: { includeClosed?: boolean } = {}): Promise<Po[]> {
+  if ((await poSource()) === "sn") {
+    let q = supabase.from("sn_purchase_orders")
+      .select("sn_po_id,po_number,po_date,is_fixed_asset,is_closed,supplier_name,department,net_amount")
+      .order("po_date", { ascending: false, nullsFirst: false })
+      .order("sn_po_id", { ascending: false })
+      .limit(3000)
+    if (!opts.includeClosed) q = q.eq("is_closed", false)
+    const { data, error } = await q
+    if (error) throw error
+    return (data ?? []).map((r: any) => ({
+      id: r.sn_po_id, number: r.po_number, sn_po: r.po_number, po_date: r.po_date,
+      status: r.is_closed ? "closed" : "open", vendor: r.supplier_name || "—", source: "sn",
+      department: r.department ?? "", isFixedAsset: !!r.is_fixed_asset, isClosed: !!r.is_closed,
+      netAmount: r.net_amount,
+    }))
+  }
   const { data, error } = await supabase.from("commitments")
     .select("id,number,sn_po,po_date,status,vendors:vendor_id(name)")
     .eq("status", "نشط")
@@ -60,12 +103,27 @@ export async function poList(): Promise<Po[]> {
   if (error) throw error
   return (data ?? []).map((r: any) => ({
     id: r.id, number: r.number, sn_po: r.sn_po ?? "", po_date: r.po_date,
-    status: r.status, vendor: r.vendors?.name ?? "—",
+    status: r.status, vendor: r.vendors?.name ?? "—", source: "legacy",
   }))
 }
 
 /** Per-LINE balances — never aggregated per PO or per item code. */
-export async function poLines(commitmentId: number): Promise<PoLine[]> {
+export async function poLines(poId: number): Promise<PoLine[]> {
+  if ((await poSource()) === "sn") {
+    const { data, error } = await supabase.from("sn_po_line_balance")
+      .select("line_id,line_no,item,item_code,unit,rate,order_qty,received_qty,receipt_count,published_qty,pending_qty,remaining_qty")
+      .eq("sn_po_id", poId)
+      .order("line_no", { ascending: true, nullsFirst: false })
+      .order("line_id", { ascending: true })
+    if (error) throw error
+    return (data ?? []).map((r: any) => ({
+      line_id: r.line_id, line_no: r.line_no ?? 0, item: r.item ?? "", item_code: r.item_code || null,
+      unit: r.unit ?? "", rate: r.rate, order_qty: r.order_qty, remarks: "",
+      published_qty: Number(r.published_qty ?? 0), pending_qty: Number(r.pending_qty ?? 0),
+      remaining_qty: r.remaining_qty, received_qty: r.received_qty, receipt_count: Number(r.receipt_count ?? 0),
+    }))
+  }
+  const commitmentId = poId
   const [{ data, error }, codes] = await Promise.all([
     supabase.from("po_line_balance")
       .select("line_id,line_no,item,item_id,unit,rate,order_qty,remarks,published_qty,pending_qty,remaining_qty")
@@ -127,6 +185,7 @@ export type BundleRow = {
   adjusts: number | null
   po: string
   commitmentId: number | null
+  snPoId?: number | null
   lineNo: number | null
   lineItem: string
   notes: number
@@ -169,8 +228,43 @@ export async function readyNotes(channel: Channel): Promise<ReadyNote[]> {
   }))
 }
 
+let _plantContacts: Set<string> | null = null
+/** SN ContactDirectoryIDs of the plant supplier (settings row; 5205 fallback). */
+async function plantContactIds(): Promise<Set<string>> {
+  if (_plantContacts) return _plantContacts
+  const { data: setting } = await supabase.from("pipeline_settings")
+    .select("value").eq("key", "plant_dispatch_supplier").maybeSingle()
+  const contact = String((setting?.value as any)?.contact_id || "5205")
+  const { data } = await supabase.from("vendor_spectronova_ids").select("contact_id")
+    .in("vendor_id", [...(await plantVendorIds())])
+  _plantContacts = new Set([contact, ...(data ?? []).map((r: any) => String(r.contact_id))])
+  return _plantContacts
+}
+
 /** Active PO lines offered for bundling on this channel. */
 export async function poLineOptions(channel: Channel): Promise<PoLineOption[]> {
+  if ((await poSource()) === "sn") {
+    // SN mirror: open, non-fixed-asset POs only; asphalt = plant supplier, materials = everyone else
+    const [plant, { data, error }] = await Promise.all([
+      plantContactIds(),
+      supabase.from("sn_po_line_balance")
+        .select("line_id,sn_po_id,po_number,line_no,item,app_item_id,unit,remaining_qty,supplier_contact_id,is_closed,is_fixed_asset")
+        .eq("is_closed", false).eq("is_fixed_asset", false)
+        .order("po_date", { ascending: false, nullsFirst: false })
+        .order("line_no", { ascending: true })
+        .limit(3000),
+    ])
+    if (error) throw error
+    return (data ?? [])
+      .filter((r: any) => channel === "asphalt"
+        ? plant.has(String(r.supplier_contact_id))
+        : !plant.has(String(r.supplier_contact_id)))
+      .map((r: any) => ({
+        lineId: r.line_id, commitmentId: r.sn_po_id,
+        po: r.po_number, lineNo: r.line_no ?? 0, item: r.item ?? "",
+        itemId: r.app_item_id, unit: r.unit ?? "", remaining: r.remaining_qty,
+      }))
+  }
   const [plant, { data, error }] = await Promise.all([
     plantVendorIds(),
     supabase.from("po_line_balance")
@@ -191,6 +285,13 @@ export async function poLineOptions(channel: Channel): Promise<PoLineOption[]> {
 
 /** Last-used PO line per item PER PO, newest first (the suggestion). */
 export async function lastUsedLines(): Promise<{ itemId: number; lineId: number }[]> {
+  if ((await poSource()) === "sn") {
+    const { data, error } = await supabase.from("sn_bundle_last_line")
+      .select("item_id,sn_po_line_id,created_at")
+      .order("created_at", { ascending: false })
+    if (error) throw error
+    return (data ?? []).map((r: any) => ({ itemId: r.item_id, lineId: r.sn_po_line_id }))
+  }
   const { data, error } = await supabase.from("bundle_last_line")
     .select("item_id,commitment_line_id,created_at")
     .order("created_at", { ascending: false })
@@ -201,7 +302,8 @@ export async function lastUsedLines(): Promise<{ itemId: number; lineId: number 
 export async function bundlesList(channel: Channel): Promise<BundleRow[]> {
   const { data, error } = await supabase.from("bundles")
     .select("id,bundle_no,status,adjusts_bundle_id,imported_flag,sn_reference,created_at," +
-      "bundle_lines(qty,amount),commitment_lines(line_no,item,commitments(id,number,sn_po))")
+      "bundle_lines(qty,amount),commitment_lines(line_no,item,commitments(id,number,sn_po))," +
+      "sn_po_lines(order_line_number,item_description,sn_purchase_orders(sn_po_id,po_number))")
     .eq("source", channel)
     .order("created_at", { ascending: false })
     .limit(200)
@@ -209,12 +311,14 @@ export async function bundlesList(channel: Channel): Promise<BundleRow[]> {
   return (data ?? []).map((r: any) => {
     const bl = r.bundle_lines ?? []
     const cl = r.commitment_lines
+    const sl = r.sn_po_lines
     return {
       id: r.id, bundleNo: r.bundle_no, status: r.status,
       adjusts: r.adjusts_bundle_id,
-      po: cl?.commitments?.sn_po || cl?.commitments?.number || "—",
+      po: sl?.sn_purchase_orders?.po_number || cl?.commitments?.sn_po || cl?.commitments?.number || "—",
       commitmentId: cl?.commitments?.id ?? null,
-      lineNo: cl?.line_no ?? null, lineItem: cl?.item ?? "",
+      snPoId: sl?.sn_purchase_orders?.sn_po_id ?? null,
+      lineNo: sl?.order_line_number ?? cl?.line_no ?? null, lineItem: sl?.item_description ?? cl?.item ?? "",
       notes: bl.length,
       qty: bl.reduce((s: number, x: any) => s + Number(x.qty || 0), 0),
       amount: bl.reduce((s: number, x: any) => s + Number(x.amount || 0), 0),
@@ -258,8 +362,10 @@ export type BundleDetailData = {
   imported: boolean
   snReference: string
   publishedAt: string | null
-  commitmentLineId: number
+  commitmentLineId: number | null
   commitmentId: number | null
+  snPoLineId: number | null
+  snPoId: number | null
   rows: TranscriptionRow[]
 }
 
@@ -306,7 +412,7 @@ export async function snImportConfirm(token: string, bundleId: number, snReferen
 export async function bundleDetail(id: number): Promise<BundleDetailData | null> {
   const [{ data: b, error: be }, { data: rows, error: re }] = await Promise.all([
     supabase.from("bundles")
-      .select("id,bundle_no,status,source,adjusts_bundle_id,imported_flag,sn_reference,published_at,commitment_line_id,commitment_lines(commitment_id)")
+      .select("id,bundle_no,status,source,adjusts_bundle_id,imported_flag,sn_reference,published_at,commitment_line_id,commitment_lines(commitment_id),sn_po_line_id,sn_po_lines(sn_po_id)")
       .eq("id", id).maybeSingle(),
     supabase.from("bundle_transcription")
       .select("line_id,supplier,po_number,po_line,item_code,description,qty,uom,unit_price,amount,delivery_date,supplier_dn,site")
@@ -319,8 +425,10 @@ export async function bundleDetail(id: number): Promise<BundleDetailData | null>
     id: b.id, bundleNo: b.bundle_no, status: b.status, source: b.source,
     adjusts: b.adjusts_bundle_id, imported: !!b.imported_flag,
     snReference: b.sn_reference ?? "", publishedAt: b.published_at,
-    commitmentLineId: b.commitment_line_id,
+    commitmentLineId: b.commitment_line_id ?? null,
     commitmentId: (b as any).commitment_lines?.commitment_id ?? null,
+    snPoLineId: (b as any).sn_po_line_id ?? null,
+    snPoId: (b as any).sn_po_lines?.sn_po_id ?? null,
     rows: (rows ?? []) as TranscriptionRow[],
   }
 }
@@ -348,7 +456,15 @@ async function callRpc(fn: string, args: Record<string, unknown>) {
 export async function createBundle(
   pin: string, lineId: number, channel: Channel,
   notes: { ref: number; qty?: number }[], adjusts?: number,
+  lineSource?: PoSource,
 ) {
+  const src = lineSource ?? (await poSource())
+  if (src === "sn") {
+    return callRpc("bundle_create_sn", {
+      p_pin: pin, p_sn_po_line_id: lineId, p_source: channel,
+      p_notes: notes, ...(adjusts != null ? { p_adjusts: adjusts } : {}),
+    })
+  }
   return callRpc("bundle_create", {
     p_pin: pin, p_commitment_line_id: lineId, p_source: channel,
     p_notes: notes, ...(adjusts != null ? { p_adjusts: adjusts } : {}),
@@ -601,5 +717,91 @@ export async function auditRows(channel: Channel, status: NoteStatus | null): Pr
     vendor: r.vendors?.name || r.supplier || "—",
     item: r.material ?? "", qty: r.quantity, status: r.recon_status,
     ts: r.ts,
+  }))
+}
+
+/* ── SN sync panel (SN sync brief v2) ─────────────────────────────────
+   Reads: sn_sync_status view, sn_sync_runs, sn_sync_alerts, the legacy
+   reconciliation view. Writes: sn_alert_dismiss RPC (accountant/admin)
+   and the sn-sync edge function ("Sync now", admins — checked server-side
+   via sn_sync_may_trigger()). */
+
+export type SnSyncStatus = {
+  runId: number | null; startedAt: string | null; finishedAt: string | null
+  trigger: string; triggeredBy: string; status: string
+  stages: SnStage[]; requests: number; error: string
+  openAlerts: number; poCount: number; srCount: number; invoiceCount: number; vendorCount: number; itemCount: number
+}
+export type SnStage = { stage: string; ms: number; requests: number; fetched: number; inserted: number; updated: number; unchanged: number; missed: number; errors: number; note?: string }
+export type SnRun = { id: number; startedAt: string; finishedAt: string | null; trigger: string; triggeredBy: string; status: string; scope: string; requests: number; invocations: number; error: string; stages: SnStage[]; cursor: any }
+export type SnAlert = { id: number; runId: number | null; kind: string; refType: string; refId: number | null; refNumber: string; detail: any; createdAt: string; dismissedAt: string | null; dismissedBy: string }
+export type ReconRow = {
+  bucket: "matched" | "legacy_only" | "sn_only"
+  commitmentId: number | null; appNumber: string; snPo: string; appStatus: string; appVendor: string; appValue: number | null; appLines: number; appBundles: number
+  snPoId: number | null; poNumber: string; isFixedAsset: boolean; isClosed: boolean; supplierName: string; department: string; snNet: number | null; snLines: number; valueDelta: number | null
+}
+
+export async function snSyncStatus(): Promise<SnSyncStatus | null> {
+  const { data, error } = await supabase.from("sn_sync_status").select("*").maybeSingle()
+  if (error) throw error
+  if (!data) return null
+  const r: any = data
+  return {
+    runId: r.run_id, startedAt: r.started_at, finishedAt: r.finished_at, trigger: r.trigger, triggeredBy: r.triggered_by,
+    status: r.status, stages: (r.stages ?? []) as SnStage[], requests: r.requests, error: r.error ?? "",
+    openAlerts: Number(r.open_alerts ?? 0), poCount: Number(r.po_count ?? 0), srCount: Number(r.sr_count ?? 0),
+    invoiceCount: Number(r.invoice_count ?? 0), vendorCount: Number(r.vendor_count ?? 0), itemCount: Number(r.item_count ?? 0),
+  }
+}
+export async function snRuns(limit = 10): Promise<SnRun[]> {
+  const { data, error } = await supabase.from("sn_sync_runs")
+    .select("id,started_at,finished_at,trigger,triggered_by,status,scope,requests,invocations,error,stages,cursor")
+    .order("started_at", { ascending: false }).limit(limit)
+  if (error) throw error
+  return (data ?? []).map((r: any) => ({
+    id: r.id, startedAt: r.started_at, finishedAt: r.finished_at, trigger: r.trigger, triggeredBy: r.triggered_by,
+    status: r.status, scope: r.scope, requests: r.requests, invocations: r.invocations, error: r.error ?? "",
+    stages: (r.stages ?? []) as SnStage[], cursor: r.cursor,
+  }))
+}
+export async function snAlerts(includeDismissed = false, limit = 200): Promise<SnAlert[]> {
+  let q = supabase.from("sn_sync_alerts")
+    .select("id,run_id,kind,ref_type,ref_id,ref_number,detail,created_at,dismissed_at,dismissed_by")
+    .order("created_at", { ascending: false }).limit(limit)
+  if (!includeDismissed) q = q.is("dismissed_at", null)
+  const { data, error } = await q
+  if (error) throw error
+  return (data ?? []).map((r: any) => ({
+    id: r.id, runId: r.run_id, kind: r.kind, refType: r.ref_type, refId: r.ref_id, refNumber: r.ref_number ?? "",
+    detail: r.detail, createdAt: r.created_at, dismissedAt: r.dismissed_at, dismissedBy: r.dismissed_by ?? "",
+  }))
+}
+export async function snAlertDismiss(id: number) {
+  const { rpc } = await import("@/lib/supabase")
+  const r = await rpc("sn_alert_dismiss", { p_alert_id: id })
+  if (!r?.success) throw new Error(r?.error || "failed")
+}
+/** Start a sync run via the edge function with the caller's JWT (admins only, enforced server-side). */
+export async function snSyncTrigger(scope: "quick" | "full"): Promise<{ runId: number; resume: boolean }> {
+  const { SUPABASE_URL, SUPABASE_ANON_KEY } = await import("@/lib/supabase")
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.access_token) throw new Error("no session")
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/sn-sync`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${session.access_token}` },
+    body: JSON.stringify({ scope }),
+  })
+  const j = await r.json().catch(() => ({}))
+  if (!r.ok || !j?.ok) throw new Error(j?.error || `HTTP ${r.status}`)
+  return { runId: j.runId, resume: !!j.resume }
+}
+export async function legacyRecon(): Promise<ReconRow[]> {
+  const { data, error } = await supabase.from("sn_legacy_po_recon").select("*").limit(3000)
+  if (error) throw error
+  return (data ?? []).map((r: any) => ({
+    bucket: r.bucket, commitmentId: r.commitment_id, appNumber: r.app_number ?? "", snPo: r.sn_po ?? "", appStatus: r.app_status ?? "",
+    appVendor: r.app_vendor ?? "", appValue: r.app_value, appLines: Number(r.app_lines ?? 0), appBundles: Number(r.app_bundles ?? 0),
+    snPoId: r.sn_po_id, poNumber: r.po_number ?? "", isFixedAsset: !!r.is_fixed_asset, isClosed: !!r.is_closed,
+    supplierName: r.supplier_name ?? "", department: r.department ?? "", snNet: r.sn_net_amount, snLines: Number(r.sn_lines ?? 0), valueDelta: r.value_delta,
   }))
 }

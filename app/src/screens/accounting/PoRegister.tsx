@@ -7,7 +7,8 @@ import { qty } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { Profile } from "@/lib/session"
 import { kwd, L } from "./labels"
-import { addPoLines, poLines, poList, type Po, type PoLine } from "./data"
+import { addPoLines, poLines, poList, poSource, type Po, type PoLine, type PoSource } from "./data"
+import { Checkbox } from "@/components/ui/checkbox"
 import { EmptyCard, LoadError, Loading, seq } from "./ui"
 
 /* ── Screen 2: PO register / line balances ────────────────────────────
@@ -46,6 +47,11 @@ function LineCard({ l }: { l: PoLine }) {
           <div className="mt-2"><Bar value={bundled} max={ordered} danger={over} /></div>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs tabular-nums">
             <span>{L.register.ordered} <b>{qty(ordered)} {l.unit}</b></span>
+            {l.received_qty != null && (
+              <span>{L.register.received} <b>{qty(l.received_qty)}</b>
+                {!!l.receipt_count && <span className="text-muted-foreground"> ({L.register.receipts(l.receipt_count)})</span>}
+              </span>
+            )}
             <span>
               {L.register.bundled} <b>{qty(bundled)}</b>
               {l.pending_qty > 0 && (
@@ -140,11 +146,16 @@ export default function PoRegister() {
   const [lines, setLines] = useState<PoLine[] | null>(null)
   const [linesError, setLinesError] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [source, setSource] = useState<PoSource>("legacy")
+  const [showClosed, setShowClosed] = useState(false)
 
   const loadPos = useCallback(async () => {
     setError(false); setPos(null)
-    try { setPos(await poList()) } catch { setError(true) }
-  }, [])
+    try {
+      const src = await poSource(); setSource(src)
+      setPos(await poList({ includeClosed: showClosed }))
+    } catch { setError(true) }
+  }, [showClosed])
   useEffect(() => { void loadPos() }, [loadPos])
 
   const lSeq = useRef(0)
@@ -160,13 +171,13 @@ export default function PoRegister() {
   // deep link: /accounting/po-register?po=<commitment id> (reference
   // codes elsewhere link here — skill: every code links to its detail)
   useEffect(() => {
-    const id = Number(params.get("po"))
+    const id = Number(source === "sn" ? (params.get("snpo") || params.get("po")) : params.get("po"))
     if (pos && id && selected?.id !== id) {
       const hit = pos.find((p) => p.id === id)
       if (hit) { setSelected(hit); void loadLines(hit) }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pos, params])
+  }, [pos, params, source])
 
   const shown = useMemo(() => {
     if (!pos) return []
@@ -174,20 +185,27 @@ export default function PoRegister() {
     if (!q) return pos
     return pos.filter((p) =>
       p.number.toLowerCase().includes(q) || p.sn_po.toLowerCase().includes(q) ||
-      p.vendor.toLowerCase().includes(q))
+      p.vendor.toLowerCase().includes(q) || (p.department ?? "").toLowerCase().includes(q))
   }, [pos, search])
   const CAP = 30
 
   return (
     <div className="flex flex-col gap-3">
       <h2 className="text-base font-semibold">{L.register.heading}</h2>
+      <p className="text-xs text-muted-foreground">{source === "sn" ? L.register.sourceSn : L.register.sourceLegacy}</p>
+      {source === "sn" && (
+        <label className="flex items-center gap-2 text-xs">
+          <Checkbox checked={showClosed} onCheckedChange={(v) => setShowClosed(!!v)} />
+          {L.register.showClosed}
+        </label>
+      )}
 
       {error && <LoadError onRetry={() => void loadPos()} />}
       {!error && pos === null && <Loading />}
 
       {!error && pos !== null && (
         <>
-          <Input placeholder={L.register.search} value={search}
+          <Input placeholder={source === "sn" ? L.register.searchSn : L.register.search} value={search}
             onChange={(e) => { setSearch(e.target.value) }} />
           {pos.length === 0 ? (
             <EmptyCard title={L.register.noPos} hint={L.register.noPosHint} />
@@ -204,8 +222,10 @@ export default function PoRegister() {
                     {p.sn_po && p.sn_po !== p.number && (
                       <span className="ms-2 text-xs text-muted-foreground">{p.number}</span>
                     )}
+                    {p.isFixedAsset && <span className="ms-2 rounded bg-secondary px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">{L.register.badgeFa}</span>}
+                    {p.isClosed && <span className="ms-1 rounded bg-secondary px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">{L.register.badgeClosed}</span>}
                   </span>
-                  <span className="truncate text-xs text-muted-foreground">{p.vendor}</span>
+                  <span className="truncate text-xs text-muted-foreground">{p.vendor}{p.department ? ` · ${p.department}` : ""}</span>
                   <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                     {p.po_date ?? L.register.noDate}
                   </span>
@@ -228,9 +248,11 @@ export default function PoRegister() {
                   <RefCode>{selected.sn_po || selected.number}</RefCode>
                   <span className="ms-2 text-xs font-normal text-muted-foreground">{selected.vendor}</span>
                 </h3>
-                <Button variant="outline" size="sm" onClick={() => setEditing((e) => !e)}>
-                  {L.register.addLines}
-                </Button>
+                {source === "legacy" && (
+                  <Button variant="outline" size="sm" onClick={() => setEditing((e) => !e)}>
+                    {L.register.addLines}
+                  </Button>
+                )}
               </div>
               {linesError && <LoadError onRetry={() => void loadLines(selected)} />}
               {!linesError && lines === null && <Loading rows={2} className="h-16" />}
@@ -240,7 +262,7 @@ export default function PoRegister() {
                 </div>
               )}
               {!linesError && lines !== null && lines.map((l) => <LineCard key={l.line_id} l={l} />)}
-              {editing && (
+              {editing && source === "legacy" && (
                 <LinesEditor user={user} poId={selected.id}
                   onSaved={() => void loadLines(selected)} />
               )}

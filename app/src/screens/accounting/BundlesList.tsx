@@ -128,8 +128,8 @@ export default function BundlesList() {
                   )}
                 </TableCell>
                 <TableCell>
-                  {b.commitmentId != null ? (
-                    <Link to={`/accounting/po-register?po=${b.commitmentId}`}
+                  {b.snPoId != null || b.commitmentId != null ? (
+                    <Link to={b.snPoId != null ? `/accounting/po-register?snpo=${b.snPoId}` : `/accounting/po-register?po=${b.commitmentId}`}
                       className="underline-offset-2 hover:underline">
                       <RefCode>{b.po}</RefCode>
                     </Link>

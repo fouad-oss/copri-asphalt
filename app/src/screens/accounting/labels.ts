@@ -44,6 +44,15 @@ export const L = {
     not_received: "Not received",
     no_po: "No PO",
   },
+  /* Materials channel overrides: a capture IS the receival (the site
+     engineer records externally supplied goods on arrival), so there is
+     no second leg to "match" — the statuses describe the accounting
+     lifecycle. Storage tokens unchanged (bundling keys off 'matched'). */
+  statusMat: {
+    matched: "Mapped & approved",
+    not_received: "Pending daily batch",
+    no_po: "No PO — exception",
+  },
   register: {
     heading: "PO register",
     search: "Search PO number, SN number, or vendor…",
@@ -296,6 +305,7 @@ export const L = {
   audit: {
     heading: "Audit queue",
     hint: "Unmatched notes cannot be bundled.",
+    hintMat: "Captures bundle once mapped to a PO line in the daily batch; exceptions need a PO or a resolution.",
     oldestUnmatched: (days: number) => `oldest unmatched: ${days}d`,
     colNote: "Delivery note no.",
     colSite: "Site",

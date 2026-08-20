@@ -20,13 +20,22 @@ const TONE: Record<NoteStatus, { badge: string; tile: string }> = {
   dispatched_not_received: { badge: "bg-warning-surface text-warning", tile: "border-warning/40" },
   not_received:            { badge: "bg-warning-surface text-warning", tile: "border-warning/40" },
   received_not_dispatched: { badge: "bg-secondary text-muted-foreground", tile: "border-border" },
-  no_po:                   { badge: "bg-secondary text-muted-foreground", tile: "border-border" },
+  no_po:                   { badge: "bg-warning-surface text-warning", tile: "border-warning/40" },
 }
 
-function AuditBadge({ status }: { status: NoteStatus }) {
+/* Materials wording differs: a capture IS the receival, so its statuses
+   describe the accounting lifecycle, not a two-sided match. */
+function statusLabel(channel: Channel, status: NoteStatus) {
+  if (channel === "materials" && status in L.statusMat) {
+    return L.statusMat[status as keyof typeof L.statusMat]
+  }
+  return L.status[status]
+}
+
+function AuditBadge({ channel, status }: { channel: Channel; status: NoteStatus }) {
   return (
     <Badge variant="secondary" className={cn("font-normal", TONE[status].badge)}>
-      {L.status[status]}
+      {statusLabel(channel, status)}
     </Badge>
   )
 }
@@ -85,7 +94,7 @@ export default function AuditQueue() {
               TONE[s].tile,
               filter === s ? "ring-2 ring-primary" : "hover:bg-secondary/40",
             )}>
-            <div className="text-xs text-muted-foreground">{L.status[s]}</div>
+            <div className="text-xs text-muted-foreground">{statusLabel(channel, s)}</div>
             <div className="mt-1 text-lg font-semibold tabular-nums">
               {counts ? counts[s] : "…"}
             </div>
@@ -93,7 +102,9 @@ export default function AuditQueue() {
         ))}
       </div>
 
-      <p className="text-xs text-muted-foreground">{L.audit.hint}</p>
+      <p className="text-xs text-muted-foreground">
+        {channel === "materials" ? L.audit.hintMat : L.audit.hint}
+      </p>
 
       {error && <LoadError onRetry={() => void load(channel, filter)} />}
       {!error && rows === null && <Loading rows={6} />}
@@ -134,7 +145,7 @@ export default function AuditQueue() {
                     </>
                   )}
                   <TableCell className="text-end tabular-nums">{r.qty ?? "—"}</TableCell>
-                  <TableCell><AuditBadge status={r.status} /></TableCell>
+                  <TableCell><AuditBadge channel={channel} status={r.status} /></TableCell>
                 </TableRow>
               ))}
             </TableBody>

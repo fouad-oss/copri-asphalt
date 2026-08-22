@@ -182,10 +182,10 @@ export function TadqiqScreen() {
         <CardHeader><CardTitle className="text-base">{t("tadqiq.newEntry")}</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <div className="space-y-1">
+            <div className="min-w-0 space-y-1">
               <Label>{t("tadqiq.kashef")}</Label>
               <Select value={kashefId} onValueChange={setKashefId}>
-                <SelectTrigger><SelectValue placeholder={t("tadqiq.chooseKashef")} /></SelectTrigger>
+                <SelectTrigger className="w-full"><SelectValue placeholder={t("tadqiq.chooseKashef")} /></SelectTrigger>
                 <SelectContent>
                   {kashefs.map((k) => (
                     <SelectItem key={k.id} value={String(k.id)}>
@@ -198,10 +198,10 @@ export function TadqiqScreen() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1">
+            <div className="min-w-0 space-y-1">
               <Label>{t("tadqiq.sub")}</Label>
               <Select value={vendorId} onValueChange={setVendorId}>
-                <SelectTrigger><SelectValue placeholder={t("tadqiq.chooseSub")} /></SelectTrigger>
+                <SelectTrigger className="w-full"><SelectValue placeholder={t("tadqiq.chooseSub")} /></SelectTrigger>
                 <SelectContent>
                   {subs.map((s) => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
                 </SelectContent>
